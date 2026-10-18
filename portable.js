@@ -47,7 +47,7 @@ export function createPortableHtml(board, options = {}) {
       zoom: Number(sourceBoard.view?.zoom) || 1,
     },
     objects: (Array.isArray(sourceBoard.objects) ? sourceBoard.objects : [])
-      .filter((object) => object?.visible !== false && (["text", "shape"].includes(object?.type) || (typeof object?.src === "string" && object.src)))
+      .filter((object) => object?.visible !== false && (["text", "shape", "artboard"].includes(object?.type) || (typeof object?.src === "string" && object.src)))
       .map((object) => ({
         name: object.name,
         type: object.type,
@@ -73,6 +73,7 @@ export function createPortableHtml(board, options = {}) {
         textVerticalAlign: ["top", "middle", "bottom"].includes(object.textVerticalAlign) ? object.textVerticalAlign : "top",
         shapeKind: object.shapeKind,
         fill: object.fill,
+        paperPreset: object.paperPreset,
         markers: Array.isArray(object.markers)
           ? object.markers.map(({ symbol, color }) => ({ symbol, color }))
           : [],
@@ -123,6 +124,7 @@ export function createPortableHtml(board, options = {}) {
     .frame > img { pointer-events: none; }
     .text { display: flex; flex-direction: column; height: 100%; line-height: 1.2; overflow: hidden; overflow-wrap: anywhere; white-space: pre-wrap; width: 100%; }
     .shape { background: var(--shape-fill, #58e6ff); }
+    .artboard { background: var(--paper-fill, #fffdf7); box-shadow: 0 18px 54px rgba(0, 0, 0, 0.24); height: 100%; width: 100%; }
     .markers { align-items: center; background: rgba(7, 11, 16, 0.88); border: 1px solid rgba(113, 177, 200, 0.24); border-radius: 5px; display: flex; gap: 4px; left: 6px; line-height: 1; padding: 4px 5px; pointer-events: none; position: absolute; top: 6px; }
     .marker { font-family: Arial, sans-serif; font-size: 15px; }
     .status { align-items: center; backdrop-filter: blur(8px); background: rgba(6, 11, 16, 0.84); border: 1px solid rgba(113, 177, 200, 0.24); border-radius: 6px; bottom: 12px; color: #8aa5b3; display: flex; font-size: 10px; gap: 8px; left: 12px; padding: 7px 9px; pointer-events: none; position: absolute; z-index: 2; }
@@ -233,7 +235,14 @@ export function createPortableHtml(board, options = {}) {
           frame.style.height = height + "px";
           frame.style.transform = "perspective(" + clamp(finite(object.perspective, 1000), 400, 3000) + "px) translateZ(" + clamp(finite(object.depth, 0), -240, 240) + "px) rotateX(" + clamp(finite(object.tiltX, 0), -60, 60) + "deg) rotateY(" + clamp(finite(object.tiltY, 0), -60, 60) + "deg)";
           const isVideo = object.type === "video" || String(object.mime || "").startsWith("video/");
-          if (object.type === "text") {
+          if (object.type === "artboard") {
+            const artboard = document.createElement("div");
+            artboard.className = "artboard";
+            artboard.setAttribute("role", "img");
+            artboard.setAttribute("aria-label", object.name || "Artboard");
+            artboard.style.setProperty("--paper-fill", object.fill || "#fffdf7");
+            frame.appendChild(artboard);
+          } else if (object.type === "text") {
             const text = document.createElement("div");
             text.className = "text";
             text.textContent = object.text || "";

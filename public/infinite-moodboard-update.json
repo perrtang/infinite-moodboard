@@ -1,8 +1,8 @@
 {
   "product": "Infinite Moodboard",
   "channel": "stable",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "releasedAt": "2026-10-18",
-  "summary": "公開 Beta：離線優先無限畫布、Google 與免密碼 Email 登入、三語介面、微 3D、構圖與多格式輸出。",
+  "summary": "新增紙張畫板、列印尺寸、標題說明、Grid、群組、圖層篩選與批次物件操作。",
   "url": "https://perrtang.github.io/infinite-moodboard/"
 }

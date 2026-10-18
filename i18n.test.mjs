@@ -24,3 +24,15 @@ test("account access copy is available in all built-in locales", () => {
 test("dynamic account labels retain the user name", () => {
   assert.equal(translateInterfaceText("帳號：Perr Tang", "en"), "Account: Perr Tang");
 });
+
+test("paper, annotation, grid, and semantic grouping copy is localized", () => {
+  assert.equal(translateInterfaceText("紙張", "en"), "Paper");
+  assert.equal(translateInterfaceText("符合內容", "en"), "Fit to content");
+  assert.equal(translateInterfaceText("右下外側", "en"), "Bottom right outside");
+  assert.equal(translateInterfaceText("紙張＋內容", "en"), "Paper + content");
+  assert.equal(translateInterfaceText("3 欄、2 列、共 6 個物件", "en"), "3 columns, 2 rows, 6 objects total");
+  assert.equal(translateInterfaceText("已建立 3 欄、2 列，共 6 個物件的 Grid。", "en"), "Created a 3-column × 2-row grid with 6 objects.");
+  assert.equal(translateInterfaceText("已將 4 個物件建立為群組；按住 ⌘／Ctrl 可穿透選取。", "en"), "Grouped 4 objects. Hold ⌘/Ctrl to select through the group.");
+  assert.equal(translateInterfaceText("右下外側", "zh-Hans"), "右下外侧");
+  assert.equal(translateInterfaceText("紙張＋內容", "zh-Hans"), "纸张＋内容");
+});

@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   alignObjectsToKey,
+  arrangeObjectsInGrid,
   boundsAnchorPoint,
+  compactBoardStructure,
+  createArtboardFromObjects,
+  createGroup,
   createObjectDuplicate,
   createViewCapture,
   distributeObjectsByGap,
@@ -15,6 +19,7 @@ import {
   objectsForExport,
   reorderCapturesByVisualDrop,
   reorderObjectsByVisualDrop,
+  resizeArtboardToPreset,
   resizeObjectFromHandle,
   resizeObjectsFromHandle,
   resizeTextFrameToDimension,
@@ -24,6 +29,7 @@ import {
   safeFilename,
   scaleObjectsAroundPoint,
   selectionActionAnchorInViewport,
+  selectionIdsForObject,
   selectionWorldBounds,
   snapRotationDelta,
   sourceAssetsFromObjects,
@@ -311,6 +317,61 @@ test("duplicated objects keep their source and marker values without sharing mar
   assert.deepEqual([duplicate.pivotX, duplicate.pivotY], [128, 108]);
 });
 
+test("artboards wrap the selected visual bounds with predictable padding and paper presets", () => {
+  const objects = [
+    { id: "a", type: "shape", pivotX: 50, pivotY: 50, width: 100, height: 80, rotation: 0, anchor: "mc" },
+    { id: "b", type: "shape", pivotX: 210, pivotY: 80, width: 80, height: 120, rotation: 0, anchor: "mc" },
+  ];
+  const artboard = createArtboardFromObjects(objects, { padding: 40, id: "paper" });
+  assert.equal(artboard.type, "artboard");
+  assert.equal(artboard.width, 330);
+  assert.equal(artboard.height, 210);
+  assert.equal(artboard.pivotX, 125);
+  assert.equal(artboard.pivotY, 75);
+  assert.equal(artboard.paperPadding, 40);
+  assert.equal(artboard.aspectLocked, false);
+
+  const a4Landscape = resizeArtboardToPreset(artboard, "a4", "landscape");
+  assert.deepEqual([a4Landscape.width, a4Landscape.height], [1123, 794]);
+  assert.equal(a4Landscape.paperPreset, "a4");
+});
+
+test("grid arrangement keeps every object and creates equal row and column spacing", () => {
+  const source = Array.from({ length: 5 }, (_, index) => ({
+    id: `object-${index}`,
+    type: "shape",
+    pivotX: index * 7,
+    pivotY: index * 11,
+    width: 100,
+    height: 60,
+    rotation: 0,
+    anchor: "mc",
+  }));
+  const grid = arrangeObjectsInGrid(source, { columns: 3, gapX: 20, gapY: 30, startX: 10, startY: 20 });
+  assert.deepEqual(grid.map(({ pivotX, pivotY }) => [pivotX, pivotY]), [
+    [60, 50], [180, 50], [300, 50], [60, 140], [180, 140],
+  ]);
+});
+
+test("semantic groups select together while command-style penetration keeps one object", () => {
+  const group = createGroup(["a", "b"], { id: "group-1", name: "Pair" });
+  const board = {
+    objects: [
+      { id: "paper", type: "artboard" },
+      { id: "a", type: "shape", groupId: group.id, artboardId: "paper" },
+      { id: "b", type: "shape", groupId: group.id, artboardId: "paper" },
+    ],
+    groups: [group],
+  };
+  assert.deepEqual(selectionIdsForObject(board, "a"), ["a", "b"]);
+  assert.deepEqual(selectionIdsForObject(board, "a", { penetrate: true }), ["a"]);
+  assert.deepEqual(selectionIdsForObject(board, "paper"), ["paper", "a", "b"]);
+
+  const compacted = compactBoardStructure({ ...board, objects: board.objects.filter((object) => object.id !== "b") });
+  assert.equal(compacted.groups.length, 0);
+  assert.equal(compacted.objects.find((object) => object.id === "a").groupId, null);
+});
+
 test("source materials collapse duplicate instances into one inspectable source", () => {
   const source = {
     sourceId: "source-one",
@@ -386,7 +447,7 @@ test("legacy objects gain a stable original size and can restore it", () => {
   });
   const resized = { ...board.objects[0], width: 640, height: 360 };
   const restored = restoreObjectSize(resized);
-  assert.equal(board.schemaVersion, 9);
+  assert.equal(board.schemaVersion, 10);
   assert.deepEqual(
     [board.objects[0].tiltX, board.objects[0].tiltY, board.objects[0].depth, board.objects[0].perspective],
     [0, 0, 0, 1000],
@@ -412,7 +473,7 @@ test("linked text frames preserve their story, visible segment, and overflow sta
   });
   const object = board.objects[0];
 
-  assert.equal(board.schemaVersion, 9);
+  assert.equal(board.schemaVersion, 10);
   assert.equal(object.text, "這是一段完整文字");
   assert.equal(object.textFlowId, "story-one");
   assert.equal(object.textFlowOrder, 2);
@@ -670,7 +731,7 @@ test("the last composition survives file normalization as a dedicated recovery s
     },
   });
 
-  assert.equal(board.schemaVersion, 9);
+  assert.equal(board.schemaVersion, 10);
   assert.equal(board.lastComposition.id, "previous-composition");
   assert.equal(board.lastComposition.name, "切換前的構圖");
   assert.deepEqual(board.lastComposition.view, { x: 80, y: -45, zoom: 1.4 });

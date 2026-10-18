@@ -2,6 +2,14 @@
 
 Infinite Moodboard 是 PETFASHION 的免費、離線優先視覺工作台。圖片、影片、文字、SVG、版本與構圖運算都在瀏覽器中進行；使用者可下載可編輯的 `.moodboard` 工作檔，或輸出 PNG、WebP、AVIF、PDF 與唯讀 HTML。
 
+## v0.7.0 重點
+
+- 依選取範圍建立具有 40px 預設邊距的紙張，支援 A3、A4、A5、B5、Letter、自訂尺寸、方向與色彩。
+- 可在選取範圍八個方位加入可獨立編輯的標題或說明。
+- Grid 可複製選取物件至指定數量；無選取時會建立可編輯的矩形預留位置。
+- 支援群組／解散群組、`⌘/Ctrl + G`、`⇧⌘/Ctrl + G`，以及按住 `⌘/Ctrl` 穿透選取群組成員。
+- 圖層可依類型篩選，並對多選物件批次顯示、隱藏、匯出、合成輸出與刪除。
+
 線上公開 Beta：<https://perrtang.github.io/infinite-moodboard/>
 
 ## 目前邊界

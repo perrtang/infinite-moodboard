@@ -1,4 +1,4 @@
-export const BOARD_SCHEMA_VERSION = 9;
+export const BOARD_SCHEMA_VERSION = 10;
 
 export const ANCHORS = {
   tl: { x: 0, y: 0, label: "左上" },
@@ -35,6 +35,16 @@ export const RESIZE_HANDLE_OPPOSITES = {
 };
 
 export const SHAPE_KINDS = ["rectangle", "triangle", "polygon", "star"];
+export const PAPER_PRESETS = Object.freeze({
+  fit: { label: "符合內容", width: null, height: null },
+  a3: { label: "A3", width: 1123, height: 1587 },
+  a4: { label: "A4", width: 794, height: 1123 },
+  a5: { label: "A5", width: 559, height: 794 },
+  b5: { label: "B5", width: 665, height: 945 },
+  letter: { label: "Letter", width: 816, height: 1056 },
+  custom: { label: "自訂", width: null, height: null },
+});
+export const ANNOTATION_POSITIONS = ["tl", "tc", "tr", "ml", "mr", "bl", "bc", "br"];
 export const DEFAULT_TEXT_FONT = '"Inter", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif';
 export const TEXT_ALIGNMENTS = ["left", "center", "right", "justify"];
 export const TEXT_LAST_ALIGNMENTS = ["left", "center", "right"];
@@ -59,6 +69,7 @@ export function createBoard(overrides = {}) {
     updatedAt: now,
     revision: 0,
     objects: [],
+    groups: [],
     captures: [],
     lastComposition: null,
     view: { x: 0, y: 0, zoom: 1 },
@@ -90,10 +101,10 @@ function normalizeObject(object, index) {
   const now = new Date().toISOString();
   const id = typeof object?.id === "string" && object.id ? object.id : createId("object");
   const mime = typeof object?.mime === "string" ? object.mime : "image/png";
-  const inferredType = object?.type === "text" || object?.type === "shape"
+  const inferredType = ["text", "shape", "artboard"].includes(object?.type)
     ? object.type
     : (mime.startsWith("video/") ? "video" : "image");
-  const typeLabel = inferredType === "text" ? "文字" : inferredType === "shape" ? "形狀" : inferredType === "video" ? "影片" : "圖片";
+  const typeLabel = inferredType === "text" ? "文字" : inferredType === "shape" ? "形狀" : inferredType === "artboard" ? "紙張" : inferredType === "video" ? "影片" : "圖片";
   const fallbackName = `${typeLabel} ${String(index + 1).padStart(2, "0")}`;
   const width = Math.max(24, finiteNumber(object?.width, 240));
   const height = Math.max(24, finiteNumber(object?.height, 180));
@@ -152,7 +163,19 @@ function normalizeObject(object, index) {
     textAlignLast: TEXT_LAST_ALIGNMENTS.includes(object?.textAlignLast) ? object.textAlignLast : "left",
     textVerticalAlign: TEXT_VERTICAL_ALIGNMENTS.includes(object?.textVerticalAlign) ? object.textVerticalAlign : "top",
     shapeKind: SHAPE_KINDS.includes(object?.shapeKind) ? object.shapeKind : "rectangle",
-    fill: typeof object?.fill === "string" && object.fill ? object.fill : "#58e6ff",
+    fill: typeof object?.fill === "string" && object.fill
+      ? object.fill
+      : inferredType === "artboard" ? "#fffdf7" : "#58e6ff",
+    paperPreset: Object.hasOwn(PAPER_PRESETS, object?.paperPreset) ? object.paperPreset : inferredType === "artboard" ? "fit" : null,
+    paperOrientation: object?.paperOrientation === "landscape" ? "landscape" : "portrait",
+    paperPadding: clampNumber(object?.paperPadding, 40, 0, 400),
+    groupId: typeof object?.groupId === "string" && object.groupId ? object.groupId : null,
+    artboardId: typeof object?.artboardId === "string" && object.artboardId ? object.artboardId : null,
+    annotationKind: ["title", "description"].includes(object?.annotationKind) ? object.annotationKind : null,
+    annotationPosition: ANNOTATION_POSITIONS.includes(object?.annotationPosition) ? object.annotationPosition : null,
+    annotationTargetIds: Array.isArray(object?.annotationTargetIds)
+      ? [...new Set(object.annotationTargetIds.filter((value) => typeof value === "string" && value))]
+      : [],
     markers: Array.isArray(object?.markers)
       ? object.markers.filter(
           (marker) =>
@@ -175,6 +198,9 @@ export function createObjectDuplicate(object, options = {}) {
     layerName: `${object.layerName} 複本`,
     pivotX: object.pivotX + finiteNumber(options.offset, 28),
     pivotY: object.pivotY + finiteNumber(options.offset, 28),
+    groupId: options.groupId === undefined ? object.groupId || null : options.groupId,
+    artboardId: options.artboardId === undefined ? object.artboardId || null : options.artboardId,
+    annotationTargetIds: Array.isArray(object.annotationTargetIds) ? [...object.annotationTargetIds] : [],
     markers: Array.isArray(object.markers)
       ? object.markers.map((marker) => ({ symbol: marker.symbol, color: marker.color }))
       : [],
@@ -186,6 +212,150 @@ export function createObjectDuplicate(object, options = {}) {
     } : {}),
     createdAt: timestamp,
     updatedAt: timestamp,
+  };
+}
+
+function normalizeGroup(group, index, validObjectIds) {
+  const now = new Date().toISOString();
+  const memberIds = [...new Set((Array.isArray(group?.memberIds) ? group.memberIds : [])
+    .filter((id) => typeof id === "string" && validObjectIds.has(id)))];
+  return {
+    id: typeof group?.id === "string" && group.id ? group.id : createId("group"),
+    name: typeof group?.name === "string" && group.name.trim() ? group.name.trim() : `群組 ${String(index + 1).padStart(2, "0")}`,
+    memberIds,
+    createdAt: typeof group?.createdAt === "string" ? group.createdAt : now,
+    updatedAt: typeof group?.updatedAt === "string" ? group.updatedAt : now,
+  };
+}
+
+export function createGroup(memberIds, overrides = {}) {
+  const now = overrides.createdAt || new Date().toISOString();
+  const ids = [...new Set((memberIds || []).filter((id) => typeof id === "string" && id))];
+  return {
+    id: overrides.id || createId("group"),
+    name: overrides.name || "新群組",
+    memberIds: ids,
+    createdAt: now,
+    updatedAt: overrides.updatedAt || now,
+  };
+}
+
+export function createArtboardFromObjects(objects, options = {}) {
+  const bounds = selectionWorldBounds(objects || []);
+  if (!bounds) return null;
+  const padding = clampNumber(options.padding, 40, 0, 400);
+  const now = options.createdAt || new Date().toISOString();
+  const width = Math.max(24, bounds.width + padding * 2);
+  const height = Math.max(24, bounds.height + padding * 2);
+  const name = options.name || "內容紙張";
+  return normalizeObject({
+    id: options.id || createId("object"),
+    type: "artboard",
+    name,
+    layerName: name,
+    src: "",
+    mime: "application/x-infinite-moodboard-artboard",
+    originalFilename: `${name}.svg`,
+    pivotX: bounds.left + bounds.width / 2,
+    pivotY: bounds.top + bounds.height / 2,
+    width,
+    height,
+    originalWidth: width,
+    originalHeight: height,
+    aspectLocked: false,
+    rotation: 0,
+    anchor: "mc",
+    fill: options.fill || "#fffdf7",
+    paperPreset: "fit",
+    paperOrientation: width >= height ? "landscape" : "portrait",
+    paperPadding: padding,
+    visible: true,
+    locked: false,
+    createdAt: now,
+    updatedAt: now,
+  }, 0);
+}
+
+export function resizeArtboardToPreset(object, presetKey, orientation = "portrait") {
+  if (object?.type !== "artboard" || !Object.hasOwn(PAPER_PRESETS, presetKey)) return object;
+  const preset = PAPER_PRESETS[presetKey];
+  if (!preset.width || !preset.height) {
+    return { ...object, paperPreset: presetKey, paperOrientation: orientation };
+  }
+  const landscape = orientation === "landscape";
+  const width = landscape ? preset.height : preset.width;
+  const height = landscape ? preset.width : preset.height;
+  return {
+    ...object,
+    width,
+    height,
+    originalWidth: width,
+    originalHeight: height,
+    paperPreset: presetKey,
+    paperOrientation: landscape ? "landscape" : "portrait",
+  };
+}
+
+export function arrangeObjectsInGrid(objects, options = {}) {
+  if (!Array.isArray(objects) || !objects.length) return [];
+  const columns = Math.max(1, Math.min(objects.length, Math.floor(finiteNumber(options.columns, Math.ceil(Math.sqrt(objects.length))))));
+  const gapX = Math.max(0, finiteNumber(options.gapX, 24));
+  const gapY = Math.max(0, finiteNumber(options.gapY, 24));
+  const cellWidth = Math.max(...objects.map((object) => Math.max(24, finiteNumber(object.width, 24))));
+  const cellHeight = Math.max(...objects.map((object) => Math.max(24, finiteNumber(object.height, 24))));
+  const currentBounds = selectionWorldBounds(objects);
+  const startX = finiteNumber(options.startX, currentBounds?.left || 0);
+  const startY = finiteNumber(options.startY, currentBounds?.top || 0);
+  return objects.map((object, index) => {
+    const column = index % columns;
+    const row = Math.floor(index / columns);
+    const anchor = ANCHORS[object.anchor] || ANCHORS.mc;
+    const width = Math.max(24, finiteNumber(object.width, 24));
+    const height = Math.max(24, finiteNumber(object.height, 24));
+    const left = startX + column * (cellWidth + gapX) + (cellWidth - width) / 2;
+    const top = startY + row * (cellHeight + gapY) + (cellHeight - height) / 2;
+    return {
+      ...object,
+      pivotX: left + anchor.x * width,
+      pivotY: top + anchor.y * height,
+      updatedAt: new Date().toISOString(),
+    };
+  });
+}
+
+export function selectionIdsForObject(board, objectId, options = {}) {
+  const object = board?.objects?.find((item) => item.id === objectId);
+  if (!object) return [];
+  if (options.penetrate) return [objectId];
+  if (object.type === "artboard") {
+    return [object.id, ...board.objects.filter((item) => item.artboardId === object.id).map((item) => item.id)];
+  }
+  if (object.groupId) {
+    const group = board?.groups?.find((item) => item.id === object.groupId);
+    if (group?.memberIds?.length) return group.memberIds.filter((id) => board.objects.some((item) => item.id === id));
+  }
+  return [objectId];
+}
+
+export function compactBoardStructure(board) {
+  const objects = Array.isArray(board?.objects) ? board.objects : [];
+  const validIds = new Set(objects.map((object) => object.id));
+  const groups = (Array.isArray(board?.groups) ? board.groups : [])
+    .map((group, index) => normalizeGroup(group, index, validIds))
+    .filter((group) => group.memberIds.length >= 2);
+  const groupIds = new Set(groups.map((group) => group.id));
+  const artboardIds = new Set(objects.filter((object) => object.type === "artboard").map((object) => object.id));
+  return {
+    ...board,
+    groups,
+    objects: objects.map((object) => ({
+      ...object,
+      groupId: groupIds.has(object.groupId) ? object.groupId : null,
+      artboardId: artboardIds.has(object.artboardId) ? object.artboardId : null,
+      annotationTargetIds: Array.isArray(object.annotationTargetIds)
+        ? object.annotationTargetIds.filter((id) => validIds.has(id))
+        : [],
+    })),
   };
 }
 
@@ -260,6 +430,15 @@ export function ensureBoard(value) {
   }
 
   const base = createBoard();
+  const objects = value.objects
+    .map(normalizeObject)
+    .filter((object) => ["text", "shape", "artboard"].includes(object.type) || object.src);
+  const validObjectIds = new Set(objects.map((object) => object.id));
+  const groups = (Array.isArray(value.groups) ? value.groups : [])
+    .map((group, index) => normalizeGroup(group, index, validObjectIds))
+    .filter((group) => group.memberIds.length >= 2);
+  const groupIds = new Set(groups.map((group) => group.id));
+  const artboardIds = new Set(objects.filter((object) => object.type === "artboard").map((object) => object.id));
   return {
     ...base,
     ...value,
@@ -272,9 +451,13 @@ export function ensureBoard(value) {
       y: finiteNumber(value.view?.y, 0),
       zoom: Math.min(4, Math.max(0.08, finiteNumber(value.view?.zoom, 1))),
     },
-    objects: value.objects
-      .map(normalizeObject)
-      .filter((object) => ["text", "shape"].includes(object.type) || object.src),
+    objects: objects.map((object) => ({
+      ...object,
+      groupId: groupIds.has(object.groupId) ? object.groupId : null,
+      artboardId: artboardIds.has(object.artboardId) ? object.artboardId : null,
+      annotationTargetIds: object.annotationTargetIds.filter((id) => validObjectIds.has(id)),
+    })),
+    groups,
     captures: Array.isArray(value.captures) ? value.captures.map(normalizeCapture) : [],
     lastComposition: value.lastComposition && typeof value.lastComposition === "object"
       ? normalizeCapture({ ...value.lastComposition, name: "切換前的構圖" }, -1)

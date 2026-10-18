@@ -1,4 +1,4 @@
-export const APP_VERSION = "0.6.0";
+export const APP_VERSION = "0.7.0";
 export const APP_VERSION_LABEL = `App v${APP_VERSION}`;
 export const APP_RELEASE_DATE = "2026-10-18";
 const APP_BASE_URL = import.meta.env?.BASE_URL || "/";

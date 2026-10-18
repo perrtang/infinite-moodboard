@@ -93,16 +93,22 @@ import {
 } from "lucide-react";
 import {
   ANCHORS,
+  ANNOTATION_POSITIONS,
   DEFAULT_TEXT_FONT,
   MARKER_COLORS,
   MARKER_SYMBOLS,
+  PAPER_PRESETS,
   RESIZE_HANDLES,
   TEXT_ALIGNMENTS,
   TEXT_LAST_ALIGNMENTS,
   TEXT_VERTICAL_ALIGNMENTS,
   alignObjectsToKey,
+  arrangeObjectsInGrid,
   boundsAnchorPoint,
+  compactBoardStructure,
+  createArtboardFromObjects,
   createBoard,
+  createGroup,
   createId,
   createObjectDuplicate,
   createViewCapture,
@@ -118,6 +124,7 @@ import {
   objectsForExport,
   reorderCapturesByVisualDrop,
   reorderObjectsByVisualDrop,
+  resizeArtboardToPreset,
   restoreObjectSize,
   restoreViewCapture,
   resizeObjectFromHandle,
@@ -128,6 +135,7 @@ import {
   rotateObjectsAroundPoint,
   safeFilename,
   selectionActionAnchorInViewport,
+  selectionIdsForObject,
   selectionWorldBounds,
   snapRotationDelta,
   sourceAssetsFromObjects,
@@ -319,6 +327,26 @@ const SHAPE_LABELS = {
   star: "星形",
 };
 
+const LAYER_TYPE_FILTERS = [
+  ["all", "全部"],
+  ["artboard", "紙張"],
+  ["group", "群組"],
+  ["text", "文字"],
+  ["media", "素材"],
+  ["shape", "形狀"],
+];
+
+const ANNOTATION_POSITION_LABELS = {
+  tl: "左上外側",
+  tc: "上方置中",
+  tr: "右上外側",
+  ml: "左側置中",
+  mr: "右側置中",
+  bl: "左下外側",
+  bc: "下方置中",
+  br: "右下外側",
+};
+
 const LEFT_PANEL_MIN_WIDTH = 300;
 const LEFT_PANEL_MAX_WIDTH = 560;
 const THEME_COLOR_FIELDS = [
@@ -461,6 +489,10 @@ function objectDisplayText(object) {
 
 function isShapeObject(object) {
   return object?.type === "shape";
+}
+
+function isArtboardObject(object) {
+  return object?.type === "artboard";
 }
 
 function isSvgFile(file) {
@@ -681,6 +713,46 @@ function createTextObject(point) {
   };
 }
 
+function createAnnotationObject(targetObjects, options = {}) {
+  const bounds = selectionWorldBounds(targetObjects);
+  if (!bounds) return null;
+  const kind = options.kind === "description" ? "description" : "title";
+  const position = ANNOTATION_POSITIONS.includes(options.position) ? options.position : "tl";
+  const gap = Math.max(0, Number(options.gap) || 16);
+  const width = Math.max(180, Math.min(460, kind === "title" ? bounds.width : Math.max(280, bounds.width * 0.72)));
+  const height = kind === "title" ? 58 : 96;
+  const horizontal = position[1];
+  const vertical = position[0];
+  let centerX = bounds.centerX;
+  let centerY = bounds.centerY;
+  if (horizontal === "l") centerX = bounds.left + width / 2;
+  if (horizontal === "r") centerX = bounds.right - width / 2;
+  if (vertical === "t") centerY = bounds.top - gap - height / 2;
+  if (vertical === "b") centerY = bounds.bottom + gap + height / 2;
+  if (position === "ml") centerX = bounds.left - gap - width / 2;
+  if (position === "mr") centerX = bounds.right + gap + width / 2;
+  const object = createTextObject({ x: centerX, y: centerY });
+  const artboardIds = [...new Set(targetObjects.map((target) => isArtboardObject(target) ? target.id : target.artboardId).filter(Boolean))];
+  const text = String(options.text || "").trim() || translateInterfaceText(kind === "title" ? "標題" : "說明文字");
+  return {
+    ...object,
+    name: text,
+    layerName: text,
+    text,
+    width,
+    height,
+    originalWidth: width,
+    originalHeight: height,
+    fontSize: kind === "title" ? 28 : 18,
+    originalFontSize: kind === "title" ? 28 : 18,
+    fontWeight: kind === "title" ? "700" : "400",
+    annotationKind: kind,
+    annotationPosition: position,
+    annotationTargetIds: targetObjects.map((target) => target.id),
+    artboardId: artboardIds.length === 1 ? artboardIds[0] : null,
+  };
+}
+
 function createShapeObject(kind, point) {
   const now = new Date().toISOString();
   const preset = {
@@ -742,6 +814,9 @@ function shapeSvgMarkup(object, x, y, width, height) {
 }
 
 function objectHtmlVisualMarkup(object, sourceOverride = "") {
+  if (isArtboardObject(object)) {
+    return `<div style="box-sizing:border-box;width:100%;height:100%;background:${escapeXmlAttribute(object.fill || "#fffdf7")};"></div>`;
+  }
   if (isTextObject(object)) {
     const layout = textLayoutStyle(object);
     return `<div style="box-sizing:border-box;display:flex;flex-direction:column;justify-content:${layout.justifyContent};text-align:${layout.textAlign};text-align-last:${layout.textAlignLast};width:100%;height:100%;overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere;color:${escapeXmlAttribute(object.color || "#edf7fb")};font-family:${escapeXmlAttribute(object.fontFamily || DEFAULT_TEXT_FONT)};font-size:${Math.max(6, Number(object.fontSize) || 32)}px;font-weight:${escapeXmlAttribute(object.fontWeight || "600")};line-height:1.2;">${escapeXmlAttribute(objectDisplayText(object))}</div>`;
@@ -790,6 +865,8 @@ function objectToSvgBlob(object) {
     content = `<foreignObject x="${x}" y="${y}" width="${width}" height="${height}"><div xmlns="http://www.w3.org/1999/xhtml" style="box-sizing:border-box;display:flex;flex-direction:column;justify-content:${layout.justifyContent};text-align:${layout.textAlign};text-align-last:${layout.textAlignLast};width:100%;height:100%;overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere;color:${escapeXmlAttribute(object.color || "#edf7fb")};font-family:${escapeXmlAttribute(object.fontFamily || DEFAULT_TEXT_FONT)};font-size:${Math.max(6, Number(object.fontSize) || 32)}px;font-weight:${escapeXmlAttribute(object.fontWeight || "600")};line-height:1.2;">${escapeXmlAttribute(objectDisplayText(object))}</div></foreignObject>`;
   } else if (isShapeObject(object)) {
     content = shapeSvgMarkup(object, x, y, width, height);
+  } else if (isArtboardObject(object)) {
+    content = `<rect x="${x}" y="${y}" width="${width}" height="${height}" fill="${escapeXmlAttribute(object.fill || "#fffdf7")}"/>`;
   } else {
     content = `<image href="${escapeXmlAttribute(object.src)}" x="${x}" y="${y}" width="${width}" height="${height}" preserveAspectRatio="none"/>`;
   }
@@ -988,7 +1065,10 @@ async function createObjectSourceCanvas(object, sourceOverride, renderScale) {
   context.imageSmoothingQuality = "high";
   context.scale(canvas.width / width, canvas.height / height);
 
-  if (isTextObject(object)) {
+  if (isArtboardObject(object)) {
+    context.fillStyle = object.fill || "#fffdf7";
+    context.fillRect(0, 0, width, height);
+  } else if (isTextObject(object)) {
     drawTextObjectSource(context, object, width, height);
   } else if (isShapeObject(object)) {
     drawShapeObjectSource(context, object, width, height);
@@ -1231,7 +1311,7 @@ function AccountAvatar({ user, size = 28 }) {
   );
 }
 
-function SelectionActionBar({ count, onDuplicate, onDelete, style }) {
+function SelectionActionBar({ count, hasArtboard, grouped, onAddArtboard, onAddAnnotation, onGrid, onToggleGroup, onDuplicate, onDelete, style }) {
   const selectionLabel = count > 1 ? `${count} 個選取物件` : "選取物件";
   const stopCanvasGesture = (event) => event.stopPropagation();
 
@@ -1246,6 +1326,19 @@ function SelectionActionBar({ count, onDuplicate, onDelete, style }) {
       onDoubleClick={stopCanvasGesture}
       onKeyDown={stopCanvasGesture}
     >
+      <IconButton label={hasArtboard ? "選取範圍已包含紙張" : "在選取物件後方加入紙張"} onClick={onAddArtboard} disabled={hasArtboard}>
+        <Square size={16} />
+      </IconButton>
+      <IconButton label="在選取範圍四周加入標題或說明" onClick={onAddAnnotation}>
+        <Type size={16} />
+      </IconButton>
+      <IconButton label="建立或重新排列 Grid" onClick={onGrid}>
+        <LayoutGrid size={16} />
+      </IconButton>
+      <IconButton label={grouped ? "解散群組 ⌘⇧G" : "建立群組 ⌘G"} onClick={onToggleGroup} disabled={!grouped && count < 2} active={grouped}>
+        <Layers3 size={16} />
+      </IconButton>
+      <span className="selection-action-divider" aria-hidden="true" />
       <IconButton label={`複製${selectionLabel} ⌘D`} onClick={onDuplicate}>
         <Copy size={16} />
       </IconButton>
@@ -1257,6 +1350,19 @@ function SelectionActionBar({ count, onDuplicate, onDelete, style }) {
 }
 
 function MediaElement({ object, className = "", controls = false, decorative = false, style }) {
+  if (isArtboardObject(object)) {
+    return (
+      <div
+        className={`object-artboard-visual ${className}`}
+        role={decorative ? undefined : "img"}
+        aria-label={decorative ? undefined : `${object.name}，紙張`}
+        aria-hidden={decorative || undefined}
+        style={{ backgroundColor: object.fill || "#fffdf7", ...style }}
+      >
+        <span data-l10n-ignore>{object.name}</span>
+      </div>
+    );
+  }
   if (isTextObject(object)) {
     const displayText = objectDisplayText(object);
     return (
@@ -1722,7 +1828,13 @@ function LayersPanel({
   board,
   selectedIds,
   onSelect,
+  onSelectGroup,
   onToggleVisible,
+  onSetSelectedVisibility,
+  onExportSelected,
+  onOutputSelected,
+  onDeleteSelected,
+  onUngroup,
   onDuplicateLayer,
   onDeleteLayer,
   onMoveLayer,
@@ -1730,6 +1842,8 @@ function LayersPanel({
   onLocate,
   layerQuery,
   setLayerQuery,
+  layerTypeFilter,
+  setLayerTypeFilter,
 }) {
   const [layerDrag, setLayerDrag] = useState(null);
   const query = layerQuery.trim().toLocaleLowerCase("zh-Hant");
@@ -1739,7 +1853,21 @@ function LayersPanel({
       query
         ? `${object.layerName} ${object.name}`.toLocaleLowerCase("zh-Hant").includes(query)
         : true,
-    );
+    )
+    .filter((object) => {
+      if (layerTypeFilter === "all") return true;
+      if (layerTypeFilter === "group") return Boolean(object.groupId);
+      if (layerTypeFilter === "media") return ["image", "video"].includes(object.type);
+      return object.type === layerTypeFilter;
+    });
+  const visibleSelected = board.objects.filter((object) => selectedIds.includes(object.id) && object.visible).length;
+  const filteredGroups = (board.groups || []).filter((group) => {
+    if (!["all", "group"].includes(layerTypeFilter)) return false;
+    const members = board.objects.filter((object) => group.memberIds.includes(object.id));
+    if (!members.length) return false;
+    if (!query) return true;
+    return `${group.name} ${members.map((object) => `${object.name} ${object.layerName}`).join(" ")}`.toLocaleLowerCase("zh-Hant").includes(query);
+  });
 
   const startLayerDrag = (event, movingId) => {
     if (event.button !== 0) return;
@@ -1791,6 +1919,38 @@ function LayersPanel({
           placeholder="搜尋圖層或物件"
         />
       </label>
+      <div className="layer-type-filters" role="radiogroup" aria-label="依物件類型篩選圖層">
+        {LAYER_TYPE_FILTERS.map(([value, label]) => (
+          <button key={value} type="button" role="radio" aria-checked={layerTypeFilter === value} className={layerTypeFilter === value ? "is-active" : ""} onClick={() => setLayerTypeFilter(value)}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {selectedIds.length ? (
+        <div className="layer-bulk-actions" role="toolbar" aria-label={`${selectedIds.length} 個選取物件批次操作`}>
+          <span><strong>{selectedIds.length}</strong> 個選取</span>
+          <IconButton label="顯示選取物件" onClick={() => onSetSelectedVisibility(true)} disabled={visibleSelected === selectedIds.length}><Eye size={15} /></IconButton>
+          <IconButton label="隱藏選取物件" onClick={() => onSetSelectedVisibility(false)} disabled={!visibleSelected}><EyeOff size={15} /></IconButton>
+          <IconButton label="批次匯出每個選取物件" onClick={onExportSelected}><Download size={15} /></IconButton>
+          <IconButton label="將選取物件輸出為一張合成圖" onClick={onOutputSelected}><ImageDown size={15} /></IconButton>
+          <IconButton className="danger-icon-button" label="批次刪除選取物件" onClick={onDeleteSelected}><Trash2 size={15} /></IconButton>
+        </div>
+      ) : null}
+      {filteredGroups.length ? (
+        <div className="layer-group-list" aria-label="群組">
+          {filteredGroups.map((group) => {
+            const selected = group.memberIds.length > 0 && group.memberIds.every((id) => selectedIds.includes(id));
+            return (
+              <div className={`layer-group-row ${selected ? "is-selected" : ""}`} key={group.id}>
+                <button type="button" onClick={(event) => onSelectGroup(group.id, event.shiftKey)} aria-pressed={selected}>
+                  <Layers3 size={16} /><span data-l10n-ignore>{group.name}</span><small>{group.memberIds.length}</small>
+                </button>
+                <IconButton label={`解散「${group.name}」`} onClick={() => onUngroup(group.id)}><X size={14} /></IconButton>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
       {objects.length ? (
         <div className="layer-list">
           {objects.map((object) => {
@@ -1809,7 +1969,7 @@ function LayersPanel({
               <React.Fragment key={object.id}>
                 {dropBefore ? renderPlaceholder("before") : null}
                 <div
-                  className={`layer-row ${selected ? "is-selected" : ""} ${layerDrag?.id === object.id ? "is-dragging" : ""}`}
+                  className={`layer-row ${selected ? "is-selected" : ""} ${layerDrag?.id === object.id ? "is-dragging" : ""} ${object.groupId ? "is-group-member" : ""} ${object.artboardId ? "is-artboard-child" : ""} ${isArtboardObject(object) ? "is-artboard" : ""}`}
                   data-layer-id={object.id}
                 >
                   <button
@@ -1830,7 +1990,7 @@ function LayersPanel({
                   <button
                     className="layer-main"
                     type="button"
-                    onClick={(event) => onSelect(object.id, event.shiftKey)}
+                    onClick={(event) => onSelect(object.id, event.shiftKey, event.metaKey || event.ctrlKey)}
                     onDoubleClick={() => onLocate(object.id)}
                     aria-pressed={selected}
                     title="選取圖層；連按兩下可置中顯示"
@@ -1838,7 +1998,7 @@ function LayersPanel({
                     <MediaElement object={object} decorative />
                     <span>
                       <strong data-l10n-ignore>{object.layerName}</strong>
-                      <small data-l10n-ignore>{object.name}</small>
+                      <small data-l10n-ignore>{isArtboardObject(object) ? `${object.name} · ${PAPER_PRESETS[object.paperPreset]?.label || "紙張"}` : object.annotationKind ? `${object.name} · ${object.annotationKind === "title" ? "標題" : "說明"}` : object.name}</small>
                     </span>
                     {object.markers.length ? (
                       <span className="layer-markers" aria-label={`${object.markers.length} 個標記`}>
@@ -2415,6 +2575,10 @@ function Inspector({
   onLoadLocalFonts,
   onStartTextEdit,
   onResizeTextFrame,
+  onFitArtboard,
+  onResizeArtboardPreset,
+  selectionGrouped,
+  onToggleGroup,
   mobilePanel,
   setMobilePanel,
 }) {
@@ -2439,6 +2603,7 @@ function Inspector({
     if (isTextObject(object) && patch.height) {
       patch.fontSize = Math.max(6, object.fontSize * (patch.height / object.height));
     }
+    if (isArtboardObject(object)) patch.paperPreset = "custom";
     onUpdateObject(object.id, patch);
   };
 
@@ -2580,6 +2745,34 @@ function Inspector({
               </section>
             ) : null}
 
+            {isArtboardObject(object) ? (
+              <section className="inspector-section artboard-properties">
+                <div className="section-heading-row">
+                  <h3>紙張</h3>
+                  <span className="semantic-object-badge">背景畫板</span>
+                </div>
+                <label>
+                  <span>常用尺寸</span>
+                  <select value={object.paperPreset || "custom"} onChange={(event) => onResizeArtboardPreset(object.id, event.target.value, object.paperOrientation)}>
+                    {Object.entries(PAPER_PRESETS).map(([key, preset]) => <option key={key} value={key}>{preset.label}</option>)}
+                  </select>
+                </label>
+                <div className="segmented-control" role="radiogroup" aria-label="紙張方向">
+                  <button type="button" role="radio" aria-checked={object.paperOrientation !== "landscape"} className={object.paperOrientation !== "landscape" ? "is-active" : ""} onClick={() => onResizeArtboardPreset(object.id, object.paperPreset, "portrait")}>直式</button>
+                  <button type="button" role="radio" aria-checked={object.paperOrientation === "landscape"} className={object.paperOrientation === "landscape" ? "is-active" : ""} onClick={() => onResizeArtboardPreset(object.id, object.paperPreset, "landscape")}>橫式</button>
+                </div>
+                <label>
+                  <span>紙張色彩</span>
+                  <span className="color-input-row"><input type="color" value={object.fill} onChange={(event) => onUpdateObject(object.id, { fill: event.target.value })} /><code>{object.fill.toUpperCase()}</code></span>
+                </label>
+                <label><span>內容邊距</span><div className="input-with-suffix"><input type="number" min="0" max="400" value={Math.round(object.paperPadding || 0)} onChange={(event) => onUpdateObject(object.id, { paperPadding: Math.max(0, Math.min(400, Number(event.target.value) || 0)) })} /><b>px</b></div></label>
+                <button className="secondary-button full-width" type="button" onClick={() => onFitArtboard(object.id)}>
+                  <Maximize2 size={15} /> 依內容與邊距重新符合
+                </button>
+                <p className="section-helper">紙張維持在內容後方；選取紙張時，合成輸出會連同紙上的可見物件一起輸出。</p>
+              </section>
+            ) : null}
+
             <section className="inspector-section">
               <h3>變形</h3>
               <div className="dimension-grid">
@@ -2642,6 +2835,16 @@ function Inspector({
 
         {selected.length > 1 ? (
           <>
+            <section className="inspector-section selection-structure-section">
+              <div className="section-heading-row">
+                <h3>選取結構</h3>
+                <span className="semantic-object-badge">{selectionGrouped ? "群組" : "多選"}</span>
+              </div>
+              <p className="section-helper">外框就是目前操作邊界；{selectionGrouped ? "一般點選會選取整組，按住 ⌘／Ctrl 可穿透選取成員。" : "建立群組後可維持共同選取，成員仍保留各自圖層。"}</p>
+              <button className="secondary-button full-width" type="button" onClick={onToggleGroup}>
+                <Layers3 size={15} /> {selectionGrouped ? "解散群組" : "建立群組"}
+              </button>
+            </section>
             <section className="inspector-section group-transform-section">
               <h3>共同變形</h3>
               <div className="key-object-summary">
@@ -2913,7 +3116,7 @@ function CanvasObject({
 
   return (
     <div
-      className={`board-object ${selected ? "is-selected" : ""} ${multiSelected && keyObject ? "is-key-object" : ""} ${object.locked ? "is-locked" : ""} ${hasMicro3D ? "has-micro-3d" : ""} ${isEditingText ? "is-text-editing" : ""}`}
+      className={`board-object ${selected ? "is-selected" : ""} ${multiSelected && keyObject ? "is-key-object" : ""} ${object.locked ? "is-locked" : ""} ${hasMicro3D ? "has-micro-3d" : ""} ${isEditingText ? "is-text-editing" : ""} ${isArtboardObject(object) ? "is-artboard" : ""} ${object.annotationKind ? "is-annotation" : ""} ${object.groupId ? "is-group-member" : ""}`}
       data-object-id={object.id}
       style={{
         left: object.pivotX,
@@ -2958,6 +3161,7 @@ function CanvasObject({
           width: object.width,
           height: object.height,
           transform: `perspective(${perspective}px) translateZ(${depth}px) rotateX(${tiltX}deg) rotateY(${tiltY}deg)`,
+          "--paper-padding": `${Math.max(0, Number(object.paperPadding) || 0)}px`,
         }}
       >
         {isEditingText
@@ -3066,6 +3270,7 @@ function SelectionGroupOverlay({
   micro3DGesture,
   onMicro3DRotateStart,
   onResetMicro3D,
+  semanticLabel,
 }) {
   if (!bounds) return null;
   const anchor = ANCHORS[anchorKey] || ANCHORS.mc;
@@ -3092,7 +3297,7 @@ function SelectionGroupOverlay({
 
   return (
     <div
-      className={`selection-group-frame ${micro3DMode ? "is-3d-mode" : ""}`}
+      className={`selection-group-frame ${micro3DMode ? "is-3d-mode" : ""} ${semanticLabel ? "is-semantic-group" : ""}`}
       role="group"
       aria-label={micro3DMode ? "多選 3D 旋轉控制框" : "多選共同變形控制框"}
       style={{
@@ -3105,6 +3310,7 @@ function SelectionGroupOverlay({
         "--inverse-zoom": inverseZoom,
       }}
     >
+      {semanticLabel ? <span className="selection-group-label">{semanticLabel}</span> : null}
       {micro3DMode ? (
         <Rotation3DGizmo
           inverseZoom={inverseZoom}
@@ -3400,6 +3606,92 @@ function Modal({ title, description, onClose, children, wide = false, dialogRole
         <div className="modal-body">{children}</div>
       </section>
     </div>
+  );
+}
+
+function GridModal({ selectedCount, onApply, onClose }) {
+  const minimum = Math.max(1, selectedCount);
+  const [count, setCount] = useState(Math.max(minimum, selectedCount ? 6 : 9));
+  const [columns, setColumns] = useState(3);
+  const [gapX, setGapX] = useState(24);
+  const [gapY, setGapY] = useState(24);
+  const rows = Math.ceil(count / columns);
+  return (
+    <Modal
+      title="建立 Grid"
+      description={selectedCount
+        ? `會保留目前 ${selectedCount} 個選取物件，並複製到指定總數後重新排列。`
+        : "沒有選取物件時，會建立矩形預留位置並排列。"}
+      onClose={onClose}
+    >
+      <div className="grid-dialog-layout">
+        <div className="grid-dialog-fields">
+          <label><span>物件總數</span><input type="number" min={minimum} max="100" value={count} onChange={(event) => setCount(Math.max(minimum, Math.min(100, Number(event.target.value) || minimum)))} /></label>
+          <label><span>每列欄數</span><input type="number" min="1" max={count} value={columns} onChange={(event) => setColumns(Math.max(1, Math.min(count, Number(event.target.value) || 1)))} /></label>
+          <div className="property-grid">
+            <label><span>水平間距</span><input type="number" min="0" max="500" value={gapX} onChange={(event) => setGapX(Math.max(0, Number(event.target.value) || 0))} /></label>
+            <label><span>垂直間距</span><input type="number" min="0" max="500" value={gapY} onChange={(event) => setGapY(Math.max(0, Number(event.target.value) || 0))} /></label>
+          </div>
+        </div>
+        <div className="grid-dialog-preview" aria-label={`${columns} 欄、${rows} 列、共 ${count} 個物件`}>
+          <div style={{ gridTemplateColumns: `repeat(${columns}, minmax(8px, 1fr))` }}>
+            {Array.from({ length: count }, (_, index) => <i key={index} className={index < selectedCount ? "is-source" : ""} />)}
+          </div>
+          <span>{columns} 欄 × {rows} 列</span>
+        </div>
+      </div>
+      <p className="feature-dialog-note">建立後會一次選取完整 Grid，清楚顯示這次操作會影響的範圍；每個物件仍可個別編輯。</p>
+      <div className="feature-dialog-actions">
+        <button className="quiet-button" type="button" onClick={onClose}>取消</button>
+        <button className="primary-button" type="button" onClick={() => onApply({ count, columns, gapX, gapY })}>
+          <LayoutGrid size={16} /> {selectedCount ? "建立並排列" : "建立預留位置"}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+function AnnotationModal({ targetCount, onApply, onClose }) {
+  const [kind, setKind] = useState("title");
+  const [text, setText] = useState("");
+  const [position, setPosition] = useState("tl");
+  return (
+    <Modal
+      title="加入標題或說明"
+      description={`文字會依 ${targetCount} 個選取物件的整體邊界定位，建立後仍可獨立移動與編輯。`}
+      onClose={onClose}
+    >
+      <div className="annotation-dialog-layout">
+        <div className="segmented-control" role="radiogroup" aria-label="文字類型">
+          <button type="button" role="radio" aria-checked={kind === "title"} className={kind === "title" ? "is-active" : ""} onClick={() => setKind("title")}>標題</button>
+          <button type="button" role="radio" aria-checked={kind === "description"} className={kind === "description" ? "is-active" : ""} onClick={() => setKind("description")}>說明</button>
+        </div>
+        <label><span>文字內容</span><textarea rows="3" autoFocus value={text} onChange={(event) => setText(event.target.value)} placeholder={kind === "title" ? "輸入標題" : "輸入說明文字"} /></label>
+        <fieldset className="annotation-position-field">
+          <legend>放置位置</legend>
+          <div className="annotation-position-picker">
+            {["tl", "tc", "tr", "ml", "mc", "mr", "bl", "bc", "br"].map((key) => key === "mc" ? <span key={key} aria-hidden="true" /> : (
+              <button
+                key={key}
+                type="button"
+                className={position === key ? "is-active" : ""}
+                aria-pressed={position === key}
+                aria-label={ANNOTATION_POSITION_LABELS[key]}
+                title={ANNOTATION_POSITION_LABELS[key]}
+                onClick={() => setPosition(key)}
+              />
+            ))}
+          </div>
+          <small>{ANNOTATION_POSITION_LABELS[position]}</small>
+        </fieldset>
+      </div>
+      <div className="feature-dialog-actions">
+        <button className="quiet-button" type="button" onClick={onClose}>取消</button>
+        <button className="primary-button" type="button" onClick={() => onApply({ kind, text, position })}>
+          <Type size={16} /> 加入{kind === "title" ? "標題" : "說明"}
+        </button>
+      </div>
+    </Modal>
   );
 }
 
@@ -4355,6 +4647,7 @@ function App() {
   const [selectedCaptureId, setSelectedCaptureId] = useState(null);
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [layerQuery, setLayerQuery] = useState("");
+  const [layerTypeFilter, setLayerTypeFilter] = useState("all");
   const [markerDraft, setMarkerDraft] = useState({ symbol: "heart", color: "white" });
   const [batchPrefix, setBatchPrefix] = useState("");
   const [exportScope, setExportScope] = useState("selected");
@@ -4367,6 +4660,8 @@ function App() {
   const [dirty, setDirty] = useState(false);
   const [toast, setToast] = useState(null);
   const [pendingObjectDeletion, setPendingObjectDeletion] = useState(null);
+  const [showGridBuilder, setShowGridBuilder] = useState(false);
+  const [showAnnotationBuilder, setShowAnnotationBuilder] = useState(false);
   const [showVersions, setShowVersions] = useState(false);
   const [showCollaboration, setShowCollaboration] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -5264,21 +5559,25 @@ function App() {
     };
   }, []);
 
-  const selectObject = useCallback((id, additive = false) => {
+  const selectObject = useCallback((id, additive = false, penetrate = false) => {
     if (loadedTextFlow) {
       setLoadedTextFlow(null);
       announce("已取消放置溢出文字。", "warning");
     }
     setTool((current) => current === "3d" ? current : "select");
     const current = selectedIdsRef.current;
-    if (!additive && current.length > 1 && current.includes(id)) {
+    const targetIds = selectionIdsForObject(boardRef.current, id, { penetrate });
+    if (!targetIds.length) return;
+    if (!penetrate && !additive && targetIds.length === 1 && current.length > 1 && current.includes(id)) {
       setKeyObjectId(id);
       announce(`已將「${boardRef.current.objects.find((object) => object.id === id)?.layerName || "物件"}」設為對齊基準`, "success");
       return;
     }
     const next = additive
-      ? (current.includes(id) ? current.filter((item) => item !== id) : [...current, id])
-      : [id];
+      ? (targetIds.every((targetId) => current.includes(targetId))
+        ? current.filter((item) => !targetIds.includes(item))
+        : [...new Set([...current, ...targetIds])])
+      : targetIds;
     selectedIdsRef.current = next;
     setSelectedIds(next);
     if (!additive || !current.length) setKeyObjectId(next[0] || null);
@@ -5425,12 +5724,33 @@ function App() {
   const duplicateObjects = useCallback((objectIds) => {
     const selected = new Set(objectIds);
     if (!selected.size) return;
-    const copies = boardRef.current.objects
-      .filter((object) => selected.has(object.id))
-      .map((object) => createObjectDuplicate(object));
+    const current = boardRef.current;
+    const sources = current.objects.filter((object) => selected.has(object.id));
+    const idMap = new Map(sources.map((object) => [object.id, createId("object")]));
+    const artboardMap = new Map(sources.filter(isArtboardObject).map((object) => [object.id, idMap.get(object.id)]));
+    const selectedGroups = (current.groups || []).filter((group) => group.memberIds.length >= 2 && group.memberIds.every((id) => selected.has(id)));
+    const groupMap = new Map(selectedGroups.map((group) => [group.id, createId("group")]));
+    const copies = sources.map((object) => {
+      const copy = createObjectDuplicate(object, {
+        id: idMap.get(object.id),
+        groupId: groupMap.get(object.groupId) || null,
+        artboardId: artboardMap.get(object.artboardId) || object.artboardId || null,
+      });
+      return {
+        ...copy,
+        annotationTargetIds: (object.annotationTargetIds || []).map((id) => idMap.get(id) || id),
+      };
+    });
     if (!copies.length) return;
-    applyBoard((current) => ({ ...current, objects: [...current.objects, ...copies] }));
-    setSelectedIds(copies.map((object) => object.id));
+    const newGroups = selectedGroups.map((group) => createGroup(
+      group.memberIds.map((id) => idMap.get(id)).filter(Boolean),
+      { id: groupMap.get(group.id), name: `${group.name} 複本` },
+    ));
+    applyBoard((boardState) => ({ ...boardState, objects: [...boardState.objects, ...copies], groups: [...(boardState.groups || []), ...newGroups] }));
+    const copyIds = copies.map((object) => object.id);
+    selectedIdsRef.current = copyIds;
+    setSelectedIds(copyIds);
+    setKeyObjectId(copyIds[0] || null);
     announce(`已複製 ${copies.length} 個物件`, "success");
   }, [announce, applyBoard]);
 
@@ -5442,7 +5762,7 @@ function App() {
     if (!selected.size) return;
     const count = boardRef.current.objects.filter((object) => selected.has(object.id)).length;
     if (!count) return;
-    applyBoard((current) => ({ ...current, objects: current.objects.filter((object) => !selected.has(object.id)) }));
+    applyBoard((current) => compactBoardStructure({ ...current, objects: current.objects.filter((object) => !selected.has(object.id)) }));
     setSelectedIds((current) => current.filter((id) => !selected.has(id)));
     announce(`已刪除 ${count} 個物件；可按 ⌘Z 復原。`, "warning");
   }, [announce, applyBoard]);
@@ -5470,6 +5790,191 @@ function App() {
 
   const deleteSelected = useCallback(() => requestDeleteObjects(selectedIdsRef.current), [requestDeleteObjects]);
   const deleteLayerObject = useCallback((objectId) => requestDeleteObjects([objectId]), [requestDeleteObjects]);
+
+  const selectGroup = useCallback((groupId, additive = false) => {
+    const group = (boardRef.current.groups || []).find((item) => item.id === groupId);
+    if (!group) return;
+    const current = selectedIdsRef.current;
+    const memberIds = group.memberIds.filter((id) => boardRef.current.objects.some((object) => object.id === id));
+    const next = additive
+      ? memberIds.every((id) => current.includes(id))
+        ? current.filter((id) => !memberIds.includes(id))
+        : [...new Set([...current, ...memberIds])]
+      : memberIds;
+    selectedIdsRef.current = next;
+    setSelectedIds(next);
+    setKeyObjectId(next[0] || null);
+    setTool("select");
+  }, []);
+
+  const groupSelection = useCallback(() => {
+    const ids = [...new Set(selectedIdsRef.current)].filter((id) => boardRef.current.objects.some((object) => object.id === id));
+    if (ids.length < 2) {
+      announce("至少選取 2 個物件才能建立群組。", "warning");
+      return;
+    }
+    const group = createGroup(ids, { name: `群組 ${String((boardRef.current.groups?.length || 0) + 1).padStart(2, "0")}` });
+    applyBoard((current) => {
+      const strippedGroups = (current.groups || []).map((item) => ({ ...item, memberIds: item.memberIds.filter((id) => !ids.includes(id)) }));
+      const next = {
+        ...current,
+        groups: [...strippedGroups, group],
+        objects: current.objects.map((object) => ids.includes(object.id) ? { ...object, groupId: group.id } : object),
+      };
+      return compactBoardStructure(next);
+    });
+    announce(`已將 ${ids.length} 個物件建立為群組；按住 ⌘／Ctrl 可穿透選取。`, "success");
+  }, [announce, applyBoard]);
+
+  const ungroupSelection = useCallback((explicitGroupId = null) => {
+    const selected = new Set(selectedIdsRef.current);
+    const groupIds = explicitGroupId
+      ? [explicitGroupId]
+      : (boardRef.current.groups || []).filter((group) => group.memberIds.some((id) => selected.has(id))).map((group) => group.id);
+    if (!groupIds.length) {
+      announce("目前選取沒有可解散的群組。", "warning");
+      return;
+    }
+    const targets = new Set(groupIds);
+    applyBoard((current) => ({
+      ...current,
+      groups: (current.groups || []).filter((group) => !targets.has(group.id)),
+      objects: current.objects.map((object) => targets.has(object.groupId) ? { ...object, groupId: null } : object),
+    }));
+    announce(`已解散 ${groupIds.length} 個群組；物件與圖層都保留。`, "success");
+  }, [announce, applyBoard]);
+
+  const toggleSelectionGroup = useCallback(() => {
+    const selected = selectedIdsRef.current;
+    const groups = boardRef.current.groups || [];
+    const shared = groups.find((group) => selected.length === group.memberIds.length && group.memberIds.every((id) => selected.includes(id)));
+    if (shared) ungroupSelection(shared.id);
+    else groupSelection();
+  }, [groupSelection, ungroupSelection]);
+
+  const setSelectedVisibility = useCallback((visible) => {
+    const selected = new Set(selectedIdsRef.current);
+    if (!selected.size) return;
+    applyBoard((current) => ({
+      ...current,
+      objects: current.objects.map((object) => selected.has(object.id) ? { ...object, visible } : object),
+    }));
+    announce(`已${visible ? "顯示" : "隱藏"} ${selected.size} 個選取物件`, "success");
+  }, [announce, applyBoard]);
+
+  const addArtboardBehindSelection = useCallback(() => {
+    const selected = new Set(selectedIdsRef.current);
+    const targets = boardRef.current.objects.filter((object) => selected.has(object.id) && object.visible && !isArtboardObject(object));
+    if (!targets.length) {
+      announce("請先選取要放到紙張上的物件。", "warning");
+      return;
+    }
+    const artboard = createArtboardFromObjects(targets, { padding: 40, name: `紙張 ${(boardRef.current.objects.filter(isArtboardObject).length + 1).toString().padStart(2, "0")}` });
+    if (!artboard) return;
+    applyBoard((current) => {
+      const targetIds = new Set(targets.map((object) => object.id));
+      const objects = current.objects.map((object) => targetIds.has(object.id) ? { ...object, artboardId: artboard.id } : object);
+      const firstTargetIndex = Math.min(...objects.map((object, index) => targetIds.has(object.id) ? index : Number.POSITIVE_INFINITY));
+      objects.splice(Number.isFinite(firstTargetIndex) ? firstTargetIndex : 0, 0, artboard);
+      return { ...current, objects };
+    });
+    const nextSelection = [artboard.id, ...targets.map((object) => object.id)];
+    selectedIdsRef.current = nextSelection;
+    setSelectedIds(nextSelection);
+    setKeyObjectId(artboard.id);
+    announce(`已加入紙張，四周保留 40px 邊距。`, "success");
+  }, [announce, applyBoard]);
+
+  const fitArtboardToContents = useCallback((artboardId) => {
+    const artboard = boardRef.current.objects.find((object) => object.id === artboardId && isArtboardObject(object));
+    const children = boardRef.current.objects.filter((object) => object.artboardId === artboardId && object.visible);
+    if (!artboard || !children.length) {
+      announce("這張紙目前沒有可用來符合的內容。", "warning");
+      return;
+    }
+    const fitted = createArtboardFromObjects(children, {
+      id: artboard.id,
+      name: artboard.name,
+      fill: artboard.fill,
+      padding: artboard.paperPadding,
+      createdAt: artboard.createdAt,
+    });
+    applyBoard((current) => ({
+      ...current,
+      objects: current.objects.map((object) => object.id === artboardId ? { ...artboard, ...fitted, updatedAt: new Date().toISOString() } : object),
+    }));
+    announce(`已依內容重新符合紙張，保留 ${Math.round(artboard.paperPadding)}px 邊距。`, "success");
+  }, [announce, applyBoard]);
+
+  const resizeArtboardPreset = useCallback((artboardId, preset, orientation) => {
+    applyBoard((current) => ({
+      ...current,
+      objects: current.objects.map((object) => object.id === artboardId ? resizeArtboardToPreset(object, preset, orientation) : object),
+    }));
+  }, [applyBoard]);
+
+  const applyAnnotation = useCallback((options) => {
+    const selected = new Set(selectedIdsRef.current);
+    const targets = boardRef.current.objects.filter((object) => selected.has(object.id) && object.visible);
+    const annotation = createAnnotationObject(targets, options);
+    if (!annotation) return;
+    applyBoard((current) => ({ ...current, objects: [...current.objects, annotation] }));
+    selectedIdsRef.current = [annotation.id];
+    setSelectedIds([annotation.id]);
+    setKeyObjectId(annotation.id);
+    setShowAnnotationBuilder(false);
+    setTool("select");
+    setEditingText({ id: annotation.id, selectAll: !String(options.text || "").trim() });
+    announce(`已加入${options.kind === "description" ? "說明" : "標題"}文字。`, "success");
+  }, [announce, applyBoard]);
+
+  const applyGrid = useCallback((options) => {
+    const selected = new Set(selectedIdsRef.current);
+    let sources = boardRef.current.objects.filter((object) => selected.has(object.id) && object.visible && !isArtboardObject(object));
+    const center = canvasCenterWorld();
+    if (!sources.length) {
+      const placeholder = createShapeObject("rectangle", center);
+      placeholder.name = "Grid 預留位置 01";
+      placeholder.layerName = placeholder.name;
+      placeholder.fill = "#58e6ff";
+      sources = [placeholder];
+    }
+    const count = Math.max(sources.length, Math.min(100, Number(options.count) || sources.length));
+    const originalsAreNew = !sources.every((source) => boardRef.current.objects.some((object) => object.id === source.id));
+    const items = originalsAreNew ? sources : [...sources];
+    while (items.length < count) {
+      const source = sources[items.length % sources.length];
+      const copy = createObjectDuplicate(source, { offset: 0, groupId: null, artboardId: null });
+      copy.name = `${source.name} Grid ${String(items.length + 1).padStart(2, "0")}`;
+      copy.layerName = copy.name;
+      items.push(copy);
+    }
+    const cellWidth = Math.max(...items.map((object) => object.width));
+    const cellHeight = Math.max(...items.map((object) => object.height));
+    const columns = Math.max(1, Math.min(count, Number(options.columns) || 1));
+    const rows = Math.ceil(count / columns);
+    const startX = originalsAreNew
+      ? center.x - (columns * cellWidth + (columns - 1) * options.gapX) / 2
+      : selectionWorldBounds(sources)?.left;
+    const startY = originalsAreNew
+      ? center.y - (rows * cellHeight + (rows - 1) * options.gapY) / 2
+      : selectionWorldBounds(sources)?.top;
+    const arranged = arrangeObjectsInGrid(items, { ...options, columns, startX, startY });
+    const arrangedMap = new Map(arranged.map((object) => [object.id, object]));
+    const existingIds = new Set(boardRef.current.objects.map((object) => object.id));
+    const created = arranged.filter((object) => !existingIds.has(object.id));
+    applyBoard((current) => ({
+      ...current,
+      objects: [...current.objects.map((object) => arrangedMap.get(object.id) || object), ...created],
+    }));
+    const ids = arranged.map((object) => object.id);
+    selectedIdsRef.current = ids;
+    setSelectedIds(ids);
+    setKeyObjectId(ids[0] || null);
+    setShowGridBuilder(false);
+    setTool("select");
+    announce(`已建立 ${columns} 欄、${rows} 列，共 ${count} 個物件的 Grid。`, "success");
+  }, [announce, applyBoard, canvasCenterWorld]);
 
   const undo = useCallback(() => {
     const previous = undoRef.current.pop();
@@ -6087,27 +6592,33 @@ function App() {
     if (!["select", "3d"].includes(tool) && !temporarySelect) return;
     const targetObject = boardRef.current.objects.find((object) => object.id === id);
     if (!targetObject) return;
+    const targetIds = selectionIdsForObject(boardRef.current, id, { penetrate: temporarySelect });
     const pressTime = performance.now();
     objectClickRef.current = { id, time: pressTime, x: event.clientX, y: event.clientY };
     const previousSelection = [...selectedIdsRef.current];
     let movingIds;
-    if (event.shiftKey) {
-      if (previousSelection.includes(id)) {
-        const next = previousSelection.filter((item) => item !== id);
+    if (temporarySelect && !event.shiftKey) {
+      movingIds = targetIds;
+      selectedIdsRef.current = movingIds;
+      setSelectedIds(movingIds);
+      setKeyObjectId(id);
+    } else if (event.shiftKey) {
+      if (targetIds.every((targetId) => previousSelection.includes(targetId))) {
+        const next = previousSelection.filter((item) => !targetIds.includes(item));
         selectedIdsRef.current = next;
         setSelectedIds(next);
         return;
       }
-      movingIds = [...previousSelection, id];
+      movingIds = [...new Set([...previousSelection, ...targetIds])];
       selectedIdsRef.current = movingIds;
       setSelectedIds(movingIds);
       if (!previousSelection.length) setKeyObjectId(id);
-    } else if (previousSelection.includes(id)) {
+    } else if (targetIds.every((targetId) => previousSelection.includes(targetId))) {
       movingIds = previousSelection;
     } else {
-      movingIds = [id];
+      movingIds = targetIds;
       selectedIdsRef.current = movingIds;
-      setSelectedIds([id]);
+      setSelectedIds(movingIds);
       setKeyObjectId(id);
     }
     if (tool === "3d") return;
@@ -6137,7 +6648,7 @@ function App() {
         objectTapRef.current = null;
         finalizeGesture();
       } else {
-        if (!event.shiftKey && previousSelection.length > 1 && previousSelection.includes(id)) {
+        if (!temporarySelect && !event.shiftKey && targetIds.length === 1 && previousSelection.length > 1 && previousSelection.includes(id)) {
           setKeyObjectId(id);
           announce(`已將「${targetObject.layerName}」設為對齊基準`, "success");
         }
@@ -6503,7 +7014,7 @@ function App() {
       };
       const hits = boardRef.current.objects
         .filter((object) => object.visible && objectIntersectsWorldRect(object, worldRect))
-        .map((object) => object.id);
+        .flatMap((object) => selectionIdsForObject(boardRef.current, object.id, { penetrate: event.metaKey || event.ctrlKey }));
       const nextSelection = [...new Set([...initialSelected, ...hits])];
       selectedIdsRef.current = nextSelection;
       setSelectedIds(nextSelection);
@@ -6649,6 +7160,16 @@ function App() {
         setShowSettings(false);
         return;
       }
+      if (event.key === "Escape" && showGridBuilder) {
+        event.preventDefault();
+        setShowGridBuilder(false);
+        return;
+      }
+      if (event.key === "Escape" && showAnnotationBuilder) {
+        event.preventDefault();
+        setShowAnnotationBuilder(false);
+        return;
+      }
       if (event.code === "Space" && !typing) { event.preventDefault(); setSpaceDown(true); }
       if (typing) return;
       const modifier = event.metaKey || event.ctrlKey;
@@ -6665,6 +7186,11 @@ function App() {
       }
       if (modifier && event.key.toLowerCase() === "s") { event.preventDefault(); saveBoardFile(); }
       if (modifier && event.key.toLowerCase() === "d") { event.preventDefault(); duplicateSelected(); }
+      if (modifier && event.key.toLowerCase() === "g") {
+        event.preventDefault();
+        if (event.shiftKey) ungroupSelection();
+        else toggleSelectionGroup();
+      }
       if (modifier && event.key.toLowerCase() === "z" && event.shiftKey) { event.preventDefault(); redo(); }
       else if (modifier && event.key.toLowerCase() === "z") { event.preventDefault(); undo(); }
       if (["Backspace", "Delete"].includes(event.key)) { event.preventDefault(); deleteSelected(); }
@@ -6708,10 +7234,11 @@ function App() {
       window.removeEventListener("keyup", keyUp);
       window.removeEventListener("blur", blur);
     };
-  }, [announce, cancelPendingObjectDeletion, closeAdvancedFeatureGate, closeInterfaceThemes, closePreparedDownloads, deleteSelected, duplicateSelected, filters.colors.length, filters.symbols.length, isClearingLocalData, loadedTextFlow, pendingAdvancedFeature, pendingObjectDeletion, preparedDownloads.length, redo, requestAdvancedFeature, saveBoardFile, shapeMenuOpen, showCollaboration, showDeleteLocalData, showInterfaceThemes, showSettings, showVersions, toggleCanvasBackground, tool, undo]);
+  }, [announce, cancelPendingObjectDeletion, closeAdvancedFeatureGate, closeInterfaceThemes, closePreparedDownloads, deleteSelected, duplicateSelected, filters.colors.length, filters.symbols.length, isClearingLocalData, loadedTextFlow, pendingAdvancedFeature, pendingObjectDeletion, preparedDownloads.length, redo, requestAdvancedFeature, saveBoardFile, shapeMenuOpen, showAnnotationBuilder, showCollaboration, showDeleteLocalData, showGridBuilder, showInterfaceThemes, showSettings, showVersions, toggleCanvasBackground, toggleSelectionGroup, tool, undo, ungroupSelection]);
 
-  const exportObjects = useCallback(() => {
-    const targets = objectsForExport(boardRef.current.objects.filter((object) => object.visible), selectedIdsRef.current, exportScope);
+  const exportObjects = useCallback((scopeOverride) => {
+    const scope = typeof scopeOverride === "string" ? scopeOverride : exportScope;
+    const targets = objectsForExport(boardRef.current.objects.filter((object) => object.visible), selectedIdsRef.current, scope);
     if (!targets.length) {
       announce("這個匯出範圍沒有物件。", "warning");
       return;
@@ -6749,7 +7276,8 @@ function App() {
 
   const outputSelectionComposition = useCallback(async () => {
     const selected = new Set(selectedIdsRef.current);
-    const targets = boardRef.current.objects.filter((object) => object.visible && selected.has(object.id));
+    const selectedArtboards = new Set(boardRef.current.objects.filter((object) => selected.has(object.id) && isArtboardObject(object)).map((object) => object.id));
+    const targets = boardRef.current.objects.filter((object) => object.visible && (selected.has(object.id) || selectedArtboards.has(object.artboardId)));
     if (!targets.length) {
       announce("請先選取要輸出的物件。", "warning");
       return;
@@ -6829,13 +7357,26 @@ function App() {
     [board.objects, selectedIds],
   );
   const compositionCount = selectedObjects.length;
+  const selectedSemanticGroup = (board.groups || []).find((group) => (
+    group.memberIds.length === selectedIds.length
+    && group.memberIds.every((id) => selectedIds.includes(id))
+  ));
+  const selectedArtboard = selectedObjects.find(isArtboardObject);
+  const selectionGrouped = Boolean(selectedSemanticGroup);
+  const selectionSemanticLabel = selectedArtboard
+    ? "紙張＋內容"
+    : selectedSemanticGroup?.name || null;
+  const selectionHasArtboard = Boolean(
+    selectedArtboard
+    || (selectedObjects.length && selectedObjects.every((object) => object.artboardId && object.artboardId === selectedObjects[0].artboardId)),
+  );
   const selectionActionBounds = selectedObjects.length ? selectionWorldBounds(selectedObjects) : null;
   const multiSelectionBounds = selectedObjects.length > 1 ? selectionWorldBounds(selectedObjects) : null;
   const selectionActionAnchor = selectionActionBounds
     ? selectionActionAnchorInViewport(selectionActionBounds, view, canvasViewportSize)
     : null;
   const selectionActionStyle = selectionActionAnchor ? {
-    left: `clamp(8px, ${selectionActionAnchor.x}px, calc(100% - 102px))`,
+    left: `clamp(8px, ${selectionActionAnchor.x}px, calc(100% - 252px))`,
     top: `clamp(84px, ${selectionActionAnchor.y}px, calc(100% - 28px))`,
   } : undefined;
   const showSelectionActions = Boolean(
@@ -6941,7 +7482,13 @@ function App() {
           board={board}
           selectedIds={selectedIds}
           onSelect={selectObject}
+          onSelectGroup={selectGroup}
           onToggleVisible={toggleVisibility}
+          onSetSelectedVisibility={setSelectedVisibility}
+          onExportSelected={() => exportObjects("selected")}
+          onOutputSelected={outputSelectionComposition}
+          onDeleteSelected={deleteSelected}
+          onUngroup={ungroupSelection}
           onDuplicateLayer={duplicateLayerObject}
           onDeleteLayer={deleteLayerObject}
           onMoveLayer={moveLayer}
@@ -6949,6 +7496,8 @@ function App() {
           onLocate={locateObject}
           layerQuery={layerQuery}
           setLayerQuery={setLayerQuery}
+          layerTypeFilter={layerTypeFilter}
+          setLayerTypeFilter={setLayerTypeFilter}
           leftTab={leftTab}
           setLeftTab={changeLeftTab}
           sourceAssets={sourceAssets}
@@ -6996,6 +7545,7 @@ function App() {
               onChooseVideo={() => { setShapeMenuOpen(false); videoInputRef.current?.click(); }}
               onChooseSvg={() => { setShapeMenuOpen(false); svgInputRef.current?.click(); }}
             />
+            <IconButton label="建立 Grid" onClick={() => setShowGridBuilder(true)}><LayoutGrid size={18} /></IconButton>
             <div className="tool-divider" />
             <div className="zoom-group">
               <IconButton label="縮小" onClick={() => { const rect = canvasRef.current.getBoundingClientRect(); zoomAround(rect.left + rect.width / 2, rect.top + rect.height / 2, view.zoom / 1.2); }}><ZoomOut size={17} /></IconButton>
@@ -7069,6 +7619,7 @@ function App() {
                   micro3DGesture={micro3DGesture}
                   onMicro3DRotateStart={onMicro3DRotateStart}
                   onResetMicro3D={resetSelectedMicro3D}
+                  semanticLabel={selectionSemanticLabel}
                 />
               ) : null}
             </div>
@@ -7076,6 +7627,12 @@ function App() {
             {showSelectionActions ? (
               <SelectionActionBar
                 count={selectedObjects.length}
+                hasArtboard={selectionHasArtboard}
+                grouped={selectionGrouped}
+                onAddArtboard={addArtboardBehindSelection}
+                onAddAnnotation={() => setShowAnnotationBuilder(true)}
+                onGrid={() => setShowGridBuilder(true)}
+                onToggleGroup={toggleSelectionGroup}
                 onDuplicate={duplicateSelected}
                 onDelete={deleteSelected}
                 style={selectionActionStyle}
@@ -7192,6 +7749,10 @@ function App() {
           onLoadLocalFonts={loadLocalFonts}
           onStartTextEdit={startTextEdit}
           onResizeTextFrame={resizeTextFrame}
+          onFitArtboard={fitArtboardToContents}
+          onResizeArtboardPreset={resizeArtboardPreset}
+          selectionGrouped={selectionGrouped}
+          onToggleGroup={toggleSelectionGroup}
           mobilePanel={mobilePanel}
           setMobilePanel={setMobilePanel}
         />
@@ -7206,6 +7767,14 @@ function App() {
           onCancel={cancelPendingObjectDeletion}
           onConfirm={confirmPendingObjectDeletion}
         />
+      ) : null}
+
+      {showGridBuilder ? (
+        <GridModal selectedCount={selectedObjects.filter((object) => !isArtboardObject(object)).length} onApply={applyGrid} onClose={() => setShowGridBuilder(false)} />
+      ) : null}
+
+      {showAnnotationBuilder ? (
+        <AnnotationModal targetCount={selectedObjects.length} onApply={applyAnnotation} onClose={() => setShowAnnotationBuilder(false)} />
       ) : null}
 
       {showSettings ? (
