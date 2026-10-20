@@ -157,12 +157,6 @@ import {
   upsertMarkerBySymbol,
   viewObjectInViewport,
 } from "./model.js";
-import { createPortableHtml } from "./portable.js";
-import {
-  buildImagePdf,
-  compositionOutputFormat,
-  planCompositionSize,
-} from "./output.js";
 import { mergeMoodboardLibrary } from "./library.js";
 import { createRecoveredMoodboard, describeDriveConflict } from "./versioning.js";
 import {
@@ -183,24 +177,16 @@ import {
   DriveApiError,
   DriveConflictError,
   contentByteLength,
-  downloadGoogleDriveMoodboard,
   driveErrorMessage,
-  ensureGoogleDriveFolder,
   evaluateDriveQuota,
-  getGoogleDriveAbout,
-  getGoogleDriveFile,
   isGoogleDriveAuthorizationError,
   isGoogleDriveConfigured,
   isGoogleDriveTokenUsable,
   linkDriveFile,
-  listGoogleDriveRevisions,
-  listGoogleDriveMoodboards,
   loadDriveState,
-  requestGoogleDriveToken,
   saveDriveState,
   serializeMoodboardSnapshot,
-  uploadGoogleDriveMoodboard,
-} from "./drive-storage.js";
+} from "./drive-state.js";
 import {
   completeMoodboardEmailSignInLink,
   isMoodboardEmailSignInLink,
@@ -220,14 +206,8 @@ import {
   loadCollaborationResume,
   normalizeCollaborationInvite,
   saveCollaborationResume,
-} from "./collaboration.js";
+} from "./collaboration-state.js";
 import { clearCollaborationQueue } from "./collaboration-queue.js";
-import {
-  collaborationErrorMessage,
-  createMoodboardCollaborationRoom,
-  joinMoodboardCollaborationInvite,
-  resumeMoodboardCollaborationRoom,
-} from "./collaboration-firestore.js";
 import {
   PETFASHION_ACCOUNT_URL,
   PETFASHION_PRIVACY_URL,
@@ -322,6 +302,28 @@ import {
   snapGuidePosition,
 } from "./workspace-tools.js";
 import "./styles.css";
+
+const loadAssetExportRuntime = () => import("./asset-export.js");
+const loadCollaborationRuntime = () => import("./collaboration-firestore.js");
+const loadDriveRuntime = () => import("./drive-storage.js");
+const loadOutputRuntime = () => import("./output.js");
+const loadPortableRuntime = () => import("./portable.js");
+const LazyMicro3DActiveControls = React.lazy(() => import("./micro3d-ui.jsx").then((module) => ({ default: module.Micro3DActiveControls })));
+const LazyRotation3DGizmo = React.lazy(() => import("./micro3d-ui.jsx").then((module) => ({ default: module.Rotation3DGizmo })));
+
+function collaborationErrorMessage(error) {
+  if (error?.code === "collaboration/verified-account-required") return error.message;
+  if (error?.code === "collaboration/offline" || error?.code === "unavailable") return "目前離線；共編更新已保留在這台裝置，恢復連線後會繼續送出。";
+  if (error?.code === "permission-denied") return "目前帳號沒有這個共編空間的權限，或雲端安全規則尚未啟用。";
+  if (error?.code === "unauthenticated") return "登入狀態已失效；請重新登入後再加入共編。";
+  if (error?.code === "not-found" || error?.code === "collaboration/invite-not-found") return "找不到這個共編邀請；它可能已失效或被停用。";
+  if (error?.code === "collaboration/invite-expired") return "這個共編邀請已過期，請擁有者重新產生邀請。";
+  if (error?.code === "collaboration/not-initialized") return "共編空間仍在準備初始內容，請稍後再試。";
+  if (error?.code === "collaboration/request-not-allowed") return error.message;
+  if (error?.code === "collaboration/request-not-found") return "這筆編輯權限申請已處理；成員狀態會自動更新。";
+  if (error?.code === "collaboration/update-too-large") return error.message;
+  return error?.message || "即時共編暫時無法使用；本機 Moodboard 未受影響。";
+}
 
 const MARKER_ICONS = {
   heart: Heart,
@@ -1012,98 +1014,10 @@ function createShapeObject(kind, point) {
   };
 }
 
-function escapeXmlAttribute(value) {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
-}
-
 function shapeSvgPoints(object) {
   const points = shapePolygonPoints(object);
   if (!points) return "";
   return points.map(([x, y]) => `${Number((x * 100).toFixed(3))},${Number((y * 100).toFixed(3))}`).join(" ");
-}
-
-function shapeSvgMarkup(object, x, y, width, height) {
-  const fill = escapeXmlAttribute(object.fill || "#58e6ff");
-  const points = shapeSvgPoints(object);
-  const content = points
-    ? `<polygon points="${points}" fill="${fill}"/>`
-    : `<rect x="1" y="1" width="98" height="98" rx="2" fill="${fill}"/>`;
-  return `<g transform="translate(${x} ${y}) scale(${width / 100} ${height / 100})">${content}</g>`;
-}
-
-function objectHtmlVisualMarkup(object, sourceOverride = "") {
-  if (isArtboardObject(object)) {
-    return `<div style="box-sizing:border-box;width:100%;height:100%;background:${escapeXmlAttribute(object.fill || "#fffdf7")};"></div>`;
-  }
-  if (isTextObject(object)) {
-    const layout = textLayoutStyle(object);
-    return `<div style="box-sizing:border-box;display:flex;flex-direction:column;justify-content:${layout.justifyContent};text-align:${layout.textAlign};text-align-last:${layout.textAlignLast};width:100%;height:100%;overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere;color:${escapeXmlAttribute(object.color || "#edf7fb")};font-family:${escapeXmlAttribute(object.fontFamily || DEFAULT_TEXT_FONT)};font-size:${Math.max(6, Number(object.fontSize) || 32)}px;font-weight:${escapeXmlAttribute(object.fontWeight || "600")};line-height:1.2;">${escapeXmlAttribute(objectDisplayText(object))}</div>`;
-  }
-  if (isShapeObject(object)) {
-    const clipPath = shapeClipPath(object);
-    return `<div style="width:100%;height:100%;background:${escapeXmlAttribute(object.fill || "#58e6ff")};clip-path:${clipPath};"></div>`;
-  }
-  return `<img src="${escapeXmlAttribute(sourceOverride || object.src)}" alt="" style="display:block;width:100%;height:100%;object-fit:fill;"/>`;
-}
-
-function objectToSvgBlob(object) {
-  const radians = (object.rotation * Math.PI) / 180;
-  const width = Math.max(1, Math.round(object.width));
-  const height = Math.max(1, Math.round(object.height));
-  const tiltX = Number(object.tiltX) || 0;
-  const tiltY = Number(object.tiltY) || 0;
-  const depth = Number(object.depth) || 0;
-  const perspective = Number(object.perspective) || 1000;
-  const hasMicro3D = Math.abs(tiltX) > 0.01 || Math.abs(tiltY) > 0.01 || Math.abs(depth) > 0.01 || Math.abs(perspective - 1000) > 0.01;
-
-  if (hasMicro3D) {
-    const anchor = ANCHORS[object.anchor] || ANCHORS.mc;
-    const corners = objectWorldCorners({ ...object, pivotX: 0, pivotY: 0, width, height });
-    const left = Math.min(...corners.map((point) => point.x));
-    const right = Math.max(...corners.map((point) => point.x));
-    const top = Math.min(...corners.map((point) => point.y));
-    const bottom = Math.max(...corners.map((point) => point.y));
-    const outputWidth = Math.max(1, Math.ceil(right - left) + 2);
-    const outputHeight = Math.max(1, Math.ceil(bottom - top) + 2);
-    const markup = `<svg xmlns="http://www.w3.org/2000/svg" width="${outputWidth}" height="${outputHeight}" viewBox="0 0 ${outputWidth} ${outputHeight}"><foreignObject x="0" y="0" width="${outputWidth}" height="${outputHeight}"><div xmlns="http://www.w3.org/1999/xhtml" style="position:relative;width:100%;height:100%;overflow:hidden;"><div style="position:absolute;left:${1 - left}px;top:${1 - top}px;width:0;height:0;transform-origin:0 0;transform:rotate(${Number(object.rotation) || 0}deg);"><div style="position:absolute;left:${-anchor.x * width}px;top:${-anchor.y * height}px;width:${width}px;height:${height}px;transform-origin:50% 50%;transform-style:preserve-3d;transform:perspective(${perspective}px) translateZ(${depth}px) rotateX(${tiltX}deg) rotateY(${tiltY}deg);backface-visibility:hidden;">${objectHtmlVisualMarkup(object)}</div></div></div></foreignObject></svg>`;
-    return new Blob([markup], { type: "image/svg+xml;charset=utf-8" });
-  }
-
-  const outputWidth = Math.max(1, Math.ceil(Math.abs(width * Math.cos(radians)) + Math.abs(height * Math.sin(radians))));
-  const outputHeight = Math.max(1, Math.ceil(Math.abs(width * Math.sin(radians)) + Math.abs(height * Math.cos(radians))));
-  const x = (outputWidth - width) / 2;
-  const y = (outputHeight - height) / 2;
-  let content;
-  if (isTextObject(object)) {
-    const layout = textLayoutStyle(object);
-    content = `<foreignObject x="${x}" y="${y}" width="${width}" height="${height}"><div xmlns="http://www.w3.org/1999/xhtml" style="box-sizing:border-box;display:flex;flex-direction:column;justify-content:${layout.justifyContent};text-align:${layout.textAlign};text-align-last:${layout.textAlignLast};width:100%;height:100%;overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere;color:${escapeXmlAttribute(object.color || "#edf7fb")};font-family:${escapeXmlAttribute(object.fontFamily || DEFAULT_TEXT_FONT)};font-size:${Math.max(6, Number(object.fontSize) || 32)}px;font-weight:${escapeXmlAttribute(object.fontWeight || "600")};line-height:1.2;">${escapeXmlAttribute(objectDisplayText(object))}</div></foreignObject>`;
-  } else if (isShapeObject(object)) {
-    content = shapeSvgMarkup(object, x, y, width, height);
-  } else if (isArtboardObject(object)) {
-    content = `<rect x="${x}" y="${y}" width="${width}" height="${height}" fill="${escapeXmlAttribute(object.fill || "#fffdf7")}"/>`;
-  } else {
-    content = `<image href="${escapeXmlAttribute(object.src)}" x="${x}" y="${y}" width="${width}" height="${height}" preserveAspectRatio="none"/>`;
-  }
-  const markup = `<svg xmlns="http://www.w3.org/2000/svg" width="${outputWidth}" height="${outputHeight}" viewBox="0 0 ${outputWidth} ${outputHeight}"><g transform="rotate(${object.rotation} ${outputWidth / 2} ${outputHeight / 2})">${content}</g></svg>`;
-  return new Blob([markup], { type: "image/svg+xml;charset=utf-8" });
-}
-
-function objectExportArtifact(object) {
-  if (isVideoObject(object)) {
-    const [, payload = ""] = object.src.split(",", 2);
-    const bytes = atob(payload);
-    const data = new Uint8Array(bytes.length);
-    for (let index = 0; index < bytes.length; index += 1) data[index] = bytes.charCodeAt(index);
-    const extension = object.originalFilename.match(/\.([a-z0-9]+)$/i)?.[1]?.toLowerCase()
-      || ({ "video/mp4": "mp4", "video/webm": "webm", "video/quicktime": "mov" }[object.mime])
-      || "video";
-    return { blob: new Blob([data], { type: object.mime || "video/mp4" }), extension };
-  }
-  return { blob: objectToSvgBlob(object), extension: "svg" };
 }
 
 function waitForVideoFrame(video, timeout = 7000) {
@@ -1427,6 +1341,7 @@ async function encodeAvifImageData(imageData) {
 }
 
 async function encodeCompositionCanvas(canvas, format) {
+  const { buildImagePdf, compositionOutputFormat } = await loadOutputRuntime();
   const config = compositionOutputFormat(format);
   if (format === "pdf") {
     const pdfCanvas = document.createElement("canvas");
@@ -1459,6 +1374,7 @@ async function encodeCompositionCanvas(canvas, format) {
 }
 
 async function renderSelectionComposition(objects, requestedScale) {
+  const { planCompositionSize } = await loadOutputRuntime();
   const bounds = selectionWorldBounds(objects);
   if (!bounds) throw new Error("請先選取要輸出的物件。");
   await document.fonts?.ready;
@@ -1500,6 +1416,37 @@ function downloadBlob(blob, filename) {
   anchor.click();
   anchor.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+class FeatureChunkBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <div className={`feature-chunk-state is-error${this.props.compact ? " is-compact" : ""}`} role="alert">
+        <AlertTriangle size={16} aria-hidden="true" />
+        <span>{`${this.props.label || "進階功能"}載入失敗；目前畫布未受影響。`}</span>
+        <button type="button" className="text-button" onClick={() => window.location.reload()}>重新載入程式</button>
+      </div>
+    );
+  }
+}
+
+function FeatureChunkLoading({ label, compact = false }) {
+  return (
+    <div className={`feature-chunk-state${compact ? " is-compact" : ""}`} role="status" aria-live="polite">
+      <RefreshCw size={15} className="is-spinning" aria-hidden="true" />
+      <span>{`正在載入${label}…`}</span>
+    </div>
+  );
 }
 
 function IconButton({ label, children, active = false, className = "", ...props }) {
@@ -3016,31 +2963,9 @@ function LeftSidebar(props) {
   );
 }
 
-const MICRO_3D_CONTROLS = [
-  { key: "tiltX", label: "X 軸傾斜", min: -30, max: 30, step: 1, unit: "°" },
-  { key: "tiltY", label: "Y 軸傾斜", min: -30, max: 30, step: 1, unit: "°" },
-  { key: "depth", label: "前後景深", min: -120, max: 120, step: 2, unit: "px" },
-  { key: "perspective", label: "透視距離", min: 500, max: 2000, step: 50, unit: "px" },
-];
-
-const MICRO_3D_PRESETS = [
-  { label: "左傾", values: { tiltX: 4, tiltY: -16, depth: 12, perspective: 1000 } },
-  { label: "正面", values: { tiltX: 0, tiltY: 0, depth: 0, perspective: 1000 } },
-  { label: "右傾", values: { tiltX: 4, tiltY: 16, depth: 12, perspective: 1000 } },
-];
-
 function Micro3DControls({ objects, onChange, active, onActiveChange }) {
   const first = objects[0];
   if (!first) return null;
-  const hasMixedValues = MICRO_3D_CONTROLS.some(({ key }) =>
-    objects.some((object) => Number(object[key]) !== Number(first[key])),
-  );
-  const resetDisabled = objects.every((object) =>
-    Math.abs(Number(object.tiltX) || 0) < 0.01
-      && Math.abs(Number(object.tiltY) || 0) < 0.01
-      && Math.abs(Number(object.depth) || 0) < 0.01
-      && Math.abs((Number(object.perspective) || 1000) - 1000) < 0.01,
-  );
 
   return (
     <section className={`inspector-section micro-3d-section ${active ? "is-active" : ""}`}>
@@ -3057,51 +2982,11 @@ function Micro3DControls({ objects, onChange, active, onActiveChange }) {
         </button>
       </div>
       {active ? (
-        <>
-          <div className="micro-3d-status">
-            <span>物件軌道已啟用</span>
-            {objects.length > 1 ? <strong>{hasMixedValues ? "混合值" : `${objects.length} 個同步`}</strong> : <strong>單一物件</strong>}
-          </div>
-          <div className="micro-3d-presets" role="group" aria-label="微 3D 預設">
-            {MICRO_3D_PRESETS.map((preset) => (
-              <button key={preset.label} type="button" onClick={() => onChange(preset.values)}>{preset.label}</button>
-            ))}
-          </div>
-          <div className="micro-3d-controls">
-            {MICRO_3D_CONTROLS.map((control) => {
-              const fallback = control.key === "perspective" ? 1000 : 0;
-              const value = Number.isFinite(Number(first[control.key])) ? Number(first[control.key]) : fallback;
-              const mixed = objects.some((object) => (Number(object[control.key]) || fallback) !== value);
-              const displayValue = Math.round(value * 10) / 10;
-              return (
-                <label key={control.key}>
-                  <span className="micro-3d-label">
-                    <span>{control.label}</span>
-                    <output>{mixed ? "混合" : `${displayValue}${control.unit}`}</output>
-                  </span>
-                  <input
-                    type="range"
-                    min={control.min}
-                    max={control.max}
-                    step={control.step}
-                    value={Math.min(control.max, Math.max(control.min, value))}
-                    aria-label={control.label}
-                    onChange={(event) => onChange({ [control.key]: Number(event.target.value) })}
-                  />
-                </label>
-              );
-            })}
-          </div>
-          <button
-            className="quiet-button micro-3d-reset"
-            type="button"
-            onClick={() => onChange({ tiltX: 0, tiltY: 0, depth: 0, perspective: 1000 })}
-            disabled={resetDisabled}
-          >
-            <RotateCcw size={15} /> 3D 歸零
-          </button>
-          <p className="transform-helper">直接拖曳選取物件或軌道可像軌跡球一樣旋轉；X、Y、Z 可限制軸向，Shift 鎖定自由旋轉的主軸。</p>
-        </>
+        <FeatureChunkBoundary label="3D 控制器">
+          <React.Suspense fallback={<FeatureChunkLoading label="3D 控制器" />}>
+            <LazyMicro3DActiveControls objects={objects} onChange={onChange} />
+          </React.Suspense>
+        </FeatureChunkBoundary>
       ) : (
         <p className="micro-3d-inactive-copy">一般選取維持 2D 操作；切換後選取物件會改用 3D 軌道游標與旋轉操作。</p>
       )}
@@ -3702,70 +3587,6 @@ function TextFrameHandles({ onStart, onAutoFit, activeHandle = null }) {
   ));
 }
 
-function Rotation3DGizmo({
-  inverseZoom,
-  left = "50%",
-  top = "50%",
-  counterRotation = 0,
-  activeAxis = null,
-  onStart,
-  onReset,
-  group = false,
-}) {
-  const startAxis = (event, axis) => onStart(event, axis);
-  const reset = (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    onReset();
-  };
-  return (
-    <div
-      className={`rotation-3d-gizmo ${group ? "is-group" : ""}`}
-      role="group"
-      aria-label={group ? "多選 3D 旋轉軌道" : "3D 旋轉軌道"}
-      style={{
-        left,
-        top,
-        "--gizmo-inverse-zoom": inverseZoom,
-        "--gizmo-counter-rotation": `${counterRotation}deg`,
-      }}
-    >
-      <button
-        className={`gizmo-orbit ${activeAxis === "free" ? "is-active" : ""}`}
-        type="button"
-        aria-label="自由 3D 旋轉"
-        title="拖曳自由旋轉；Shift 鎖定主軸；連按兩下 3D 歸零"
-        onPointerDown={(event) => startAxis(event, "free")}
-        onDoubleClick={reset}
-      >
-        <svg viewBox="0 0 100 100" aria-hidden="true">
-          <ellipse className="gizmo-ring gizmo-ring-x" cx="50" cy="50" rx="38" ry="13" />
-          <ellipse className="gizmo-ring gizmo-ring-y" cx="50" cy="50" rx="13" ry="38" />
-          <circle className="gizmo-ring gizmo-ring-z" cx="50" cy="50" r="31" />
-          <circle className="gizmo-core" cx="50" cy="50" r="5" />
-        </svg>
-      </button>
-      {[
-        ["x", "X", "只沿 X 軸旋轉"],
-        ["y", "Y", "只沿 Y 軸旋轉"],
-        ["z", "Z", "只沿 Z 軸旋轉"],
-      ].map(([axis, label, description]) => (
-        <button
-          key={axis}
-          className={`gizmo-axis gizmo-axis-${axis} ${activeAxis === axis ? "is-active" : ""}`}
-          type="button"
-          aria-label={description}
-          title={description}
-          onPointerDown={(event) => startAxis(event, axis)}
-        >
-          {label}
-        </button>
-      ))}
-      <span className="gizmo-caption" aria-hidden="true">3D 旋轉</span>
-    </div>
-  );
-}
-
 function CanvasObject({
   object,
   selected,
@@ -3978,15 +3799,19 @@ function CanvasObject({
         ) : null}
       </div>
       {editable && soleSelected && micro3DMode ? (
-        <Rotation3DGizmo
-          inverseZoom={inverseZoom}
-          left={(0.5 - anchor.x) * object.width}
-          top={(0.5 - anchor.y) * object.height}
-          counterRotation={-object.rotation}
-          activeAxis={micro3DGesture?.axis || null}
-          onStart={onMicro3DRotateStart}
-          onReset={onResetMicro3D}
-        />
+        <FeatureChunkBoundary label="3D 軌道" compact>
+          <React.Suspense fallback={<FeatureChunkLoading label="3D 軌道" compact />}>
+            <LazyRotation3DGizmo
+              inverseZoom={inverseZoom}
+              left={(0.5 - anchor.x) * object.width}
+              top={(0.5 - anchor.y) * object.height}
+              counterRotation={-object.rotation}
+              activeAxis={micro3DGesture?.axis || null}
+              onStart={onMicro3DRotateStart}
+              onReset={onResetMicro3D}
+            />
+          </React.Suspense>
+        </FeatureChunkBoundary>
       ) : null}
     </div>
   );
@@ -4045,13 +3870,17 @@ function SelectionGroupOverlay({
     >
       {semanticLabel ? <span className="selection-group-label">{semanticLabel}</span> : null}
       {micro3DMode ? (
-        <Rotation3DGizmo
-          inverseZoom={inverseZoom}
-          activeAxis={micro3DGesture?.axis || null}
-          onStart={onMicro3DRotateStart}
-          onReset={onResetMicro3D}
-          group
-        />
+        <FeatureChunkBoundary label="3D 軌道" compact>
+          <React.Suspense fallback={<FeatureChunkLoading label="3D 軌道" compact />}>
+            <LazyRotation3DGizmo
+              inverseZoom={inverseZoom}
+              activeAxis={micro3DGesture?.axis || null}
+              onStart={onMicro3DRotateStart}
+              onReset={onResetMicro3D}
+              group
+            />
+          </React.Suspense>
+        </FeatureChunkBoundary>
       ) : (
         <>
           <button
@@ -6804,6 +6633,7 @@ function App() {
     }
     setDriveSession((current) => ({ ...current, status: "checking", connected: true, busy: true, message: "正在確認 Drive 檔案與可用空間…" }));
     try {
+      const { ensureGoogleDriveFolder, getGoogleDriveAbout, listGoogleDriveMoodboards } = await loadDriveRuntime();
       const folderId = await ensureGoogleDriveFolder(accessToken, providedFolderId || driveSettings.folderId, { create: false });
       const [about, files] = await Promise.all([
         getGoogleDriveAbout(accessToken),
@@ -6847,6 +6677,7 @@ function App() {
     const operationEpoch = driveOperationEpochRef.current;
     setDriveSession((current) => ({ ...current, status: "connecting", busy: true, message: "Google 會另外詢問 Drive 檔案權限。" }));
     try {
+      const { requestGoogleDriveToken } = await loadDriveRuntime();
       const token = await requestGoogleDriveToken({ loginHint: authSession.user?.email || "" });
       if (operationEpoch !== driveOperationEpochRef.current) return null;
       driveTokenRef.current = token;
@@ -7958,6 +7789,7 @@ function App() {
     await stopCloudCollaboration({ forget: false });
     setCloudCollaboration({ ...EMPTY_CLOUD_COLLABORATION, status: "creating", message: "正在建立安全的共編空間…" });
     try {
+      const { createMoodboardCollaborationRoom } = await loadCollaborationRuntime();
       await saveVersion(boardSnapshot(), translateInterfaceText("開始即時共編前"), "automatic");
       const session = await createMoodboardCollaborationRoom(collaborationSessionOptions());
       cloudCollaborationSessionRef.current = session;
@@ -7991,6 +7823,7 @@ function App() {
     await stopCloudCollaboration({ forget: false });
     setCloudCollaboration({ ...EMPTY_CLOUD_COLLABORATION, status: "joining", message: "正在確認邀請與成員權限…" });
     try {
+      const { joinMoodboardCollaborationInvite } = await loadCollaborationRuntime();
       await saveVersion(boardSnapshot(), translateInterfaceText("加入即時共編前"), "automatic");
       const session = await joinMoodboardCollaborationInvite({ ...collaborationSessionOptions(), inviteId });
       cloudCollaborationSessionRef.current = session;
@@ -8015,6 +7848,7 @@ function App() {
     await stopCloudCollaboration({ forget: false });
     setCloudCollaboration({ ...EMPTY_CLOUD_COLLABORATION, status: "connecting", message: "正在續接上次的共編空間…" });
     try {
+      const { resumeMoodboardCollaborationRoom } = await loadCollaborationRuntime();
       await saveVersion(boardSnapshot(), translateInterfaceText("續接即時共編前"), "automatic");
       const session = await resumeMoodboardCollaborationRoom({
         ...collaborationSessionOptions(),
@@ -8194,6 +8028,12 @@ function App() {
       };
       setDriveSession((current) => ({ ...current, status: "checking", connected: true, busy: true, message: "正在先保存本機版本，再確認 Drive 空間與遠端版本…", conflict: null }));
       try {
+        const {
+          ensureGoogleDriveFolder,
+          getGoogleDriveAbout,
+          listGoogleDriveMoodboards,
+          uploadGoogleDriveMoodboard,
+        } = await loadDriveRuntime();
         try {
           await persistBoardLocally(snapshot);
           setSaveState(`本機已儲存 ${new Date().toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" })}`);
@@ -8308,6 +8148,7 @@ function App() {
     }
     setDriveSession((current) => ({ ...current, status: "checking", connected: true, busy: true, message: `正在開啟「${file.name}」…` }));
     try {
+      const { downloadGoogleDriveMoodboard, getGoogleDriveFile } = await loadDriveRuntime();
       const current = boardSnapshot();
       if (dirty || current.objects.length) await saveVersion(current, translateInterfaceText("切換 Drive 檔案前"), "automatic");
       let metadata = await getGoogleDriveFile(accessToken, file.id);
@@ -8370,6 +8211,7 @@ function App() {
     }
     setDriveVersions((current) => ({ ...current, status: "loading", fileId: link.fileId, message: "" }));
     try {
+      const { getGoogleDriveFile, listGoogleDriveRevisions } = await loadDriveRuntime();
       const metadata = await getGoogleDriveFile(accessToken, link.fileId);
       if (metadata.capabilities?.canReadRevisions === false) {
         throw new DriveApiError("目前帳號沒有讀取這份檔案版本紀錄的權限。", { code: "drive/permission", status: 403 });
@@ -8404,6 +8246,7 @@ function App() {
     }
     setVersionBusy(true);
     try {
+      const { downloadGoogleDriveMoodboard, getGoogleDriveFile } = await loadDriveRuntime();
       const metadata = await getGoogleDriveFile(accessToken, file.id);
       const isHead = !revision || revision.id === metadata.headRevisionId;
       if (!isHead && !revision.keepForever) {
@@ -8491,8 +8334,10 @@ function App() {
     return () => window.clearTimeout(driveSyncTimerRef.current);
   }, [authReady, board.revision, board.updatedAt, currentDriveAccessToken, currentDriveLink, driveSettings.autoSync, driveSettings.enabled, hydrated, online, saveBoardToGoogleDrive]);
 
-  const exportBrowserHtml = useCallback(() => {
+  const exportBrowserHtml = useCallback(async () => {
     try {
+      announce("正在準備瀏覽器版…", "info");
+      const { createPortableHtml } = await loadPortableRuntime();
       const snapshot = boardSnapshot();
       const filename = `${safeFilename(snapshot.name, "moodboard")}-${safeFilename(translateInterfaceText("瀏覽版"), "browser-view")}.html`;
       const content = createPortableHtml(snapshot, { locale: interfaceLocale });
@@ -10407,25 +10252,33 @@ function App() {
     };
   }, [announce, cancelPendingObjectDeletion, closeAdvancedFeatureGate, closeInterfaceThemes, closePreparedDownloads, copySelectedObjects, cutSelectedObjects, deleteSelected, dragActive, duplicateSelected, escapeCancellationRequest, filters.colors.length, filters.symbols.length, focusMode, isClearingLocalData, keepEscapeAdjustment, leftPanelVisible, leftTab, loadedTextFlow, mobilePanel, openBoardFile, openListSearch, pasteCopiedObjects, pendingAdvancedFeature, pendingObjectDeletion, preparedDownloads.length, redo, requestActivePointerCancellation, requestAdvancedFeature, restoreWorkspaceChrome, rightPanelVisible, savePreferredBoard, shapeMenuOpen, showAnnotationBuilder, showBothPanels, showCollaboration, showDeleteLocalData, showDriveLibrary, showGridBuilder, showInterfaceThemes, showSettings, showShortcuts, showVersions, toggleBothPanels, toggleCanvasBackground, toggleFocusMode, toggleGuides, toggleLeftPanel, toggleRightPanel, toggleRulers, toggleSelectionGroup, tool, undo]);
 
-  const exportObjects = useCallback((scopeOverride) => {
+  const exportObjects = useCallback(async (scopeOverride) => {
     const scope = typeof scopeOverride === "string" ? scopeOverride : exportScope;
     const targets = objectsForExport(boardRef.current.objects.filter((object) => object.visible), selectedIdsRef.current, scope);
     if (!targets.length) {
       announce("這個匯出範圍沒有物件。", "warning");
       return;
     }
-    closePreparedDownloads();
-    const downloads = targets.map((object, index) => {
-      const artifact = objectExportArtifact(object);
-      return {
-        blob: artifact.blob,
-        url: URL.createObjectURL(artifact.blob),
-        filename: `${String(index + 1).padStart(2, "0")}-${safeFilename(object.name)}.${artifact.extension}`,
-      };
-    });
-    preparedDownloadsRef.current = downloads;
-    setPreparedDownloads(downloads);
-    announce(`已準備 ${targets.length} 個匯出檔`, "success");
+    setIsExporting(true);
+    try {
+      const { objectExportArtifact } = await loadAssetExportRuntime();
+      closePreparedDownloads();
+      const downloads = targets.map((object, index) => {
+        const artifact = objectExportArtifact(object);
+        return {
+          blob: artifact.blob,
+          url: URL.createObjectURL(artifact.blob),
+          filename: `${String(index + 1).padStart(2, "0")}-${safeFilename(object.name)}.${artifact.extension}`,
+        };
+      });
+      preparedDownloadsRef.current = downloads;
+      setPreparedDownloads(downloads);
+      announce(`已準備 ${targets.length} 個匯出檔`, "success");
+    } catch (error) {
+      announce(error?.message || "匯出功能載入失敗；目前畫布未受影響。", "error");
+    } finally {
+      setIsExporting(false);
+    }
   }, [announce, closePreparedDownloads, exportScope]);
 
   const exportPreparedToDirectory = useCallback(() => {
@@ -10453,9 +10306,11 @@ function App() {
       return;
     }
 
-    const format = compositionOutputFormat(compositionFormat);
     setIsRenderingComposition(true);
+    let format = { extension: compositionFormat, label: compositionFormat.toUpperCase() };
     try {
+      const { compositionOutputFormat } = await loadOutputRuntime();
+      format = compositionOutputFormat(compositionFormat);
       const rendered = await renderSelectionComposition(targets, compositionScale);
       const blob = await encodeCompositionCanvas(rendered.canvas, compositionFormat);
       const filename = `${safeFilename(`${boardRef.current.name}-選取合成`, "moodboard-composition")}.${format.extension}`;

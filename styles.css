@@ -2983,6 +2983,39 @@ html[lang="en"] .sidebar-tabs button svg {
   justify-self: start;
 }
 
+.feature-chunk-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.feature-chunk-state.is-error {
+  color: var(--text);
+}
+
+.feature-chunk-state.is-error > svg {
+  flex: 0 0 auto;
+}
+
+.feature-chunk-state.is-compact {
+  position: absolute;
+  z-index: 14;
+  left: 50%;
+  top: 50%;
+  width: max-content;
+  min-height: 32px;
+  padding: 4px 8px;
+  transform: translate(-50%, -50%) scale(var(--inverse-zoom, 1));
+  transform-origin: center;
+  background: var(--surface);
+  border-radius: 6px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  pointer-events: auto;
+}
+
 .marker-add-button {
   justify-content: center;
   width: 100%;

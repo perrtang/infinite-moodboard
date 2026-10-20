@@ -9,10 +9,13 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (!id.includes("node_modules")) return undefined;
-          if (id.includes("@firebase")) return "firebase";
-          if (id.includes("react") || id.includes("scheduler")) return "react";
           if (id.includes("lucide-react")) return "icons";
+          if (id.includes("@firebase/firestore")) return "firebase-firestore";
+          if (id.includes("@firebase/auth")) return "firebase-auth";
+          if (id.includes("@firebase")) return "firebase-core";
+          if (id.includes("react") || id.includes("scheduler")) return "react";
           if (id.includes("opencc-js")) return "opencc";
+          if (id.includes("yjs") || id.includes("lib0")) return "collaboration-engine";
           return "vendor";
         },
       },
