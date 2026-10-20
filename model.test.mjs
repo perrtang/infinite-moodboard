@@ -47,6 +47,7 @@ import {
 } from "./output.js";
 import {
   BUILT_IN_THEMES,
+  DEFAULT_INTERFACE_THEME_ID,
   contrastRatio,
   interfaceThemeCssVariables,
   interfaceThemeMode,
@@ -166,13 +167,16 @@ test("canvas background visibility restores the last visible grid style", () => 
 });
 
 test("interface themes include the product and organization brand palettes", () => {
+  const fashionMonochrome = BUILT_IN_THEMES.find((theme) => theme.id === DEFAULT_INTERFACE_THEME_ID);
   const petfashion = BUILT_IN_THEMES.find((theme) => theme.id === "petfashion-editorial");
   const trueTree = BUILT_IN_THEMES.find((theme) => theme.id === "true-tree-editorial");
   const netflix = BUILT_IN_THEMES.find((theme) => theme.id === "brand-netflix");
   const starbucks = BUILT_IN_THEMES.find((theme) => theme.id === "brand-starbucks");
 
-  assert.equal(BUILT_IN_THEMES[0].id, "deep-cyan");
-  assert.equal(BUILT_IN_THEMES.length, 11);
+  assert.equal(BUILT_IN_THEMES[0].id, DEFAULT_INTERFACE_THEME_ID);
+  assert.equal(fashionMonochrome.name, "時尚黑白");
+  assert.equal(fashionMonochrome.monochrome, true);
+  assert.equal(BUILT_IN_THEMES.length, 12);
   assert.deepEqual(petfashion.colors, {
     background: "#F7F5EF",
     panel: "#FFFEFA",
@@ -191,6 +195,36 @@ test("interface themes include the product and organization brand palettes", () 
   assert.equal(starbucks.category, "brand");
 });
 
+test("the default fashion monochrome theme keeps all interface color channels grayscale", () => {
+  const theme = BUILT_IN_THEMES.find((item) => item.id === DEFAULT_INTERFACE_THEME_ID);
+  const variables = interfaceThemeCssVariables(theme);
+  const assertGrayscaleHex = (value, label) => {
+    const match = String(value).match(/^#([0-9A-F]{2})([0-9A-F]{2})([0-9A-F]{2})$/i);
+    assert.ok(match, `${label} should be a six-digit hex color`);
+    assert.equal(match[1].toUpperCase(), match[2].toUpperCase(), `${label} red and green channels`);
+    assert.equal(match[2].toUpperCase(), match[3].toUpperCase(), `${label} green and blue channels`);
+  };
+  const assertGrayscaleRgbChannels = (value, label) => {
+    const channels = String(value).trim().split(/\s+/);
+    assert.equal(channels.length, 3, `${label} should have three channels`);
+    assert.equal(channels[0], channels[1], `${label} red and green channels`);
+    assert.equal(channels[1], channels[2], `${label} green and blue channels`);
+  };
+
+  Object.entries(theme.colors).forEach(([key, value]) => assertGrayscaleHex(value, `theme ${key}`));
+  ["--text", "--text-muted", "--text-soft", "--accent-base", "--accent", "--accent-fill", "--accent-ui", "--accent-on", "--accent-hover", "--accent-strong", "--success", "--signal", "--danger", "--axis-x", "--axis-y", "--axis-z"]
+    .forEach((key) => assertGrayscaleHex(variables[key], key));
+  ["--accent-rgb", "--muted-rgb", "--success-rgb", "--signal-rgb", "--danger-rgb"]
+    .forEach((key) => assertGrayscaleRgbChannels(variables[key], key));
+
+  ["--rotation-cursor", "--text-flow-cursor", "--micro-3d-cursor"].forEach((key) => {
+    const decodedCursor = decodeURIComponent(variables[key]);
+    const cursorColors = decodedCursor.match(/#[0-9A-F]{6}/gi) || [];
+    assert.ok(cursorColors.length >= 3, `${key} should embed theme colors`);
+    cursorColors.forEach((color) => assertGrayscaleHex(color, `${key} ${color}`));
+  });
+});
+
 test("every built-in theme derives readable text, controls, semantic colors, and its own cursor", () => {
   for (const theme of BUILT_IN_THEMES) {
     const variables = interfaceThemeCssVariables(theme);
@@ -206,6 +240,8 @@ test("every built-in theme derives readable text, controls, semantic colors, and
     }
     assert.ok(contrastRatio(variables["--accent-on"], variables["--accent-fill"]) >= 4.5, `${theme.id} accent button label`);
     assert.match(variables["--rotation-cursor"], /^url\("data:image\/svg\+xml,/);
+    assert.match(variables["--text-flow-cursor"], /^url\("data:image\/svg\+xml,/);
+    assert.match(variables["--micro-3d-cursor"], /^url\("data:image\/svg\+xml,/);
   }
   const petfashionCursor = interfaceThemeCssVariables(BUILT_IN_THEMES.find((theme) => theme.id === "petfashion-editorial"))["--rotation-cursor"];
   assert.doesNotMatch(petfashionCursor, /58E6FF/i);

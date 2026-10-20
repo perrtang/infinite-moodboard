@@ -3,8 +3,24 @@ const COLOR_KEYS = ["background", "panel", "canvas", "text", "muted", "accent"];
 export const THEME_STORAGE_KEY = "infinite-moodboard-interface-themes-v1";
 export const ACTIVE_THEME_STORAGE_KEY = "infinite-moodboard-active-interface-theme-v1";
 export const INTERFACE_THEME_FILE_TYPE = "infinite-moodboard-interface-theme";
+export const DEFAULT_INTERFACE_THEME_ID = "fashion-monochrome";
 
 export const BUILT_IN_THEMES = Object.freeze([
+  {
+    id: DEFAULT_INTERFACE_THEME_ID,
+    name: "時尚黑白",
+    builtin: true,
+    category: "product",
+    monochrome: true,
+    colors: {
+      background: "#080808",
+      panel: "#121212",
+      canvas: "#0D0D0D",
+      text: "#F5F5F5",
+      muted: "#A3A3A3",
+      accent: "#E7E7E7",
+    },
+  },
   {
     id: "deep-cyan",
     name: "Infinite 未來青",
@@ -229,9 +245,28 @@ function cursorDataUrl({ background, text, accent, signal }) {
   return `url("data:image/svg+xml,${encodeURIComponent(svg)}") 16 16, crosshair`;
 }
 
+function textFlowCursorDataUrl({ background, text, signal }) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><path d="M4 2 4 24 9.7 18.5 13.5 27 17 25.4 13.1 17H21Z" fill="${background}" stroke="${text}" stroke-width="1.4" stroke-linejoin="round"/><rect x="17" y="4" width="12" height="12" rx="2" fill="${background}" stroke="${signal}"/><path d="M20 8h6M23 6v5" stroke="${signal}" stroke-width="1.5" stroke-linecap="round"/></svg>`;
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}") 4 2, copy`;
+}
+
+function micro3DCursorDataUrl({ background, text, axisX, axisY, axisZ }) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" fill="${background}" fill-opacity=".92" stroke="${text}" stroke-width="1.5"/><ellipse cx="16" cy="16" rx="10" ry="4" fill="none" stroke="${axisX}" stroke-width="1.5"/><ellipse cx="16" cy="16" rx="4" ry="10" fill="none" stroke="${axisY}" stroke-width="1.5"/><path d="M5.5 16a10.5 10.5 0 0 0 18 7.4" fill="none" stroke="${axisZ}" stroke-width="1.5" stroke-linecap="round"/><path d="m23.6 20.6-.2 3.1-3-.4" fill="none" stroke="${axisZ}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="16" cy="16" r="2" fill="${text}"/></svg>`;
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}") 16 16, grab`;
+}
+
+function isGrayscaleColor(color) {
+  const [red, green, blue] = hexToRgb(color);
+  return red === green && green === blue;
+}
+
 export function normalizeInterfaceTheme(value, fallback = BUILT_IN_THEMES[0]) {
   const source = value && typeof value === "object" ? value : {};
   const colors = source.colors && typeof source.colors === "object" ? source.colors : {};
+  const normalizedColors = Object.fromEntries(COLOR_KEYS.map((key) => [
+    key,
+    normalizeHexColor(colors[key], fallback.colors[key]),
+  ]));
   return {
     id: String(source.id || fallback.id).slice(0, 96),
     name: String(source.name || fallback.name).trim().slice(0, 40) || fallback.name,
@@ -240,10 +275,8 @@ export function normalizeInterfaceTheme(value, fallback = BUILT_IN_THEMES[0]) {
       ? source.category
       : "custom",
     createdAt: typeof source.createdAt === "string" ? source.createdAt : null,
-    colors: Object.fromEntries(COLOR_KEYS.map((key) => [
-      key,
-      normalizeHexColor(colors[key], fallback.colors[key]),
-    ])),
+    monochrome: source.monochrome === true || COLOR_KEYS.every((key) => isGrayscaleColor(normalizedColors[key])),
+    colors: normalizedColors,
   };
 }
 
@@ -264,9 +297,12 @@ export function interfaceThemeCssVariables(theme) {
   const accentOn = bestContrastTarget([accent]);
   const accentHoverTarget = accentOn === "#000000" ? "#FFFFFF" : "#000000";
   const accentHover = ensureContrast(mixColors(accent, accentHoverTarget, 0.12), [accentOn], 4.5, accentHoverTarget);
-  const success = ensureContrast("#3FAE72", surfaces, 4.5, readableText);
-  const signal = ensureContrast("#D08A27", surfaces, 4.5, readableText);
-  const danger = ensureContrast("#E2554D", surfaces, 4.5, readableText);
+  const success = ensureContrast(normalized.monochrome ? "#F0F0F0" : "#3FAE72", surfaces, 4.5, readableText);
+  const signal = ensureContrast(normalized.monochrome ? "#CACACA" : "#D08A27", surfaces, 4.5, readableText);
+  const danger = ensureContrast(normalized.monochrome ? "#FFFFFF" : "#E2554D", surfaces, 4.5, readableText);
+  const axisX = normalized.monochrome ? "#FFFFFF" : "#FF6F73";
+  const axisY = normalized.monochrome ? "#C4C4C4" : "#69DF9B";
+  const axisZ = normalized.monochrome ? "#8E8E8E" : "#62A8FF";
   const [accentRed, accentGreen, accentBlue] = hexToRgb(accent);
   const [mutedRed, mutedGreen, mutedBlue] = hexToRgb(readableMuted);
   const [successRed, successGreen, successBlue] = hexToRgb(success);
@@ -293,6 +329,9 @@ export function interfaceThemeCssVariables(theme) {
     "--success": success,
     "--signal": signal,
     "--danger": danger,
+    "--axis-x": axisX,
+    "--axis-y": axisY,
+    "--axis-z": axisZ,
     "--topbar-bg": rgba(background, 0.96),
     "--panel-bg": rgba(panel, 0.98),
     "--canvas-bg": canvas,
@@ -313,6 +352,18 @@ export function interfaceThemeCssVariables(theme) {
       text: readableText,
       accent: accentUi,
       signal,
+    }),
+    "--text-flow-cursor": textFlowCursorDataUrl({
+      background: isLight ? panel : background,
+      text: readableText,
+      signal,
+    }),
+    "--micro-3d-cursor": micro3DCursorDataUrl({
+      background: isLight ? panel : background,
+      text: readableText,
+      axisX,
+      axisY,
+      axisZ,
     }),
     colorScheme: isLight ? "light" : "dark",
   };

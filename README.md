@@ -2,6 +2,12 @@
 
 Infinite Moodboard 是 PETFASHION 的免費、離線優先視覺工作台。圖片、影片、文字、SVG、版本與構圖運算都在瀏覽器中進行；使用者可下載可編輯的 `.moodboard` 工作檔，或輸出 PNG、WebP、AVIF、PDF 與唯讀 HTML。
 
+## v0.16.0 重點（本機待發布）
+
+- `時尚黑白` 成為全新或尚未設定裝置的預設介面主題；既有裝置已主動選擇的其他主題仍會保留。
+- 啟動動畫、狀態色、焦點與選取、文字續接與旋轉游標、三軸 3D 控制都會跟隨灰階語意，不漏出其他主題的彩色。
+- Moodboard 內容、匯入媒體、形狀填色與用戶標記色屬於作品內容，不會被介面黑白主題改寫。
+
 ## v0.15.0 重點（本機待發布）
 
 - 形狀 Inspector 新增 A3、A4、A5、B5、Letter 直式／橫式快速尺寸，並提供常見正方形貼文、直式貼文、限時動態／短影音、橫式分享圖與 16:9 影片封面尺寸。
@@ -110,10 +116,10 @@ npx firebase-tools deploy --only firestore:rules
 完成一個可驗收里程碑後，先通過測試與建置、提交所有變更，再執行：
 
 ```bash
-./scripts/checkpoint-version.sh 0.15.0
+./scripts/checkpoint-version.sh 0.16.0
 ```
 
-腳本會確認工作目錄乾淨且 `package.json` 版號一致，建立或驗證 `backup/v0.15.0` 標籤，並把 Git bundle 與原始碼 zip 寫入專案外的 `backups/infinite-moodboard/`。可用 `git switch --detach backup/v0.15.0` 檢查舊版；需要正式回復時，再從該標籤建立修復分支，避免直接覆蓋目前工作。
+腳本會確認工作目錄乾淨且 `package.json` 版號一致，建立或驗證 `backup/v0.16.0` 標籤，並把 Git bundle 與原始碼 zip 寫入專案外的 `backups/infinite-moodboard/`。可用 `git switch --detach backup/v0.16.0` 檢查舊版；需要正式回復時，再從該標籤建立修復分支，避免直接覆蓋目前工作。
 
 ## 發布
 

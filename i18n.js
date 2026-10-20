@@ -945,6 +945,7 @@ const EN_EXACT = Object.freeze({
   "介面配色": "Interface palettes",
   "正在檢視": "Previewing",
   "色彩靈感 · 非官方主題": "Color inspiration · unofficial themes",
+  "時尚黑白": "Fashion Monochrome",
   "Infinite 未來青": "Infinite Future Cyan",
   "PETFASHION 編輯米金": "PETFASHION Editorial Sand Gold",
   "真象樹 森林紙本": "True Tree Forest Paper",

@@ -1,39 +1,44 @@
 :root {
-  --bg: #070b10;
-  --surface: rgba(12, 20, 28, 0.96);
-  --surface-soft: rgba(16, 28, 38, 0.76);
-  --surface-strong: #101c26;
-  --text: #edf7fb;
-  --text-muted: #8aa5b3;
-  --text-soft: #bed0d8;
-  --border: rgba(112, 234, 255, 0.18);
-  --border-strong: rgba(112, 234, 255, 0.42);
-  --accent-base: #58e6ff;
-  --accent: #58e6ff;
-  --accent-fill: #58e6ff;
-  --accent-ui: #58e6ff;
-  --accent-on: #031014;
-  --accent-hover: #8ceeff;
-  --accent-strong: #b9f6ff;
-  --signal: #f3b75f;
-  --success: #7df0b1;
-  --danger: #ff776f;
-  --signal-rgb: 243 183 95;
-  --success-rgb: 125 240 177;
-  --danger-rgb: 255 119 111;
-  --topbar-bg: rgba(7, 11, 16, 0.96);
-  --panel-bg: rgba(9, 16, 24, 0.98);
-  --canvas-bg: #090e13;
-  --toolbar-bg: rgba(9, 16, 24, 0.93);
-  --stage-bg: rgba(9, 16, 24, 0.96);
-  --modal-bg: #0b141b;
-  --control-bg: rgba(7, 11, 16, 0.64);
-  --quiet-bg: rgba(237, 247, 251, 0.025);
-  --floating-bg: rgba(7, 11, 16, 0.9);
+  --bg: #080808;
+  --surface: rgba(18, 18, 18, 0.96);
+  --surface-soft: rgba(18, 18, 18, 0.76);
+  --surface-strong: #252525;
+  --text: #f5f5f5;
+  --text-muted: #a3a3a3;
+  --text-soft: #c9c9c9;
+  --border: rgba(231, 231, 231, 0.24);
+  --border-strong: rgba(231, 231, 231, 0.54);
+  --accent-base: #e7e7e7;
+  --accent: #e7e7e7;
+  --accent-fill: #e7e7e7;
+  --accent-ui: #e7e7e7;
+  --accent-on: #000000;
+  --accent-hover: #cbcbcb;
+  --accent-strong: #e7e7e7;
+  --signal: #cacaca;
+  --success: #f0f0f0;
+  --danger: #ffffff;
+  --axis-x: #ffffff;
+  --axis-y: #c4c4c4;
+  --axis-z: #8e8e8e;
+  --signal-rgb: 202 202 202;
+  --success-rgb: 240 240 240;
+  --danger-rgb: 255 255 255;
+  --topbar-bg: rgba(8, 8, 8, 0.96);
+  --panel-bg: rgba(18, 18, 18, 0.98);
+  --canvas-bg: #0d0d0d;
+  --toolbar-bg: rgba(18, 18, 18, 0.93);
+  --stage-bg: rgba(18, 18, 18, 0.96);
+  --modal-bg: #101010;
+  --control-bg: rgba(8, 8, 8, 0.64);
+  --quiet-bg: rgba(245, 245, 245, 0.025);
+  --floating-bg: rgba(8, 8, 8, 0.9);
   --segmented-bg: rgba(0, 0, 0, 0.24);
-  --accent-rgb: 88 230 255;
-  --muted-rgb: 138 165 179;
-  --rotation-cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='%23071117' fill-opacity='.94' stroke='%23b9f6ff' stroke-width='1.4'/%3E%3Cpath d='M23.8 13A8.4 8.4 0 0 0 9.1 9.2' fill='none' stroke='%2358e6ff' stroke-width='2' stroke-linecap='round'/%3E%3Cpath d='M9 5.8v3.6h3.6' fill='none' stroke='%2358e6ff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M8.2 19A8.4 8.4 0 0 0 22.9 22.8' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round'/%3E%3Cpath d='M23 26.2v-3.6h-3.6' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='16' cy='16' r='2' fill='%23f3b75f'/%3E%3C/svg%3E") 16 16, crosshair;
+  --accent-rgb: 231 231 231;
+  --muted-rgb: 163 163 163;
+  --rotation-cursor: crosshair;
+  --text-flow-cursor: copy;
+  --micro-3d-cursor: grab;
   --ui-font-family: "Inter", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
   --ui-font-offset: 0px;
   --panel-width: 300px;
@@ -107,7 +112,7 @@ button:disabled {
 .startup-sequence {
   align-items: center;
   animation: startup-surface-reveal 4.1s linear both;
-  background-color: rgba(3, 7, 11, 0.99);
+  background-color: var(--bg);
   color: var(--text);
   display: flex;
   inset: 0;
@@ -151,7 +156,7 @@ button:disabled {
 
 .startup-grid {
   background-image:
-    radial-gradient(circle at 50% 50%, rgba(18, 64, 76, 0.24), transparent 34%),
+    radial-gradient(circle at 50% 50%, rgb(var(--accent-rgb) / 0.18), transparent 34%),
     linear-gradient(rgb(var(--accent-rgb) / 0.04) 1px, transparent 1px),
     linear-gradient(90deg, rgb(var(--accent-rgb) / 0.04) 1px, transparent 1px);
   background-size: 100% 100%, 38px 38px, 38px 38px;
@@ -451,7 +456,7 @@ button:disabled {
 
 .startup-skip {
   align-items: center;
-  background: rgba(7, 11, 16, 0.54);
+  background: var(--floating-bg);
   border: 0;
   border-radius: 5px;
   bottom: 38px;
@@ -489,7 +494,7 @@ button:disabled {
 
 .is-booting .canvas-viewport::before {
   animation: startup-canvas-scan 920ms 2.24s cubic-bezier(0.22, 0.82, 0.28, 1) both;
-  background: linear-gradient(90deg, transparent, rgb(var(--accent-rgb) / 0.82) 24%, #d9fbff 50%, rgb(var(--accent-rgb) / 0.82) 76%, transparent);
+  background: linear-gradient(90deg, transparent, rgb(var(--accent-rgb) / 0.82) 24%, var(--accent-strong) 50%, rgb(var(--accent-rgb) / 0.82) 76%, transparent);
   box-shadow: 0 0 20px rgb(var(--accent-rgb) / 0.36);
   content: "";
   height: 1px;
@@ -571,8 +576,8 @@ button:disabled {
 }
 
 @keyframes startup-wordmark-jitter {
-  0%, 22% { text-shadow: -6px 0 rgb(var(--accent-rgb) / 0.42), 6px 0 rgba(255, 119, 111, 0.28); transform: translateX(-2px); }
-  23%, 45% { text-shadow: 4px 0 rgb(var(--accent-rgb) / 0.34), -4px 0 rgba(255, 119, 111, 0.22); transform: translateX(2px); }
+  0%, 22% { text-shadow: -6px 0 rgb(var(--accent-rgb) / 0.42), 6px 0 rgb(var(--danger-rgb) / 0.28); transform: translateX(-2px); }
+  23%, 45% { text-shadow: 4px 0 rgb(var(--accent-rgb) / 0.34), -4px 0 rgb(var(--danger-rgb) / 0.22); transform: translateX(2px); }
   46%, 70% { text-shadow: -2px 0 rgb(var(--accent-rgb) / 0.28); transform: translateX(-1px); }
   71%, 100% { text-shadow: none; transform: translateX(0); }
 }
@@ -592,9 +597,9 @@ button:disabled {
 }
 
 @keyframes startup-surface-reveal {
-  0%, 34% { background-color: rgba(3, 7, 11, 0.99); }
-  45% { background-color: rgba(3, 7, 11, 0.66); }
-  56%, 100% { background-color: rgba(3, 7, 11, 0); }
+  0%, 34% { background-color: var(--bg); }
+  45% { background-color: rgb(0 0 0 / 0.66); }
+  56%, 100% { background-color: rgb(0 0 0 / 0); }
 }
 
 @keyframes startup-topbar-build {
@@ -1233,7 +1238,7 @@ html[lang="en"] .sidebar-tabs button svg {
 .capture-drop-indicator::before {
   background: var(--accent-fill);
   border-radius: 999px;
-  box-shadow: 0 0 0 1px rgba(7, 11, 16, 0.9), 0 0 10px rgb(var(--accent-rgb) / 0.35);
+  box-shadow: 0 0 0 1px var(--floating-bg), 0 0 10px rgb(var(--accent-rgb) / 0.35);
   content: "";
   height: 4px;
   left: 4px;
@@ -1245,7 +1250,7 @@ html[lang="en"] .sidebar-tabs button svg {
 
 .layer-drop-indicator::after,
 .capture-drop-indicator::after {
-  background: #08141b;
+  background: var(--floating-bg);
   border: 2px solid var(--accent-ui);
   border-radius: 50%;
   content: "";
@@ -1297,7 +1302,7 @@ html[lang="en"] .sidebar-tabs button svg {
 .layer-main > .object-text-visual,
 .layer-main > .object-shape-visual,
 .layer-main > .object-artboard-visual {
-  background: #111a20;
+  background: var(--surface-strong);
   border-radius: 4px;
   height: 34px;
   overflow: hidden;
@@ -1379,13 +1384,13 @@ html[lang="en"] .sidebar-tabs button svg {
 }
 
 .danger-icon-button {
-  color: rgba(255, 170, 164, 0.82);
+  color: rgb(var(--danger-rgb) / 0.82);
 }
 
 .danger-icon-button:hover,
 .danger-icon-button:focus-visible {
-  background: rgba(255, 119, 111, 0.12);
-  color: #ffc0bc;
+  background: rgb(var(--danger-rgb) / 0.12);
+  color: var(--danger);
 }
 
 .panel-empty,
@@ -1763,7 +1768,7 @@ html[lang="en"] .sidebar-tabs button svg {
 
 .last-composition-preview {
   aspect-ratio: 3 / 2;
-  background: #071116;
+  background: var(--canvas-bg);
   border-radius: 5px;
   display: block;
   overflow: hidden;
@@ -1874,13 +1879,13 @@ html[lang="en"] .sidebar-tabs button svg {
 
 .capture-delete-button:hover,
 .capture-delete-button:focus-visible {
-  background: rgba(255, 119, 111, 0.12);
+  background: rgb(var(--danger-rgb) / 0.12);
   color: var(--danger);
 }
 
 .capture-preview {
   aspect-ratio: 16 / 9;
-  background: #071116;
+  background: var(--canvas-bg);
   border-bottom: 1px solid var(--border);
   display: block;
   overflow: hidden;
@@ -2274,10 +2279,10 @@ html[lang="en"] .sidebar-tabs button svg {
 }
 
 .shortcut-status {
-  background: rgba(243, 183, 95, 0.08);
-  border: 1px solid rgba(243, 183, 95, 0.28);
+  background: rgb(var(--signal-rgb) / 0.08);
+  border: 1px solid rgb(var(--signal-rgb) / 0.28);
   border-radius: 5px;
-  color: #ffd893;
+  color: var(--signal);
   font-size: calc(9px + var(--ui-font-offset, 0px));
   line-height: 1.45;
   margin: -3px 0 0;
@@ -2358,8 +2363,8 @@ html[lang="en"] .sidebar-tabs button svg {
 
 .key-object-summary {
   align-items: center;
-  background: rgba(243, 183, 95, 0.06);
-  border: 1px solid rgba(243, 183, 95, 0.3);
+  background: rgb(var(--signal-rgb) / 0.06);
+  border: 1px solid rgb(var(--signal-rgb) / 0.3);
   border-radius: 6px;
   display: flex;
   gap: 10px;
@@ -2375,7 +2380,7 @@ html[lang="en"] .sidebar-tabs button svg {
 }
 
 .key-object-summary strong {
-  color: #ffd893;
+  color: var(--signal);
   font-size: calc(10px + var(--ui-font-offset, 0px));
   min-width: 0;
   overflow: hidden;
@@ -2626,13 +2631,13 @@ html[lang="en"] .sidebar-tabs button svg {
 .marker-color-swatch {
   border: 1px solid rgba(255, 255, 255, 0.42);
   border-radius: 50%;
-  box-shadow: 0 0 0 1px rgba(2, 7, 11, 0.7);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.7);
   height: 16px;
   width: 16px;
 }
 
 .marker-color-check {
-  color: #061017;
+  color: #000;
   pointer-events: none;
   position: absolute;
   stroke-width: 3;
@@ -2790,7 +2795,7 @@ html[lang="en"] .sidebar-tabs button svg {
 .micro-3d-controls input[type="range"]::-webkit-slider-thumb {
   appearance: none;
   background: var(--accent-strong);
-  border: 2px solid #071017;
+  border: 2px solid var(--accent-on);
   border-radius: 50%;
   box-shadow: 0 0 0 1px rgb(var(--accent-rgb) / 0.38);
   height: 13px;
@@ -2806,7 +2811,7 @@ html[lang="en"] .sidebar-tabs button svg {
 
 .micro-3d-controls input[type="range"]::-moz-range-thumb {
   background: var(--accent-strong);
-  border: 2px solid #071017;
+  border: 2px solid var(--accent-on);
   border-radius: 50%;
   height: 11px;
   width: 11px;
@@ -2864,13 +2869,13 @@ html[lang="en"] .sidebar-tabs button svg {
 }
 
 .danger-button {
-  background: rgba(255, 119, 111, 0.06);
+  background: rgb(var(--danger-rgb) / 0.06);
   border: 0;
-  color: #ffaaa4;
+  color: var(--danger);
 }
 
 .danger-button:hover {
-  background: rgba(255, 119, 111, 0.12);
+  background: rgb(var(--danger-rgb) / 0.12);
 }
 
 .full-width {
@@ -3104,7 +3109,7 @@ html[lang="en"] .sidebar-tabs button svg {
 }
 
 .canvas-viewport.uses-3d .board-object.is-selected:not(.is-locked) .object-frame {
-  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='%23071117' fill-opacity='.92' stroke='%23b9f6ff' stroke-width='1.5'/%3E%3Cellipse cx='16' cy='16' rx='10' ry='4' fill='none' stroke='%23ff777b' stroke-width='1.5'/%3E%3Cellipse cx='16' cy='16' rx='4' ry='10' fill='none' stroke='%2372e3a2' stroke-width='1.5'/%3E%3Cpath d='M5.5 16a10.5 10.5 0 0 0 18 7.4' fill='none' stroke='%2370b0ff' stroke-width='1.5' stroke-linecap='round'/%3E%3Cpath d='m23.6 20.6-.2 3.1-3-.4' fill='none' stroke='%2370b0ff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='16' cy='16' r='2' fill='white'/%3E%3C/svg%3E") 16 16, grab;
+  cursor: var(--micro-3d-cursor);
 }
 
 .canvas-viewport.uses-3d .board-object.is-selected.is-locked .object-frame {
@@ -3119,7 +3124,7 @@ html[lang="en"] .sidebar-tabs button svg {
 .selection-marquee {
   background: rgb(var(--accent-rgb) / 0.1);
   border: 1px solid var(--accent-ui);
-  box-shadow: 0 0 0 1px rgba(7, 11, 16, 0.55), 0 0 18px rgb(var(--accent-rgb) / 0.08);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.55), 0 0 18px rgb(var(--accent-rgb) / 0.08);
   pointer-events: none;
   position: absolute;
   z-index: 15;
@@ -3190,14 +3195,14 @@ html[lang="en"] .sidebar-tabs button svg {
 
 .board-object.is-selected .object-frame::after {
   border-color: var(--accent-ui);
-  box-shadow: 0 0 0 max(1px, calc(1px * var(--inverse-zoom))) rgba(7, 11, 16, 0.65);
+  box-shadow: 0 0 0 max(1px, calc(1px * var(--inverse-zoom))) rgb(0 0 0 / 0.65);
 }
 
 .board-object.is-selected.is-key-object .object-frame::after {
   border-color: var(--accent-strong);
   border-width: calc(3px * var(--inverse-zoom));
   box-shadow:
-    0 0 0 calc(1px * var(--inverse-zoom)) rgba(7, 11, 16, 0.92),
+    0 0 0 calc(1px * var(--inverse-zoom)) rgb(0 0 0 / 0.92),
     0 0 0 calc(2px * var(--inverse-zoom)) rgb(var(--accent-rgb) / 0.4);
 }
 
@@ -3244,7 +3249,7 @@ html[lang="en"] .sidebar-tabs button svg {
 }
 
 .canvas-video-player {
-  background: #05090d;
+  background: #050505;
   height: 100%;
   overflow: hidden;
   position: relative;
@@ -3262,7 +3267,7 @@ html[lang="en"] .sidebar-tabs button svg {
 
 .canvas-video-controls {
   align-items: center;
-  background: linear-gradient(180deg, rgba(4, 8, 12, 0.12), rgba(4, 8, 12, 0.92));
+  background: linear-gradient(180deg, rgb(0 0 0 / 0.12), rgb(0 0 0 / 0.92));
   bottom: 0;
   display: grid;
   gap: 6px;
@@ -3286,7 +3291,7 @@ html[lang="en"] .sidebar-tabs button svg {
 .canvas-video-control-button,
 .canvas-video-reveal {
   align-items: center;
-  background: rgba(7, 16, 23, 0.76);
+  background: rgb(0 0 0 / 0.76);
   border: 0;
   border-radius: 50%;
   color: #fff;
@@ -3361,7 +3366,7 @@ html[lang="en"] .sidebar-tabs button svg {
 }
 
 .canvas-text-editor:empty::before {
-  color: rgba(237, 247, 251, 0.38);
+  color: rgb(var(--muted-rgb) / 0.58);
   content: attr(data-placeholder);
   pointer-events: none;
 }
@@ -3373,11 +3378,11 @@ html[lang="en"] .sidebar-tabs button svg {
 .board-object.is-text-editing .object-frame::after {
   border-color: var(--accent-strong);
   border-style: dashed;
-  box-shadow: 0 0 0 max(1px, calc(1px * var(--inverse-zoom))) rgba(7, 11, 16, 0.7);
+  box-shadow: 0 0 0 max(1px, calc(1px * var(--inverse-zoom))) rgb(0 0 0 / 0.7);
 }
 
 .text-frame-label {
-  background: #08141b;
+  background: var(--floating-bg);
   border-radius: 4px;
   color: var(--accent-strong);
   font-size: calc(9px + var(--ui-font-offset, 0px));
@@ -3400,7 +3405,7 @@ html[lang="en"] .sidebar-tabs button svg {
 
 .object-markers {
   align-items: center;
-  background: rgba(7, 11, 16, 0.88);
+  background: var(--floating-bg);
   border: 1px solid var(--border);
   border-radius: 5px;
   display: flex;
@@ -3420,11 +3425,11 @@ html[lang="en"] .sidebar-tabs button svg {
 }
 
 .key-object-badge {
-  background: #08141b;
+  background: var(--floating-bg);
   border: 1px solid var(--signal);
   border-radius: 4px;
   bottom: 6px;
-  color: #ffd893;
+  color: var(--signal);
   font-size: calc(9px + var(--ui-font-offset, 0px));
   font-weight: 800;
   left: 6px;
@@ -3440,7 +3445,7 @@ html[lang="en"] .sidebar-tabs button svg {
 
 .selection-group-frame {
   border: max(1px, calc(1px * var(--inverse-zoom))) dashed var(--accent-ui);
-  box-shadow: 0 0 0 max(1px, calc(1px * var(--inverse-zoom))) rgba(7, 11, 16, 0.5);
+  box-shadow: 0 0 0 max(1px, calc(1px * var(--inverse-zoom))) rgb(0 0 0 / 0.5);
   pointer-events: none;
   position: absolute;
   z-index: 8;
@@ -3491,7 +3496,7 @@ html[lang="en"] .sidebar-tabs button svg {
 }
 
 .gizmo-orbit {
-  background: radial-gradient(circle, rgb(var(--accent-rgb) / 0.1), rgba(7, 16, 23, 0.76) 58%, rgba(7, 16, 23, 0.12) 72%);
+  background: radial-gradient(circle, rgb(var(--accent-rgb) / 0.1), rgb(0 0 0 / 0.76) 58%, rgb(0 0 0 / 0.12) 72%);
   border: 0;
   border-radius: 50%;
   color: #fff;
@@ -3507,7 +3512,7 @@ html[lang="en"] .sidebar-tabs button svg {
 .gizmo-orbit:hover,
 .gizmo-orbit:focus-visible,
 .gizmo-orbit.is-active {
-  background: radial-gradient(circle, rgb(var(--accent-rgb) / 0.2), rgba(7, 16, 23, 0.86) 58%, rgba(7, 16, 23, 0.14) 72%);
+  background: radial-gradient(circle, rgb(var(--accent-rgb) / 0.2), rgb(0 0 0 / 0.86) 58%, rgb(0 0 0 / 0.14) 72%);
   outline: 0;
 }
 
@@ -3528,27 +3533,27 @@ html[lang="en"] .sidebar-tabs button svg {
 }
 
 .gizmo-ring-x {
-  stroke: #ff6f73;
+  stroke: var(--axis-x);
 }
 
 .gizmo-ring-y {
-  stroke: #69df9b;
+  stroke: var(--axis-y);
 }
 
 .gizmo-ring-z {
-  stroke: #62a8ff;
+  stroke: var(--axis-z);
   stroke-dasharray: 4 3;
 }
 
 .gizmo-core {
-  fill: #f6fbff;
-  stroke: #071017;
+  fill: var(--text);
+  stroke: var(--bg);
   stroke-width: 2;
 }
 
 .gizmo-axis {
   align-items: center;
-  background: #08141b;
+  background: var(--floating-bg);
   border: 0;
   border-radius: 50%;
   cursor: grab;
@@ -3566,31 +3571,31 @@ html[lang="en"] .sidebar-tabs button svg {
 .gizmo-axis:hover,
 .gizmo-axis:focus-visible,
 .gizmo-axis.is-active {
-  box-shadow: 0 0 0 2px rgba(7, 16, 23, 0.82), 0 0 0 3px currentColor;
+  box-shadow: 0 0 0 2px rgb(0 0 0 / 0.82), 0 0 0 3px currentColor;
   outline: 0;
 }
 
 .gizmo-axis-x {
-  color: #ff777b;
+  color: var(--axis-x);
   right: 0;
   top: 45px;
 }
 
 .gizmo-axis-y {
-  color: #72e3a2;
+  color: var(--axis-y);
   left: 45px;
   top: 0;
 }
 
 .gizmo-axis-z {
   bottom: 10px;
-  color: #70b0ff;
+  color: var(--axis-z);
   left: 2px;
 }
 
 .gizmo-caption {
   bottom: -3px;
-  color: rgba(237, 247, 251, 0.76);
+  color: rgb(var(--muted-rgb) / 0.9);
   font-size: calc(9px + var(--ui-font-offset, 0px));
   font-weight: 750;
   left: 50%;
@@ -3604,7 +3609,7 @@ html[lang="en"] .sidebar-tabs button svg {
 .resize-handle,
 .text-frame-handle {
   align-items: center;
-  background: #08141b;
+  background: var(--floating-bg);
   border: 1px solid var(--accent-ui);
   color: var(--accent);
   cursor: pointer;
@@ -3653,7 +3658,7 @@ html[lang="en"] .sidebar-tabs button svg {
 }
 
 .text-frame-handle {
-  background: #08141b;
+  background: var(--floating-bg);
   border: 2px solid var(--accent-strong);
   border-radius: 50%;
   height: 12px;
@@ -3713,20 +3718,20 @@ html[lang="en"] .sidebar-tabs button svg {
 .resize-handle.is-active {
   background: var(--accent-fill);
   border-color: var(--accent-strong);
-  box-shadow: 0 0 0 2px rgba(7, 11, 16, 0.74);
+  box-shadow: 0 0 0 2px rgb(0 0 0 / 0.74);
 }
 
 .text-frame-handle:hover,
 .text-frame-handle:focus-visible,
 .text-frame-handle.is-active {
   background: var(--accent-strong);
-  box-shadow: 0 0 0 2px rgba(7, 11, 16, 0.76);
+  box-shadow: 0 0 0 2px rgb(0 0 0 / 0.76);
   outline: 0;
 }
 
 .text-overflow-port {
   align-items: center;
-  background: rgba(7, 16, 23, 0.94);
+  background: var(--floating-bg);
   border: 1px solid var(--signal);
   border-radius: 2px;
   bottom: 5px;
@@ -3748,27 +3753,27 @@ html[lang="en"] .sidebar-tabs button svg {
 .text-overflow-port:focus-visible,
 .text-overflow-port.is-loaded {
   background: var(--signal);
-  color: #071017;
+  color: var(--bg);
 }
 
 .text-overflow-port:focus-visible {
-  box-shadow: 0 0 0 2px rgba(7, 11, 16, 0.82), 0 0 0 3px var(--signal);
+  box-shadow: 0 0 0 2px rgb(0 0 0 / 0.82), 0 0 0 3px var(--signal);
   outline: 0;
 }
 
 .canvas-viewport.is-text-flow-loaded,
 .canvas-viewport.is-text-flow-loaded .world-layer,
 .canvas-viewport.is-text-flow-loaded .object-frame {
-  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Cpath d='M4 2 4 24 9.7 18.5 13.5 27 17 25.4 13.1 17H21Z' fill='%23071117' stroke='%23b9f6ff' stroke-width='1.4' stroke-linejoin='round'/%3E%3Crect x='17' y='4' width='12' height='12' rx='2' fill='%23071117' stroke='%23f3b75f'/%3E%3Cpath d='M20 8h6M23 6v5' stroke='%23f3b75f' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E") 4 2, copy;
+  cursor: var(--text-flow-cursor);
 }
 
 .text-flow-placement-status {
   align-items: center;
   backdrop-filter: blur(12px);
-  background: rgba(34, 29, 18, 0.94);
+  background: var(--floating-bg);
   border-radius: 7px;
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.3);
-  color: #ffe0a6;
+  color: var(--signal);
   display: flex;
   gap: 9px;
   left: 50%;
@@ -3791,14 +3796,14 @@ html[lang="en"] .sidebar-tabs button svg {
 }
 
 .text-flow-placement-status small {
-  color: rgba(255, 224, 166, 0.72);
+  color: rgb(var(--signal-rgb) / 0.72);
   font-size: calc(8px + var(--ui-font-offset, 0px));
   white-space: nowrap;
 }
 
 .text-flow-cursor-symbol {
   align-items: center;
-  background: rgba(243, 183, 95, 0.12);
+  background: rgb(var(--signal-rgb) / 0.12);
   border-radius: 4px;
   display: flex;
   height: 26px;
@@ -3815,7 +3820,7 @@ html[lang="en"] .sidebar-tabs button svg {
 
 .pivot-indicator {
   background: var(--signal);
-  border: 2px solid #08141b;
+  border: 2px solid var(--floating-bg);
   border-radius: 50%;
   box-shadow: 0 0 0 1px var(--signal);
   height: 10px;
@@ -3847,7 +3852,7 @@ html[lang="en"] .sidebar-tabs button svg {
 }
 
 .empty-visual span {
-  background: rgba(16, 28, 38, 0.88);
+  background: var(--surface-strong);
   border: 1px solid var(--border-strong);
   display: block;
   height: 74px;
@@ -3898,7 +3903,7 @@ html[lang="en"] .sidebar-tabs button svg {
 .drop-overlay {
   align-items: center;
   backdrop-filter: blur(4px);
-  background: rgba(6, 14, 19, 0.86);
+  background: var(--floating-bg);
   border: 2px dashed var(--accent-ui);
   color: var(--accent);
   display: flex;
@@ -4149,7 +4154,7 @@ html[lang="en"] .sidebar-tabs button svg {
 
 .stage-image {
   align-items: center;
-  background: #05090d;
+  background: #050505;
   display: flex;
   justify-content: center;
   overflow: hidden;
@@ -4179,7 +4184,7 @@ html[lang="en"] .sidebar-tabs button svg {
 .video-badge {
   align-items: center;
   backdrop-filter: blur(8px);
-  background: rgba(7, 11, 16, 0.82);
+  background: rgb(0 0 0 / 0.82);
   border: 0;
   border-radius: 999px;
   bottom: 8px;
@@ -4254,7 +4259,7 @@ html[lang="en"] .sidebar-tabs button svg {
   background:
     linear-gradient(45deg, rgba(255, 255, 255, 0.018) 25%, transparent 25%),
     linear-gradient(-45deg, rgba(255, 255, 255, 0.018) 25%, transparent 25%),
-    #05090d;
+    #050505;
   background-position: 0 0, 8px 8px;
   background-size: 16px 16px;
   border: 1px solid var(--border);
@@ -4350,7 +4355,7 @@ html[lang="en"] .sidebar-tabs button svg {
 .modal-backdrop {
   align-items: center;
   backdrop-filter: blur(8px);
-  background: rgba(2, 6, 9, 0.72);
+  background: rgb(0 0 0 / 0.72);
   display: flex;
   inset: 0;
   justify-content: center;
@@ -5954,9 +5959,9 @@ html[lang="en"] .sidebar-tabs button svg {
 
 .delete-impact-icon {
   align-items: center;
-  background: rgba(255, 180, 84, 0.1);
+  background: rgb(var(--signal-rgb) / 0.1);
   border-radius: 8px;
-  color: #ffc078;
+  color: var(--signal);
   display: inline-flex;
   flex: 0 0 auto;
   height: 38px;
@@ -6831,7 +6836,7 @@ button.status-label:hover {
 }
 
 .toast-error {
-  border-color: rgba(255, 119, 111, 0.5);
+  border-color: rgb(var(--danger-rgb) / 0.5);
 }
 
 .toast-error svg,

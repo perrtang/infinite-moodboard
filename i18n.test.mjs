@@ -21,6 +21,11 @@ test("account access copy is available in all built-in locales", () => {
   assert.equal(translateInterfaceText("帳號與隱私", "zh-Hans"), "账号与隐私");
 });
 
+test("the default fashion monochrome palette name is localized", () => {
+  assert.equal(translateInterfaceText("時尚黑白", "en"), "Fashion Monochrome");
+  assert.equal(translateInterfaceText("時尚黑白", "zh-Hans"), "时尚黑白");
+});
+
 test("dynamic account labels retain the user name", () => {
   assert.equal(translateInterfaceText("帳號：Perr Tang", "en"), "Account: Perr Tang");
 });

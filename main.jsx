@@ -244,6 +244,7 @@ import {
 import {
   ACTIVE_THEME_STORAGE_KEY,
   BUILT_IN_THEMES,
+  DEFAULT_INTERFACE_THEME_ID,
   THEME_STORAGE_KEY,
   interfaceThemeCssVariables,
   interfaceThemeMode,
@@ -2520,10 +2521,10 @@ function CaptureThumbnail({ capture, board }) {
   const height = Math.max(1, capture.viewport.height);
   return (
     <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${capture.name} 預覽`} preserveAspectRatio="xMidYMid slice">
-      <rect width={width} height={height} fill="#071116" />
+      <rect width={width} height={height} fill="var(--canvas-bg)" />
       <g opacity="0.32">
-        {Array.from({ length: Math.ceil(width / 36) + 1 }, (_, index) => <line key={`x-${index}`} x1={index * 36} y1="0" x2={index * 36} y2={height} stroke="#2a5660" strokeWidth="1" />)}
-        {Array.from({ length: Math.ceil(height / 36) + 1 }, (_, index) => <line key={`y-${index}`} x1="0" y1={index * 36} x2={width} y2={index * 36} stroke="#2a5660" strokeWidth="1" />)}
+        {Array.from({ length: Math.ceil(width / 36) + 1 }, (_, index) => <line key={`x-${index}`} x1={index * 36} y1="0" x2={index * 36} y2={height} stroke="var(--text-muted)" strokeWidth="1" />)}
+        {Array.from({ length: Math.ceil(height / 36) + 1 }, (_, index) => <line key={`y-${index}`} x1="0" y1={index * 36} x2={width} y2={index * 36} stroke="var(--text-muted)" strokeWidth="1" />)}
       </g>
       {capture.objects.filter((state) => state.visible).map((state) => {
         const object = mediaById.get(state.id);
@@ -2537,9 +2538,9 @@ function CaptureThumbnail({ capture, board }) {
           <g key={state.id} transform={`translate(${pivotX} ${pivotY}) rotate(${state.rotation})`}>
             {isVideoObject(object) ? (
               <g>
-                <rect x={-anchor.x * scaledWidth} y={-anchor.y * scaledHeight} width={scaledWidth} height={scaledHeight} rx="5" fill="#14232b" stroke="#58e6ff" strokeOpacity="0.55" />
-                <circle cx={(0.5 - anchor.x) * scaledWidth} cy={(0.5 - anchor.y) * scaledHeight} r={Math.max(8, Math.min(scaledWidth, scaledHeight) * 0.11)} fill="#58e6ff" fillOpacity="0.86" />
-                <path d="M -3 -5 L 6 0 L -3 5 Z" transform={`translate(${(0.5 - anchor.x) * scaledWidth} ${(0.5 - anchor.y) * scaledHeight})`} fill="#071116" />
+                <rect x={-anchor.x * scaledWidth} y={-anchor.y * scaledHeight} width={scaledWidth} height={scaledHeight} rx="5" fill="var(--surface-strong)" stroke="var(--accent-ui)" strokeOpacity="0.55" />
+                <circle cx={(0.5 - anchor.x) * scaledWidth} cy={(0.5 - anchor.y) * scaledHeight} r={Math.max(8, Math.min(scaledWidth, scaledHeight) * 0.11)} fill="var(--accent-fill)" fillOpacity="0.86" />
+                <path d="M -3 -5 L 6 0 L -3 5 Z" transform={`translate(${(0.5 - anchor.x) * scaledWidth} ${(0.5 - anchor.y) * scaledHeight})`} fill="var(--accent-on)" />
               </g>
             ) : isTextObject(object) ? (
               <foreignObject x={-anchor.x * scaledWidth} y={-anchor.y * scaledHeight} width={scaledWidth} height={scaledHeight}>
@@ -5722,7 +5723,7 @@ function App() {
   const [localBoards, setLocalBoards] = useState([]);
   const [syncJobs, setSyncJobs] = useState([]);
   const [customThemes, setCustomThemes] = useState(loadStoredInterfaceThemes);
-  const [activeThemeId, setActiveThemeId] = useState(() => localStorage.getItem(ACTIVE_THEME_STORAGE_KEY) || BUILT_IN_THEMES[0].id);
+  const [activeThemeId, setActiveThemeId] = useState(() => localStorage.getItem(ACTIVE_THEME_STORAGE_KEY) || DEFAULT_INTERFACE_THEME_ID);
   const [previewTheme, setPreviewTheme] = useState(null);
   const [interfaceTypography, setInterfaceTypography] = useState(loadStoredInterfaceTypography);
   const [canvasBackground, setCanvasBackground] = useState(loadStoredCanvasBackground);
@@ -5790,7 +5791,9 @@ function App() {
 
   const availableThemes = useMemo(() => [...BUILT_IN_THEMES, ...customThemes], [customThemes]);
   const activeTheme = useMemo(
-    () => availableThemes.find((theme) => theme.id === activeThemeId) || BUILT_IN_THEMES[0],
+    () => availableThemes.find((theme) => theme.id === activeThemeId)
+      || availableThemes.find((theme) => theme.id === DEFAULT_INTERFACE_THEME_ID)
+      || BUILT_IN_THEMES[0],
     [activeThemeId, availableThemes],
   );
   const activeThemeMode = useMemo(() => interfaceThemeMode(activeTheme), [activeTheme]);
@@ -6673,7 +6676,7 @@ function App() {
 
   const setInterfaceMode = useCallback((mode) => {
     const storageKey = mode === "light" ? LAST_LIGHT_THEME_STORAGE_KEY : LAST_DARK_THEME_STORAGE_KEY;
-    const fallbackId = mode === "light" ? "petfashion-editorial" : "deep-cyan";
+    const fallbackId = mode === "light" ? "petfashion-editorial" : DEFAULT_INTERFACE_THEME_ID;
     const rememberedId = localStorage.getItem(storageKey);
     const theme = availableThemes.find((item) => item.id === rememberedId && interfaceThemeMode(item) === mode)
       || availableThemes.find((item) => item.id === fallbackId)
@@ -6704,7 +6707,7 @@ function App() {
     if (!theme) return;
     setCustomThemes((current) => current.filter((item) => item.id !== themeId));
     setPreviewTheme(null);
-    if (activeThemeId === themeId) setActiveThemeId(BUILT_IN_THEMES[0].id);
+    if (activeThemeId === themeId) setActiveThemeId(DEFAULT_INTERFACE_THEME_ID);
     announce(`已刪除介面配色「${theme.name}」。`, "success");
   }, [activeThemeId, announce, customThemes]);
 
@@ -9738,6 +9741,7 @@ function App() {
     <main
       ref={appRootRef}
       className={`moodboard-app ${isPanning ? "is-panning" : ""} ${isBooting ? "is-booting" : "is-boot-ready"} ${focusMode ? "is-focus-mode" : ""}`}
+      data-interface-theme={(previewTheme || activeTheme).id}
       style={interfaceThemeStyle}
       aria-busy={isBooting}
     >
