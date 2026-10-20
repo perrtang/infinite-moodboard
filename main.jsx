@@ -5993,6 +5993,8 @@ function App() {
   const preparedDownloadsRef = useRef([]);
   const emailLinkHandledRef = useRef(false);
   const doubleClickPanMovedRef = useRef(false);
+  const zoomValueTapRef = useRef(0);
+  const canvasToolTapRef = useRef({ select: 0, hand: 0 });
   const blankClickRef = useRef(null);
   const objectClickRef = useRef(null);
   const objectTapRef = useRef(null);
@@ -9796,6 +9798,47 @@ function App() {
     announce(`已將 ${visible.length} 個可見物件完整顯示在視窗中。`, "success");
   }, [announce]);
 
+  const toggleViewportScale = useCallback(() => {
+    if (Math.abs(viewRef.current.zoom - 1) < 0.005) fitToContent();
+    else resetZoomAtCenter();
+  }, [fitToContent, resetZoomAtCenter]);
+
+  const onZoomValueClick = useCallback((event) => {
+    const now = performance.now();
+    const isRapidSecondActivation = event.detail >= 2
+      || (zoomValueTapRef.current > 0 && now - zoomValueTapRef.current <= 420);
+    if (!isRapidSecondActivation) {
+      zoomValueTapRef.current = now;
+      return;
+    }
+    event.preventDefault();
+    zoomValueTapRef.current = 0;
+    toggleViewportScale();
+  }, [toggleViewportScale]);
+
+  const onZoomValueKeyDown = useCallback((event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    zoomValueTapRef.current = 0;
+    toggleViewportScale();
+  }, [toggleViewportScale]);
+
+  const onPrimaryCanvasToolClick = useCallback((event, nextTool) => {
+    setTool(nextTool);
+    if (event.detail === 0) return;
+    const now = performance.now();
+    const previousActivation = canvasToolTapRef.current[nextTool];
+    const isRapidSecondActivation = event.detail >= 2
+      || (previousActivation > 0 && now - previousActivation <= 420);
+    if (!isRapidSecondActivation) {
+      canvasToolTapRef.current = { select: 0, hand: 0, [nextTool]: now };
+      return;
+    }
+    canvasToolTapRef.current = { select: 0, hand: 0 };
+    if (nextTool === "select") fitToContent();
+    else resetZoomAtCenter();
+  }, [fitToContent, resetZoomAtCenter]);
+
   useEffect(() => {
     const paste = (event) => {
       const files = [...(event.clipboardData?.files || [])].filter((file) => file.type.startsWith("image/") || file.type.startsWith("video/") || isSvgFile(file));
@@ -10375,8 +10418,8 @@ function App() {
               <GripVertical size={15} aria-hidden="true" />
             </button>
             <div className="tool-group">
-              <IconButton label="選取工具 Shift+V" active={tool === "select"} aria-pressed={tool === "select"} onClick={() => setTool("select")}><MousePointer2 size={18} /></IconButton>
-              <IconButton label="平移工具 Shift+H（按住 Shift 可暫時選取）" active={tool === "hand"} aria-pressed={tool === "hand"} onClick={() => setTool("hand")}><Hand size={18} /></IconButton>
+              <IconButton label="選取工具 Shift+V；連按兩下顯示全部物件" active={tool === "select"} aria-pressed={tool === "select"} onClick={(event) => onPrimaryCanvasToolClick(event, "select")}><MousePointer2 size={18} /></IconButton>
+              <IconButton label="平移工具 Shift+H（按住 Shift 可暫時選取）；連按兩下回到 100%" active={tool === "hand"} aria-pressed={tool === "hand"} onClick={(event) => onPrimaryCanvasToolClick(event, "hand")}><Hand size={18} /></IconButton>
               <IconButton
                 label={authReady ? "進階 3D 旋轉工具 Shift+3（拖曳選取物件旋轉）" : "進階 3D 旋轉工具 Shift+3（需要登入）"}
                 active={tool === "3d"}
@@ -10401,9 +10444,17 @@ function App() {
             <div className="tool-divider" />
             <div className="zoom-group">
               <IconButton label="縮小" onClick={() => { const rect = canvasRef.current.getBoundingClientRect(); zoomAround(rect.left + rect.width / 2, rect.top + rect.height / 2, view.zoom / 1.2); }}><ZoomOut size={17} /></IconButton>
-              <button className="zoom-value" type="button" onClick={resetZoomAtCenter} title="以畫面中央為軸回到 100%">{Math.round(view.zoom * 100)}%</button>
+              <button
+                className="zoom-value"
+                type="button"
+                aria-label={`縮放 ${Math.round(view.zoom * 100)}%；連按兩下切換顯示全部與 100%`}
+                title="連按兩下切換顯示全部與 100%"
+                onClick={onZoomValueClick}
+                onKeyDown={onZoomValueKeyDown}
+              >
+                {Math.round(view.zoom * 100)}%
+              </button>
               <IconButton label="放大" onClick={() => { const rect = canvasRef.current.getBoundingClientRect(); zoomAround(rect.left + rect.width / 2, rect.top + rect.height / 2, view.zoom * 1.2); }}><ZoomIn size={17} /></IconButton>
-              <IconButton label="顯示全部物件" onClick={fitToContent}><Maximize2 size={17} /></IconButton>
             </div>
           </div>
 

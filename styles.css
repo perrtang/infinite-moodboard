@@ -3143,6 +3143,7 @@ html[lang="en"] .sidebar-tabs button svg {
 .zoom-value {
   background: transparent;
   border: 0;
+  border-radius: 5px;
   color: var(--text-muted);
   cursor: pointer;
   font-family: "SFMono-Regular", Menlo, monospace;
@@ -3150,6 +3151,18 @@ html[lang="en"] .sidebar-tabs button svg {
   min-height: 34px;
   min-width: 43px;
   padding: 0 3px;
+  touch-action: manipulation;
+}
+
+.zoom-value:hover,
+.zoom-value:focus-visible {
+  background: var(--quiet-bg);
+  color: var(--text);
+}
+
+.zoom-value:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent-strong);
+  outline: none;
 }
 
 .canvas-viewport {
@@ -7593,7 +7606,7 @@ button.status-label:hover {
 
   .canvas-toolbar .tool-divider,
   .canvas-toolbar .zoom-group .icon-button:first-child,
-  .canvas-toolbar .zoom-group .icon-button:nth-last-child(2) {
+  .canvas-toolbar .zoom-group .icon-button:last-child {
     display: none;
   }
 
@@ -8114,7 +8127,7 @@ button.status-label:hover {
 
   .tool-divider,
   .zoom-group .icon-button:first-child,
-  .zoom-group .icon-button:nth-last-child(2) {
+  .zoom-group .icon-button:last-child {
     display: none;
   }
 

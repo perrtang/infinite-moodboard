@@ -1,8 +1,8 @@
 {
   "product": "Infinite Moodboard",
   "channel": "stable",
-  "version": "0.19.0",
+  "version": "0.20.0",
   "releasedAt": "2026-10-20",
-  "summary": "精簡手機頂列：左右面板保留直接入口，協作、帳號與設定整合進更多功能選單。",
+  "summary": "縮放百分比支援雙擊與雙點切換顯示全部物件及 100%，並移除重複的獨立按鈕。",
   "url": "https://perrtang.github.io/infinite-moodboard/"
 }

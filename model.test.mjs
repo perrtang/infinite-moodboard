@@ -168,6 +168,11 @@ test("interface locale detection and language packs cover Traditional Chinese, S
   assert.equal(translateInterfaceText("Infinite Moodboard v0.18.1 可以更新", "en"), "Infinite Moodboard v0.18.1 is ready");
   assert.equal(translateInterfaceText("更多功能", "en"), "More options");
   assert.equal(translateInterfaceText("開啟物件屬性側欄", "zh-Hans"), "打开对象属性侧列");
+  assert.equal(translateInterfaceText("縮放 46%；連按兩下切換顯示全部與 100%", "en"), "Zoom 46%; double-click or double-tap to toggle Fit all and 100%");
+  assert.equal(translateInterfaceText("連按兩下切換顯示全部與 100%", "en"), "Double-click or double-tap to toggle Fit all and 100%");
+  assert.equal(translateInterfaceText("選取工具 Shift+V；連按兩下顯示全部物件", "en"), "Select tool Shift+V; double-click or double-tap to fit all objects");
+  assert.equal(translateInterfaceText("平移工具 Shift+H（按住 Shift 可暫時選取）；連按兩下回到 100%", "zh-Hans"), "平移工具 Shift+H（按住 Shift 可暂时选择）；双击回到 100%");
+  assert.equal(translateInterfaceText("連按兩下切換顯示全部與 100%", "zh-Hans"), "双击切换显示全部与 100%");
   assert.equal(translateInterfaceText("登入後使用協作與同步", "en"), "Sign in for collaboration and sync");
   assert.equal(translateInterfaceText("訪客模式", "en"), "Guest mode");
   assert.equal(translateInterfaceText("登入後使用進階 3D", "zh-Hans"), "登录后使用进阶 3D");
