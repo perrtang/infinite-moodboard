@@ -11,6 +11,7 @@ const DRIVE_API_ROOT = "https://www.googleapis.com/drive/v3";
 const DRIVE_UPLOAD_ROOT = "https://www.googleapis.com/upload/drive/v3";
 const GOOGLE_IDENTITY_SCRIPT = "https://accounts.google.com/gsi/client";
 const DEFAULT_QUOTA_SAFETY_BYTES = 64 * 1024;
+export const MAX_RETAINED_DRIVE_REVISIONS = 24;
 
 let identityScriptPromise;
 
@@ -139,6 +140,26 @@ export function normalizeDriveFile(file = {}) {
     webViewLink: String(file.webViewLink || ""),
     parents: Array.isArray(file.parents) ? file.parents.map(String) : [],
     boardId: String(file.appProperties?.boardId || ""),
+    capabilities: {
+      canDownload: file.capabilities?.canDownload !== false,
+      canReadRevisions: file.capabilities?.canReadRevisions !== false,
+    },
+  };
+}
+
+export function normalizeDriveRevision(revision = {}) {
+  return {
+    id: String(revision.id || ""),
+    mimeType: String(revision.mimeType || DRIVE_FILE_MIME_TYPE),
+    modifiedTime: String(revision.modifiedTime || ""),
+    size: finiteNumber(revision.size),
+    keepForever: revision.keepForever === true,
+    originalFilename: String(revision.originalFilename || ""),
+    lastModifyingUser: {
+      displayName: String(revision.lastModifyingUser?.displayName || ""),
+      emailAddress: String(revision.lastModifyingUser?.emailAddress || ""),
+      photoLink: String(revision.lastModifyingUser?.photoLink || ""),
+    },
   };
 }
 
@@ -163,6 +184,7 @@ export function normalizeDriveState(value) {
       version: String(link.version || ""),
       modifiedTime: String(link.modifiedTime || ""),
       size: finiteNumber(link.size),
+      headRevisionId: String(link.headRevisionId || ""),
       syncedRevision: finiteNumber(link.syncedRevision),
       syncedUpdatedAt: String(link.syncedUpdatedAt || ""),
     };
@@ -203,6 +225,7 @@ export function linkDriveFile(state, board, file) {
         version: remote.version,
         modifiedTime: remote.modifiedTime,
         size: remote.size,
+        headRevisionId: remote.headRevisionId,
         syncedRevision: finiteNumber(board.revision),
         syncedUpdatedAt: String(board.updatedAt || ""),
       },
@@ -220,6 +243,7 @@ export function unlinkDriveFile(state, boardId) {
 export function driveErrorMessage(error) {
   const reason = error?.reason || error?.details?.error?.errors?.[0]?.reason || "";
   if (error?.code === "drive/conflict") return "Drive 上已有較新的版本；請選擇要開啟雲端版本或另存複本。";
+  if (error?.code === "drive/revision") return error?.message || "無法安全建立或讀取 Google Drive 版本；目前 Moodboard 未受影響。";
   if (reason === "storageQuotaExceeded" || error?.code === "drive/quota") return "Google Drive 空間不足；畫布仍安全保存在這台裝置。";
   if (["authError", "invalidCredentials"].includes(reason) || error?.status === 401) return "Google Drive 授權已失效；請重新連結後再同步。";
   if (["insufficientPermissions", "forbidden"].includes(reason) || error?.status === 403) return "目前沒有權限存取這個 Google Drive 檔案。";
@@ -371,7 +395,8 @@ export async function ensureGoogleDriveFolder(accessToken, knownFolderId = "", {
   return String(folder.id);
 }
 
-const DRIVE_FILE_FIELDS = "id,name,mimeType,createdTime,modifiedTime,size,version,headRevisionId,webViewLink,parents,appProperties";
+const DRIVE_FILE_FIELDS = "id,name,mimeType,createdTime,modifiedTime,size,version,headRevisionId,webViewLink,parents,appProperties,capabilities(canDownload,canReadRevisions)";
+const DRIVE_REVISION_FIELDS = "id,mimeType,modifiedTime,size,keepForever,originalFilename,lastModifyingUser(displayName,emailAddress,photoLink)";
 
 export async function listGoogleDriveMoodboards(accessToken, folderId) {
   if (!folderId) return [];
@@ -396,6 +421,59 @@ export async function listGoogleDriveMoodboards(accessToken, folderId) {
 export async function getGoogleDriveFile(accessToken, fileId, { signal } = {}) {
   const result = await driveRequest(accessToken, `${DRIVE_API_ROOT}/files/${encodeURIComponent(fileId)}?fields=${encodeURIComponent(DRIVE_FILE_FIELDS)}`, { signal });
   return normalizeDriveFile(result);
+}
+
+export async function listGoogleDriveRevisions(accessToken, fileId, { signal } = {}) {
+  if (!fileId) return [];
+  const revisions = [];
+  let pageToken = "";
+  do {
+    const params = new URLSearchParams({
+      pageSize: "200",
+      fields: `nextPageToken,revisions(${DRIVE_REVISION_FIELDS})`,
+    });
+    if (pageToken) params.set("pageToken", pageToken);
+    const result = await driveRequest(
+      accessToken,
+      `${DRIVE_API_ROOT}/files/${encodeURIComponent(fileId)}/revisions?${params}`,
+      { signal },
+    );
+    revisions.push(...(result?.revisions || []).map(normalizeDriveRevision).filter((revision) => revision.id));
+    pageToken = String(result?.nextPageToken || "");
+  } while (pageToken);
+  return revisions.sort((a, b) => String(b.modifiedTime).localeCompare(String(a.modifiedTime)) || b.id.localeCompare(a.id));
+}
+
+export async function updateGoogleDriveRevisionRetention(accessToken, fileId, revisionId, keepForever, { signal } = {}) {
+  if (!fileId || !revisionId) {
+    throw new DriveApiError("Google Drive 版本缺少可辨識的 ID。", { code: "drive/revision" });
+  }
+  const result = await driveRequest(
+    accessToken,
+    `${DRIVE_API_ROOT}/files/${encodeURIComponent(fileId)}/revisions/${encodeURIComponent(revisionId)}?fields=${encodeURIComponent(DRIVE_REVISION_FIELDS)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ keepForever: keepForever === true }),
+      signal,
+    },
+  );
+  return normalizeDriveRevision(result);
+}
+
+export async function enforceGoogleDriveRevisionRetention(accessToken, fileId, {
+  maxRetained = MAX_RETAINED_DRIVE_REVISIONS,
+  signal,
+} = {}) {
+  const limit = Math.max(0, Math.floor(Number(maxRetained) || 0));
+  const revisions = await listGoogleDriveRevisions(accessToken, fileId, { signal });
+  const retained = revisions.filter((revision) => revision.keepForever);
+  const released = [];
+  for (const revision of retained.slice(limit)) {
+    await updateGoogleDriveRevisionRetention(accessToken, fileId, revision.id, false, { signal });
+    released.push(revision.id);
+  }
+  return { revisions, released };
 }
 
 async function getGoogleDriveFileState(accessToken, fileId, { signal } = {}) {
@@ -451,6 +529,18 @@ export async function uploadGoogleDriveMoodboard(accessToken, {
     // Drive v3 does not expose a JSON etag field. Requiring the HTTP ETag keeps
     // updates fail-closed instead of risking a cross-device lost update.
     if (!remoteState.etag) throw new DriveConflictError(remoteState.file);
+    if (!remoteState.file.headRevisionId) {
+      throw new DriveApiError("無法先保留目前 Drive 版本，因此已停止覆寫。", { code: "drive/revision", details: remoteState.file });
+    }
+    await enforceGoogleDriveRevisionRetention(accessToken, existingFile.id, {
+      maxRetained: MAX_RETAINED_DRIVE_REVISIONS - 1,
+      signal,
+    });
+    await updateGoogleDriveRevisionRetention(accessToken, existingFile.id, remoteState.file.headRevisionId, true, { signal });
+    remoteState = await getGoogleDriveFileState(accessToken, existingFile.id, { signal });
+    if (!remoteState.file.version || String(remoteState.file.version) !== String(expectedVersion) || !remoteState.etag) {
+      throw new DriveConflictError(remoteState.file);
+    }
   }
 
   const metadata = {

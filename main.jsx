@@ -156,6 +156,7 @@ import {
   planCompositionSize,
 } from "./output.js";
 import { mergeMoodboardLibrary } from "./library.js";
+import { createRecoveredMoodboard, describeDriveConflict } from "./versioning.js";
 import {
   clearLocalMoodboardData,
   enqueueSync,
@@ -184,6 +185,7 @@ import {
   isGoogleDriveConfigured,
   isGoogleDriveTokenUsable,
   linkDriveFile,
+  listGoogleDriveRevisions,
   listGoogleDriveMoodboards,
   loadDriveState,
   requestGoogleDriveToken,
@@ -4434,7 +4436,20 @@ function DeleteLocalDataModal({ onCancel, onConfirm, isBusy }) {
   );
 }
 
-function VersionModal({ versions, board, versionLabel, setVersionLabel, onCreate, onRestore, onClose, isBusy }) {
+function VersionModal({
+  versions,
+  board,
+  versionLabel,
+  setVersionLabel,
+  driveVersions,
+  driveLinked,
+  onCreate,
+  onRestore,
+  onRefreshDrive,
+  onRecoverDrive,
+  onClose,
+  isBusy,
+}) {
   const search = useListSearch("versions");
   const listedVersions = versions.filter((version) => matchesListQuery([
     version.label,
@@ -4442,15 +4457,26 @@ function VersionModal({ versions, board, versionLabel, setVersionLabel, onCreate
     formatTime(version.createdAt),
     `${version.objectCount} 個物件`,
   ], search.query));
+  const listedDriveVersions = (driveVersions.items || []).filter((revision) => matchesListQuery([
+    revision.id,
+    revision.keepForever ? "已保留" : "Drive 暫存",
+    revision.lastModifyingUser?.displayName,
+    revision.lastModifyingUser?.emailAddress,
+    formatTime(revision.modifiedTime),
+    formatStorageSize(revision.size),
+  ], search.query));
+  const totalVersions = versions.length + (driveVersions.items?.length || 0);
+  const totalListedVersions = listedVersions.length + listedDriveVersions.length;
   return (
-    <Modal title="版本紀錄" description="版本會完整保存畫布與素材；本機最多保留 24 份。" onClose={onClose}>
+    <Modal title="版本紀錄" description="本機最多保留 24 份；同步前也會保留可復原的 Drive 版本。" onClose={onClose} wide>
       <form className="version-create" onSubmit={(event) => { event.preventDefault(); onCreate(); }}>
         <label><span>版本備註</span><input value={versionLabel} onChange={(event) => setVersionLabel(event.target.value)} placeholder="例如：完成第一輪素材篩選" /></label>
         <button className="primary-button" type="submit" disabled={isBusy}><History size={16} /> 建立版本</button>
       </form>
       <div className="version-current"><span>目前</span><strong>r{board.revision}</strong><small>{`${board.objects.length} 個物件 · ${formatTime(board.updatedAt)}`}</small></div>
-      {versions.length ? <div className="modal-list-toolbar"><strong>本機版本</strong><ListSearchToggle search={search} resultCount={listedVersions.length} totalCount={versions.length} label="搜尋版本紀錄" /></div> : null}
+      {totalVersions ? <div className="modal-list-toolbar"><strong>版本清單</strong><ListSearchToggle search={search} resultCount={totalListedVersions} totalCount={totalVersions} label="搜尋版本紀錄" /></div> : null}
       <ListSearchField search={search} placeholder="搜尋版本備註或日期" />
+      <div className="version-section-heading"><strong>本機版本</strong><small>可直接還原到目前 Moodboard，還原前會先自動備份。</small></div>
       {listedVersions.length ? (
         <div className="version-list">
           {listedVersions.map((version) => (
@@ -4466,6 +4492,33 @@ function VersionModal({ versions, board, versionLabel, setVersionLabel, onCreate
       ) : (
         <div className="modal-empty"><History size={24} /><strong>尚未建立版本</strong><p>目前畫布仍會自動存到這台裝置；手動版本適合重要節點。</p></div>
       )}
+      <div className="version-section-heading is-drive">
+        <div><strong>Google Drive 版本</strong><small>復原時會開成新的本機 Moodboard，不會覆蓋目前工作。</small></div>
+        {driveLinked ? <button className="quiet-button" type="button" onClick={onRefreshDrive} disabled={driveVersions.status === "loading" || isBusy}><RefreshCw size={15} className={driveVersions.status === "loading" ? "is-spinning" : ""} />重新整理</button> : null}
+      </div>
+      {!driveLinked ? (
+        <div className="version-cloud-state"><CloudOff size={19} /><span><strong>尚未連結 Drive 檔案</strong><small>先把目前 Moodboard 儲存到 Drive，之後同步會自動保留舊版本。</small></span></div>
+      ) : driveVersions.status === "loading" ? (
+        <div className="version-cloud-state"><RefreshCw size={19} className="is-spinning" /><span><strong>正在讀取 Drive 版本…</strong><small>目前 Moodboard 不會受影響。</small></span></div>
+      ) : driveVersions.status === "error" || driveVersions.status === "authorization-required" ? (
+        <div className="version-cloud-state is-error"><AlertTriangle size={19} /><span><strong>無法讀取 Drive 版本</strong><small>{driveVersions.message}</small></span></div>
+      ) : listedDriveVersions.length ? (
+        <div className="version-list is-drive-list">
+          {listedDriveVersions.map((revision) => {
+            const isHead = revision.id === driveVersions.headRevisionId;
+            const recoverable = isHead || revision.keepForever;
+            return (
+              <article key={revision.id}>
+                <div><strong>{isHead ? "目前 Drive 版本" : `Drive 版本 ${revision.id}`}</strong><small>{`${formatStorageSize(revision.size)} · ${formatTime(revision.modifiedTime)}${revision.lastModifyingUser?.displayName ? ` · ${revision.lastModifyingUser.displayName}` : ""}`}</small></div>
+                <span className={`version-kind ${recoverable ? "kind-manual" : ""}`}>{isHead ? "目前" : revision.keepForever ? "已保留" : "暫存"}</span>
+                <button className="quiet-button" type="button" onClick={() => onRecoverDrive(revision)} disabled={isBusy || !recoverable} title={recoverable ? "開成新的本機 Moodboard" : "這個 Drive 暫存版本無法下載"}>開成新副本</button>
+              </article>
+            );
+          })}
+        </div>
+      ) : driveVersions.status === "ready" ? (
+        <div className="version-cloud-state"><Cloud size={19} /><span><strong>Drive 尚無可列出的歷史版本</strong><small>下次同步前會先保留目前 Drive 內容。</small></span></div>
+      ) : null}
     </Modal>
   );
 }
@@ -4514,6 +4567,7 @@ function DriveLibraryModal({
   onDisconnect,
   onOpenLocal,
   onOpenFile,
+  onRecoverRemote,
   onRefresh,
   onSave,
   onSaveCopy,
@@ -4535,6 +4589,7 @@ function DriveLibraryModal({
   const quota = driveSession.quota;
   const quotaAssessment = quota ? evaluateDriveQuota(quota, currentContentBytes) : null;
   const busy = ["connecting", "syncing", "checking"].includes(driveSession.status);
+  const conflictSummary = driveSession.conflict ? describeDriveConflict(board, driveSession.conflict) : null;
   const configured = isGoogleDriveConfigured();
   const quotaLabel = quota?.limit === null
     ? "Google Drive 未提供固定個人上限；儲存時仍會確認結果。"
@@ -4587,8 +4642,12 @@ function DriveLibraryModal({
             {driveSession.conflict ? (
               <section className="drive-conflict" role="alert">
                 <AlertTriangle size={20} aria-hidden="true" />
-                <div><strong>Drive 上已有較新的版本</strong><p>為避免覆蓋別台裝置的變更，已停止自動同步。你可以先開啟 Drive 版本，或把目前本機內容另存為複本。</p></div>
-                <div><button className="secondary-button" type="button" onClick={() => onOpenFile(driveSession.conflict)}>開啟 Drive 版本</button><button className="primary-button" type="button" onClick={onSaveCopy}>另存本機內容</button></div>
+                <div><strong>Drive 上已有較新的版本</strong><p>為避免覆蓋別台裝置的變更，已停止自動同步。兩邊都會保留，你可以分別開成副本後再決定。</p></div>
+                <dl className="drive-conflict-comparison">
+                  <div><dt>本機</dt><dd>{`內容 r${conflictSummary.local.revision} · ${conflictSummary.local.objectCount} 個物件 · ${formatTime(conflictSummary.local.updatedAt)}`}</dd></div>
+                  <div><dt>Drive</dt><dd>{`檔案版本 ${conflictSummary.remote.version || "—"} · ${formatStorageSize(conflictSummary.remote.size)} · ${formatTime(conflictSummary.remote.modifiedTime)}`}</dd></div>
+                </dl>
+                <div><button className="secondary-button" type="button" onClick={() => onRecoverRemote(driveSession.conflict)}>Drive 版本開成新副本</button><button className="primary-button" type="button" onClick={onSaveCopy}>本機內容另存 Drive</button></div>
               </section>
             ) : null}
 
@@ -5464,6 +5523,7 @@ function App() {
   const [versions, setVersions] = useState([]);
   const [versionLabel, setVersionLabel] = useState("");
   const [versionBusy, setVersionBusy] = useState(false);
+  const [driveVersions, setDriveVersions] = useState({ status: "idle", items: [], fileId: "", headRevisionId: "", message: "" });
   const [mobilePanel, setMobilePanel] = useState(null);
   const [leftPanelWidth, setLeftPanelWidth] = useState(() => normalizeLeftPanelWidth(localStorage.getItem("moodboard-left-panel-width")));
   const [leftPanelVisible, setLeftPanelVisible] = useState(() => localStorage.getItem("moodboard-left-panel-visible") !== "false");
@@ -6885,6 +6945,7 @@ function App() {
       setSelectedIds([]);
       setKeyObjectId(null);
       setVersions(await listVersions(next.id));
+      setDriveVersions({ status: "idle", items: [], fileId: "", headRevisionId: "", message: "" });
       setDirty(false);
       setSaveState("已從本機資料庫開啟");
       await persistBoardLocally(next);
@@ -7124,6 +7185,80 @@ function App() {
       announce(driveErrorMessage(error), "error");
     }
   }, [announce, boardSnapshot, currentDriveAccessToken, dirty, importBoardFile, updateDriveSettings]);
+
+  const refreshDriveVersions = useCallback(async () => {
+    const boardId = boardRef.current.id;
+    const link = driveSettings.links[boardId];
+    if (!link?.fileId) {
+      setDriveVersions({ status: "idle", items: [], fileId: "", headRevisionId: "", message: "" });
+      return [];
+    }
+    const accessToken = currentDriveAccessToken();
+    if (!accessToken) {
+      setDriveVersions({ status: "authorization-required", items: [], fileId: link.fileId, headRevisionId: link.headRevisionId || "", message: "請重新連結 Google Drive 後再讀取版本。" });
+      return [];
+    }
+    setDriveVersions((current) => ({ ...current, status: "loading", fileId: link.fileId, message: "" }));
+    try {
+      const metadata = await getGoogleDriveFile(accessToken, link.fileId);
+      if (metadata.capabilities?.canReadRevisions === false) {
+        throw new DriveApiError("目前帳號沒有讀取這份檔案版本紀錄的權限。", { code: "drive/permission", status: 403 });
+      }
+      const items = await listGoogleDriveRevisions(accessToken, link.fileId);
+      setDriveVersions({ status: "ready", items, fileId: link.fileId, headRevisionId: metadata.headRevisionId, message: "" });
+      return items;
+    } catch (error) {
+      const authorizationRequired = isGoogleDriveAuthorizationError(error);
+      if (authorizationRequired) driveTokenRef.current = null;
+      setDriveVersions({
+        status: authorizationRequired ? "authorization-required" : "error",
+        items: [],
+        fileId: link.fileId,
+        headRevisionId: link.headRevisionId || "",
+        message: driveErrorMessage(error),
+      });
+      return [];
+    }
+  }, [currentDriveAccessToken, driveSettings.links]);
+
+  const recoverGoogleDriveVersionAsCopy = useCallback(async (file, revision = null) => {
+    if (!file?.id) {
+      announce("找不到要復原的 Google Drive 檔案。", "error");
+      return null;
+    }
+    const accessToken = currentDriveAccessToken();
+    if (!accessToken) {
+      setDriveVersions((current) => ({ ...current, status: "authorization-required", message: "請重新連結 Google Drive 後再復原版本。" }));
+      announce("請重新連結 Google Drive 後再復原版本。", "error");
+      return null;
+    }
+    setVersionBusy(true);
+    try {
+      const metadata = await getGoogleDriveFile(accessToken, file.id);
+      const isHead = !revision || revision.id === metadata.headRevisionId;
+      if (!isHead && !revision.keepForever) {
+        throw new DriveApiError("這個 Drive 暫存版本無法下載；目前 Moodboard 未受影響。", { code: "drive/revision" });
+      }
+      const content = await downloadGoogleDriveMoodboard(accessToken, file.id, { revisionId: isHead ? "" : revision.id });
+      const parsed = ensureBoard(JSON.parse(content));
+      const versionTime = revision?.modifiedTime || metadata.modifiedTime || new Date().toISOString();
+      const recovered = createRecoveredMoodboard(parsed, { label: `Drive 復原 ${formatTime(versionTime)}` });
+      const activated = await activateLocalMoodboard(recovered, `已將 Drive 版本開成新的本機 Moodboard；原本內容仍安全保留。`);
+      if (!activated) return null;
+      setDriveVersions({ status: "idle", items: [], fileId: "", headRevisionId: "", message: "" });
+      setShowVersions(false);
+      return activated;
+    } catch (error) {
+      const authorizationRequired = isGoogleDriveAuthorizationError(error);
+      if (authorizationRequired) driveTokenRef.current = null;
+      const message = driveErrorMessage(error);
+      setDriveVersions((current) => ({ ...current, status: authorizationRequired ? "authorization-required" : "error", message }));
+      announce(message, "error");
+      return null;
+    } finally {
+      setVersionBusy(false);
+    }
+  }, [activateLocalMoodboard, announce, currentDriveAccessToken]);
 
   const saveBoardFile = useCallback(async (forceDownload = false) => {
     const snapshot = boardSnapshot();
@@ -9113,9 +9248,11 @@ function App() {
 
   const openVersionModal = useCallback(async () => {
     setShowVersions(true);
-    try { setVersions(await listVersions(boardRef.current.id)); }
-    catch { announce("無法讀取本機版本紀錄。", "error"); }
-  }, [announce]);
+    const localRequest = listVersions(boardRef.current.id)
+      .then(setVersions)
+      .catch(() => announce("無法讀取本機版本紀錄。", "error"));
+    await Promise.all([localRequest, refreshDriveVersions()]);
+  }, [announce, refreshDriveVersions]);
 
   const createManualVersion = useCallback(async () => {
     setVersionBusy(true);
@@ -9739,8 +9876,12 @@ function App() {
           board={board}
           versionLabel={versionLabel}
           setVersionLabel={setVersionLabel}
+          driveVersions={driveVersions}
+          driveLinked={Boolean(currentDriveLink)}
           onCreate={createManualVersion}
           onRestore={restoreVersion}
+          onRefreshDrive={refreshDriveVersions}
+          onRecoverDrive={(revision) => recoverGoogleDriveVersionAsCopy({ id: currentDriveLink?.fileId, name: currentDriveLink?.name }, revision)}
           onClose={() => setShowVersions(false)}
           isBusy={versionBusy}
         />
@@ -9760,6 +9901,7 @@ function App() {
           onDisconnect={disconnectGoogleDrive}
           onOpenLocal={openLocalMoodboard}
           onOpenFile={openGoogleDriveFile}
+          onRecoverRemote={(file) => recoverGoogleDriveVersionAsCopy(file)}
           onRefresh={() => refreshGoogleDrive()}
           onSave={() => saveBoardToGoogleDrive()}
           onSaveCopy={() => saveBoardToGoogleDrive({ asCopy: true })}

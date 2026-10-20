@@ -6090,6 +6090,60 @@ html[lang="en"] .sidebar-tabs button svg {
   margin-top: 4px;
 }
 
+.version-section-heading {
+  align-items: center;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-top: 16px;
+  padding-top: 14px;
+}
+
+.version-section-heading > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.version-section-heading strong {
+  font-size: calc(11px + var(--ui-font-offset, 0px));
+}
+
+.version-section-heading small,
+.version-cloud-state small {
+  color: var(--text-muted);
+  font-size: calc(9px + var(--ui-font-offset, 0px));
+  line-height: 1.5;
+}
+
+.version-cloud-state {
+  align-items: start;
+  background: var(--quiet-bg);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 20px minmax(0, 1fr);
+  margin-top: 10px;
+  padding: 11px 12px;
+}
+
+.version-cloud-state > span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.version-cloud-state > svg {
+  color: var(--accent);
+  margin-top: 1px;
+}
+
+.version-cloud-state.is-error > svg,
+.version-cloud-state.is-error strong {
+  color: var(--danger);
+}
+
 .version-kind {
   border: 1px solid var(--border);
   border-radius: 4px;
@@ -6338,6 +6392,32 @@ html[lang="en"] .sidebar-tabs button svg {
 
 .drive-conflict > div:last-child {
   grid-column: 2;
+}
+
+.drive-conflict-comparison {
+  display: grid;
+  gap: 6px;
+  grid-column: 2;
+  margin: 0;
+}
+
+.drive-conflict-comparison > div {
+  align-items: baseline;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 44px minmax(0, 1fr);
+}
+
+.drive-conflict-comparison dt {
+  color: var(--text-strong);
+  font-size: calc(9px + var(--ui-font-offset, 0px));
+  font-weight: 700;
+}
+
+.drive-conflict-comparison dd {
+  color: var(--text-muted);
+  font-size: calc(9px + var(--ui-font-offset, 0px));
+  margin: 0;
 }
 
 .drive-file-list {
@@ -7750,6 +7830,16 @@ button.status-label:hover {
     grid-template-columns: minmax(0, 1fr) auto;
   }
 
+  .version-section-heading {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .version-section-heading .quiet-button {
+    align-self: flex-start;
+  }
+
   .version-kind {
     display: none;
   }
@@ -7831,6 +7921,10 @@ button.status-label:hover {
   .drive-conflict > div:last-child {
     align-items: stretch;
     flex-direction: column;
+    grid-column: 1 / -1;
+  }
+
+  .drive-conflict-comparison {
     grid-column: 1 / -1;
   }
 

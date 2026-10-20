@@ -5,14 +5,17 @@ import {
   driveErrorMessage,
   DriveConflictError,
   downloadGoogleDriveMoodboard,
+  enforceGoogleDriveRevisionRetention,
   ensureGoogleDriveFolder,
   evaluateDriveQuota,
   linkDriveFile,
+  listGoogleDriveRevisions,
   loadDriveState,
   isGoogleDriveAuthorizationError,
   isGoogleDriveTokenUsable,
   normalizeDriveFile,
   normalizeDriveQuota,
+  normalizeDriveRevision,
   normalizeGoogleDriveTokenResponse,
   saveDriveState,
   serializeMoodboardSnapshot,
@@ -131,6 +134,10 @@ test("normalizes Drive files and maps recoverable errors", () => {
     webViewLink: "",
     parents: [],
     boardId: "board-1",
+    capabilities: {
+      canDownload: true,
+      canReadRevisions: true,
+    },
   });
   assert.match(driveErrorMessage({ reason: "storageQuotaExceeded" }), /空間不足/);
   assert.match(driveErrorMessage({ status: 401 }), /重新連結/);
@@ -217,11 +224,25 @@ test("an existing file requires an HTTP ETag before conditional update", async (
 test("conditional update sends If-Match and verifies the resulting version", async () => {
   const originalFetch = globalThis.fetch;
   const calls = [];
-  let getCount = 0;
+  let fileGetCount = 0;
   globalThis.fetch = async (url, options = {}) => {
     const call = { url: String(url), method: options.method || "GET", headers: options.headers || {} };
     calls.push(call);
-    if (call.method === "PATCH") {
+    if (call.url.includes("/revisions?") && call.method === "GET") {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ revisions: [] }),
+      };
+    }
+    if (call.url.includes("/revisions/revision-8") && call.method === "PATCH") {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ id: "revision-8", modifiedTime: "2026-10-20T01:00:00.000Z", keepForever: true }),
+      };
+    }
+    if (call.url.includes("/upload/") && call.method === "PATCH") {
       return {
         ok: true,
         status: 200,
@@ -229,12 +250,14 @@ test("conditional update sends If-Match and verifies the resulting version", asy
         json: async () => ({ id: "drive-1", name: "Board.moodboard", version: "9", headRevisionId: "revision-9" }),
       };
     }
-    getCount += 1;
+    fileGetCount += 1;
+    const currentVersion = fileGetCount < 3 ? "8" : "9";
+    const currentRevision = fileGetCount < 3 ? "revision-8" : "revision-9";
     return {
       ok: true,
       status: 200,
-      headers: { get: (name) => name === "etag" ? (getCount === 1 ? '"v8"' : '"v9"') : "" },
-      json: async () => ({ id: "drive-1", name: "Board.moodboard", version: getCount === 1 ? "8" : "9", headRevisionId: getCount === 1 ? "revision-8" : "revision-9" }),
+      headers: { get: (name) => name === "etag" ? `"v${currentVersion}"` : "" },
+      json: async () => ({ id: "drive-1", name: "Board.moodboard", version: currentVersion, headRevisionId: currentRevision }),
     };
   };
   try {
@@ -246,9 +269,64 @@ test("conditional update sends If-Match and verifies the resulting version", asy
       expectedVersion: "8",
     });
     assert.equal(saved.version, "9");
-    assert.deepEqual(calls.map((call) => call.method), ["GET", "PATCH", "GET"]);
-    assert.equal(calls[1].headers["If-Match"], '"v8"');
-    assert.doesNotMatch(calls[1].url, /keepRevisionForever=true/);
+    assert.deepEqual(calls.map((call) => call.method), ["GET", "GET", "PATCH", "GET", "PATCH", "GET"]);
+    assert.equal(calls[4].headers["If-Match"], '"v8"');
+    assert.match(calls[2].url, /revisions\/revision-8/);
+    assert.doesNotMatch(calls[4].url, /keepRevisionForever=true/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Drive revisions are normalized, paginated, and sorted newest first", async () => {
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url) => {
+    calls.push(String(url));
+    const secondPage = String(url).includes("pageToken=next-page");
+    return {
+      ok: true,
+      status: 200,
+      json: async () => secondPage
+        ? { revisions: [{ id: "r2", modifiedTime: "2026-10-20T02:00:00.000Z", size: "20", keepForever: true }] }
+        : { nextPageToken: "next-page", revisions: [{ id: "r1", modifiedTime: "2026-10-20T01:00:00.000Z", size: "10" }] },
+    };
+  };
+  try {
+    const revisions = await listGoogleDriveRevisions("token", "file-1");
+    assert.equal(calls.length, 2);
+    assert.deepEqual(revisions.map((revision) => revision.id), ["r2", "r1"]);
+    assert.equal(revisions[0].size, 20);
+    assert.equal(revisions[0].keepForever, true);
+    assert.deepEqual(normalizeDriveRevision({ id: "r3" }).lastModifyingUser, { displayName: "", emailAddress: "", photoLink: "" });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Drive revision retention releases only preserved versions beyond the limit", async () => {
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, options = {}) => {
+    calls.push({ url: String(url), method: options.method || "GET", body: options.body || "" });
+    if ((options.method || "GET") === "PATCH") {
+      return { ok: true, status: 200, json: async () => ({ id: "r1", keepForever: false }) };
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ revisions: [
+        { id: "r3", modifiedTime: "2026-10-20T03:00:00.000Z", keepForever: true },
+        { id: "r2", modifiedTime: "2026-10-20T02:00:00.000Z", keepForever: false },
+        { id: "r1", modifiedTime: "2026-10-20T01:00:00.000Z", keepForever: true },
+      ] }),
+    };
+  };
+  try {
+    const result = await enforceGoogleDriveRevisionRetention("token", "file-1", { maxRetained: 1 });
+    assert.deepEqual(result.released, ["r1"]);
+    assert.equal(calls.filter((call) => call.method === "PATCH").length, 1);
+    assert.equal(JSON.parse(calls.find((call) => call.method === "PATCH").body).keepForever, false);
   } finally {
     globalThis.fetch = originalFetch;
   }
