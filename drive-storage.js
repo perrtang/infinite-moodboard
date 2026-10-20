@@ -42,6 +42,44 @@ export function isGoogleDriveConfigured() {
   return Boolean(GOOGLE_DRIVE_CLIENT_ID);
 }
 
+export function normalizeGoogleDriveTokenResponse(response, now = Date.now()) {
+  if (!response || response.error || !response.access_token) {
+    throw new DriveApiError(response?.error_description || "Google Drive 授權未完成。", {
+      code: "drive/authorization",
+      reason: response?.error || "authorizationFailed",
+      details: response || null,
+    });
+  }
+  const scopes = new Set(String(response.scope || "").split(/\s+/).filter(Boolean));
+  const driveScopes = [...scopes].filter((scope) => scope.startsWith("https://www.googleapis.com/auth/drive"));
+  if (!scopes.has(GOOGLE_DRIVE_SCOPE) || driveScopes.some((scope) => scope !== GOOGLE_DRIVE_SCOPE)) {
+    throw new DriveApiError("Google Drive 未授予工作檔所需權限。", {
+      code: "drive/permission",
+      status: 403,
+      reason: "insufficientPermissions",
+      details: response,
+    });
+  }
+  return {
+    accessToken: String(response.access_token),
+    expiresAt: now + Math.max(0, Number(response.expires_in || 3600) - 60) * 1000,
+    scope: [...scopes].join(" "),
+  };
+}
+
+export function isGoogleDriveTokenUsable(token, now = Date.now()) {
+  return Boolean(token?.accessToken && Number(token.expiresAt) > now);
+}
+
+export function isGoogleDriveAuthorizationError(error) {
+  const reason = error?.reason || error?.details?.error?.errors?.[0]?.reason || "";
+  return error?.code === "drive/authorization"
+    || error?.code === "drive/permission"
+    || error?.status === 401
+    || error?.status === 403
+    || ["authError", "invalidCredentials", "insufficientPermissions", "forbidden"].includes(reason);
+}
+
 export function serializeMoodboardSnapshot(snapshot) {
   return `${JSON.stringify(snapshot, null, 2)}\n`;
 }
@@ -234,19 +272,11 @@ export async function requestGoogleDriveToken({ loginHint = "" } = {}) {
       scope: GOOGLE_DRIVE_SCOPE,
       hint: loginHint || undefined,
       callback: (response) => {
-        if (!response || response.error) {
-          reject(new DriveApiError(response?.error_description || "Google Drive 授權未完成。", {
-            code: "drive/authorization",
-            reason: response?.error || "authorizationFailed",
-            details: response,
-          }));
-          return;
+        try {
+          resolve(normalizeGoogleDriveTokenResponse(response));
+        } catch (error) {
+          reject(error);
         }
-        resolve({
-          accessToken: response.access_token,
-          expiresAt: Date.now() + Math.max(0, Number(response.expires_in || 3600) - 60) * 1000,
-          scope: response.scope || GOOGLE_DRIVE_SCOPE,
-        });
       },
       error_callback: (response) => reject(new DriveApiError(response?.message || "Google Drive 授權視窗已關閉。", {
         code: "drive/authorization",
@@ -254,7 +284,7 @@ export async function requestGoogleDriveToken({ loginHint = "" } = {}) {
         details: response,
       })),
     });
-    tokenClient.requestAccessToken({ prompt: "" });
+    tokenClient.requestAccessToken({ prompt: "", include_granted_scopes: false });
   });
 }
 

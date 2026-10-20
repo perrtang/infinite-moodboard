@@ -172,7 +172,9 @@ import {
   evaluateDriveQuota,
   getGoogleDriveAbout,
   getGoogleDriveFile,
+  isGoogleDriveAuthorizationError,
   isGoogleDriveConfigured,
+  isGoogleDriveTokenUsable,
   linkDriveFile,
   listGoogleDriveMoodboards,
   loadDriveState,
@@ -5820,7 +5822,7 @@ function App() {
 
   const currentDriveAccessToken = useCallback(() => {
     const token = driveTokenRef.current;
-    if (!token?.accessToken || token.expiresAt <= Date.now()) return "";
+    if (!isGoogleDriveTokenUsable(token)) return "";
     return token.accessToken;
   }, []);
 
@@ -5876,12 +5878,12 @@ function App() {
       return { accessToken, folderId, about, files };
     } catch (error) {
       if (operationEpoch !== driveOperationEpochRef.current || error?.name === "AbortError") return null;
-      const authorizationExpired = error?.status === 401;
-      if (authorizationExpired) driveTokenRef.current = null;
+      const authorizationRequired = isGoogleDriveAuthorizationError(error);
+      if (authorizationRequired) driveTokenRef.current = null;
       setDriveSession((current) => ({
         ...current,
-        status: authorizationExpired ? "authorization-required" : (error?.code === "drive/offline" ? "offline" : "error"),
-        connected: !authorizationExpired,
+        status: authorizationRequired ? "authorization-required" : (error?.code === "drive/offline" ? "offline" : "error"),
+        connected: !authorizationRequired,
         busy: false,
         message: driveErrorMessage(error),
       }));
@@ -5906,9 +5908,11 @@ function App() {
       return result;
     } catch (error) {
       if (operationEpoch !== driveOperationEpochRef.current || error?.name === "AbortError") return null;
+      const authorizationRequired = isGoogleDriveAuthorizationError(error);
+      if (authorizationRequired) driveTokenRef.current = null;
       setDriveSession((current) => ({
         ...current,
-        status: error?.code === "drive/offline" ? "offline" : "error",
+        status: authorizationRequired ? "authorization-required" : error?.code === "drive/offline" ? "offline" : "error",
         connected: false,
         busy: false,
         message: driveErrorMessage(error),
@@ -6878,16 +6882,17 @@ function App() {
       } catch (error) {
         if (operationEpoch !== driveOperationEpochRef.current || error?.name === "AbortError") return false;
         const isConflict = error?.code === "drive/conflict";
+        const authorizationRequired = isGoogleDriveAuthorizationError(error);
         const status = isConflict
           ? "conflict"
           : error?.code === "drive/quota"
             ? "quota"
             : error?.code === "drive/offline"
               ? "offline"
-              : error?.status === 401
+              : authorizationRequired
                 ? "authorization-required"
                 : "error";
-        if (error?.status === 401) driveTokenRef.current = null;
+        if (authorizationRequired) driveTokenRef.current = null;
         setDriveSession((current) => ({
           ...current,
           status,
@@ -6955,10 +6960,12 @@ function App() {
     } catch (error) {
       if (operationEpoch !== driveOperationEpochRef.current || error?.name === "AbortError") return;
       const isConflict = error?.code === "drive/conflict";
+      const authorizationRequired = isGoogleDriveAuthorizationError(error);
+      if (authorizationRequired) driveTokenRef.current = null;
       setDriveSession((current) => ({
         ...current,
-        status: isConflict ? "conflict" : error?.status === 401 ? "authorization-required" : "error",
-        connected: error?.status !== 401,
+        status: isConflict ? "conflict" : authorizationRequired ? "authorization-required" : "error",
+        connected: !authorizationRequired,
         busy: false,
         message: driveErrorMessage(error),
         conflict: isConflict ? error.remoteFile : current.conflict,

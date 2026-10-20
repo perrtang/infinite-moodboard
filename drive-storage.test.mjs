@@ -9,8 +9,11 @@ import {
   evaluateDriveQuota,
   linkDriveFile,
   loadDriveState,
+  isGoogleDriveAuthorizationError,
+  isGoogleDriveTokenUsable,
   normalizeDriveFile,
   normalizeDriveQuota,
+  normalizeGoogleDriveTokenResponse,
   saveDriveState,
   serializeMoodboardSnapshot,
   unlinkDriveFile,
@@ -30,6 +33,39 @@ test("serializes a portable moodboard snapshot and measures UTF-8 bytes", () => 
   assert.ok(content.endsWith("\n"));
   assert.equal(JSON.parse(content).name, "靈感");
   assert.ok(contentByteLength(content) > content.length);
+});
+
+test("Google Drive tokens require the exact drive.file scope and expire safely", () => {
+  const token = normalizeGoogleDriveTokenResponse({
+    access_token: "token-1",
+    expires_in: 3600,
+    scope: "openid https://www.googleapis.com/auth/drive.file",
+  }, 10_000);
+  assert.equal(token.accessToken, "token-1");
+  assert.equal(isGoogleDriveTokenUsable(token, 10_001), true);
+  assert.equal(isGoogleDriveTokenUsable(token, token.expiresAt), false);
+  assert.throws(
+    () => normalizeGoogleDriveTokenResponse({ access_token: "token-2", scope: "openid email" }),
+    (error) => error.code === "drive/permission" && error.status === 403,
+  );
+  assert.throws(
+    () => normalizeGoogleDriveTokenResponse({
+      access_token: "token-3",
+      scope: "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive",
+    }),
+    (error) => error.code === "drive/permission" && error.status === 403,
+  );
+  assert.throws(
+    () => normalizeGoogleDriveTokenResponse({ error: "access_denied", error_description: "Denied" }),
+    (error) => error.code === "drive/authorization" && error.reason === "access_denied",
+  );
+});
+
+test("Google Drive authorization failures include missing and excessive permissions", () => {
+  assert.equal(isGoogleDriveAuthorizationError({ status: 401 }), true);
+  assert.equal(isGoogleDriveAuthorizationError({ code: "drive/permission", status: 403 }), true);
+  assert.equal(isGoogleDriveAuthorizationError({ reason: "insufficientPermissions" }), true);
+  assert.equal(isGoogleDriveAuthorizationError({ code: "drive/quota", reason: "storageQuotaExceeded" }), false);
 });
 
 test("normalizes finite and unlimited Drive quota", () => {
