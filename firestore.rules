@@ -1,0 +1,166 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function verified() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function roomPath(roomId) {
+      return /databases/$(database)/documents/infiniteMoodboardRooms/$(roomId);
+    }
+
+    function memberPath(roomId, uid) {
+      return /databases/$(database)/documents/infiniteMoodboardRooms/$(roomId)/members/$(uid);
+    }
+
+    function invitePath(inviteId) {
+      return /databases/$(database)/documents/infiniteMoodboardInvites/$(inviteId);
+    }
+
+    function currentMember(roomId) {
+      return get(memberPath(roomId, request.auth.uid));
+    }
+
+    function isMember(roomId) {
+      return verified() && exists(memberPath(roomId, request.auth.uid));
+    }
+
+    function canEdit(roomId) {
+      return isMember(roomId) && currentMember(roomId).data.role in ['owner', 'editor'];
+    }
+
+    function isOwner(roomId) {
+      return isMember(roomId) && currentMember(roomId).data.role == 'owner';
+    }
+
+    function validInvite(inviteId, roomId, role) {
+      let invite = get(invitePath(inviteId));
+      return invite.data.active == true
+        && invite.data.roomId == roomId
+        && invite.data.role == role
+        && invite.data.expiresAt > request.time;
+    }
+
+    match /infiniteMoodboardRooms/{roomId} {
+      allow create: if verified()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.boardId is string
+        && request.resource.data.boardId.size() <= 200
+        && request.resource.data.boardName is string
+        && request.resource.data.boardName.size() <= 120
+        && request.resource.data.initialized == false;
+      allow get: if isMember(roomId);
+      allow list: if false;
+      allow update: if isOwner(roomId)
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.boardId == resource.data.boardId;
+      allow delete: if isOwner(roomId);
+
+      match /members/{memberUid} {
+        allow read: if isMember(roomId);
+        allow create: if verified()
+          && request.resource.data.keys().hasOnly(['uid', 'role', 'name', 'joinedAt', 'inviteId'])
+          && request.resource.data.uid == memberUid
+          && request.resource.data.role in ['owner', 'editor', 'viewer']
+          && request.resource.data.name is string
+          && request.resource.data.name.size() <= 80
+          && request.resource.data.inviteId is string
+          && request.resource.data.inviteId.size() <= 100
+          && (
+            (memberUid == request.auth.uid
+              && request.resource.data.role == 'owner'
+              && getAfter(roomPath(roomId)).data.ownerUid == request.auth.uid)
+            || (memberUid == request.auth.uid
+              && request.resource.data.inviteId is string
+              && validInvite(request.resource.data.inviteId, roomId, request.resource.data.role))
+            || isOwner(roomId)
+          );
+        allow update: if isOwner(roomId)
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.joinedAt == resource.data.joinedAt
+          && request.resource.data.inviteId == resource.data.inviteId
+          && request.resource.data.role in ['owner', 'editor', 'viewer']
+          && request.resource.data.name is string
+          && request.resource.data.name.size() <= 80
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'name']);
+        allow delete: if isOwner(roomId);
+      }
+
+      match /updates/{updateId} {
+        allow read: if isMember(roomId);
+        allow create: if canEdit(roomId)
+          && request.resource.data.keys().hasOnly([
+            'roomId', 'senderUid', 'clientId', 'ready', 'chunkCount',
+            'byteLength', 'encoding', 'clientCreatedAt', 'createdAt'
+          ])
+          && request.resource.data.roomId == roomId
+          && request.resource.data.senderUid == request.auth.uid
+          && request.resource.data.clientId is string
+          && request.resource.data.clientId.size() <= 120
+          && request.resource.data.ready == false
+          && request.resource.data.chunkCount is int
+          && request.resource.data.chunkCount > 0
+          && request.resource.data.chunkCount <= 160
+          && request.resource.data.byteLength is int
+          && request.resource.data.byteLength > 0
+          && request.resource.data.byteLength <= 50331648
+          && request.resource.data.encoding == 'base64-chunks-v1'
+          && request.resource.data.clientCreatedAt is int;
+        allow update: if canEdit(roomId)
+          && resource.data.senderUid == request.auth.uid
+          && request.resource.data.senderUid == resource.data.senderUid
+          && request.resource.data.roomId == resource.data.roomId
+          && request.resource.data.clientId == resource.data.clientId
+          && request.resource.data.chunkCount == resource.data.chunkCount
+          && request.resource.data.byteLength == resource.data.byteLength
+          && request.resource.data.encoding == resource.data.encoding
+          && request.resource.data.clientCreatedAt == resource.data.clientCreatedAt
+          && request.resource.data.createdAt == resource.data.createdAt
+          && resource.data.ready == false
+          && request.resource.data.ready == true
+          && request.resource.data.committedAt == request.time
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ready', 'committedAt']);
+        allow delete: if isOwner(roomId);
+
+        match /chunks/{chunkId} {
+          allow read: if isMember(roomId);
+          allow create, update: if canEdit(roomId)
+            && getAfter(/databases/$(database)/documents/infiniteMoodboardRooms/$(roomId)/updates/$(updateId)).data.senderUid == request.auth.uid
+            && getAfter(/databases/$(database)/documents/infiniteMoodboardRooms/$(roomId)/updates/$(updateId)).data.ready == false
+            && request.resource.data.index is int
+            && request.resource.data.index >= 0
+            && request.resource.data.index < 160
+            && request.resource.data.data is string
+            && request.resource.data.data.size() <= 500000;
+          allow delete: if isOwner(roomId);
+        }
+      }
+
+      match /presence/{clientId} {
+        allow read: if isMember(roomId);
+        allow create, update: if isMember(roomId)
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.name is string
+          && request.resource.data.name.size() <= 48;
+        allow delete: if isMember(roomId) && resource.data.uid == request.auth.uid;
+      }
+    }
+
+    match /infiniteMoodboardInvites/{inviteId} {
+      allow get: if verified();
+      allow list: if false;
+      allow create: if verified()
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.roomId is string
+        && request.resource.data.role in ['editor', 'viewer']
+        && getAfter(roomPath(request.resource.data.roomId)).data.ownerUid == request.auth.uid;
+      allow update: if verified()
+        && isOwner(resource.data.roomId)
+        && request.resource.data.roomId == resource.data.roomId
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.role in ['editor', 'viewer'];
+      allow delete: if verified() && isOwner(resource.data.roomId);
+    }
+  }
+}

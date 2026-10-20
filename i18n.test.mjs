@@ -70,3 +70,13 @@ test("Google Drive storage and recovery copy is localized", () => {
   assert.equal(translateInterfaceText("儲存與同步", "zh-Hans"), "保存与同步");
   assert.equal(translateInterfaceText("中斷 Drive 連結", "zh-Hans"), "中断 Drive 连接");
 });
+
+test("real-time collaboration copy is localized", () => {
+  assert.equal(translateInterfaceText("建立共編空間", "en"), "Create collaboration room");
+  assert.equal(translateInterfaceText("可編輯", "en"), "Can edit");
+  assert.equal(translateInterfaceText("3 個變更等待同步", "en"), "3 changes waiting to sync");
+  assert.equal(translateInterfaceText("協作，2 位成員在線", "en"), "Collaboration, 2 collaborators online");
+  assert.equal(translateInterfaceText("所有變更已同步。", "en"), "All changes are synced.");
+  assert.match(translateInterfaceText("目前帳號沒有這個共編空間的權限，或雲端安全規則尚未啟用。", "en"), /cannot access/);
+  assert.equal(translateInterfaceText("離線與隱私", "zh-Hans"), "离线与隐私");
+});

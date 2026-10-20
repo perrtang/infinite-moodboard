@@ -2,7 +2,16 @@
 
 Infinite Moodboard 是 PETFASHION 的免費、離線優先視覺工作台。圖片、影片、文字、SVG、版本與構圖運算都在瀏覽器中進行；使用者可下載可編輯的 `.moodboard` 工作檔，或輸出 PNG、WebP、AVIF、PDF 與唯讀 HTML。
 
-## v0.13.0 重點（本機待發布）
+## v0.14.0 重點（本機待發布）
+
+- 新增跨裝置即時共編：必須使用已完成 Email 驗證的 PETFASHION 帳號，且只會在使用者主動建立或加入共編空間後上傳目前 Moodboard。
+- 以 Yjs 進行物件層級合併；圖片與影片來源和物件變形資料分離，移動或縮放時不會重送整份大型素材。
+- 共編邀請預設為可編輯、30 天有效；介面會顯示成員角色、在線狀態、同步中與離線等待數量。
+- 斷線變更先寫入獨立 IndexedDB 佇列，恢復連線後續傳；每位使用者的畫布視窗位置仍保留在自己的裝置。
+- 新增 Firestore 安全規則與設定檔，限制已驗證身份、房間成員、擁有者／編輯者權限、邀請有效期與更新大小。
+- 建立標準封版流程：每版都有 Git `backup/vX.Y.Z` 標籤、可驗證的 `.bundle` 儲存庫備份與 `.zip` 原始碼快照。
+
+## v0.13.0 重點
 
 - 同步既有 Drive 檔案前，先將目前雲端修訂標記為可保留版本；最多保留最近 24 份。
 - 版本視窗整合本機與 Drive 版本；Drive 版本一律開成新的本機 Moodboard，不覆蓋目前工作。
@@ -52,7 +61,7 @@ Infinite Moodboard 是 PETFASHION 的免費、離線優先視覺工作台。圖�
 - 不登入也能使用本機編輯、儲存、開啟與輸出。
 - Google 與免密碼 Email 登入只用於識別 PETFASHION 帳號及解鎖進階功能。
 - 登入本身不會上傳 Moodboard、素材或版本；必須另外連結 Google Drive，第一次仍需主動儲存。
-- 同裝置多分頁同步與 Google Drive 工作檔保存已完成；跨裝置即時共編與 PETFASHION 會員後台同步尚未啟用。
+- 同裝置多分頁同步與 Google Drive 工作檔保存已完成。跨裝置即時共編已完成本機實作，但公開站仍須先部署本版 Firestore 安全規則；PETFASHION 會員後台同步尚未啟用。
 - Facebook 登入仍為非公開測試，不出現在正常入口。
 - 產品 Email 偏好目前只保存在瀏覽器，不會加入寄送名單。
 
@@ -81,6 +90,24 @@ VITE_GOOGLE_DRIVE_CLIENT_ID=your-web-client-id.apps.googleusercontent.com
 ```
 
 對應 Google Cloud 專案必須啟用 Google Drive API，且 OAuth 用戶端需允許本機與正式站來源。Drive 存取權杖只存在當前分頁記憶體，不會寫入瀏覽器儲存空間。
+
+跨裝置即時共編使用同一個 Firebase 專案的 Cloud Firestore。程式庫內附 `firestore.rules` 與 `firebase.json`；正式啟用前，必須由專案管理者審查並部署規則：
+
+```bash
+npx firebase-tools deploy --only firestore:rules
+```
+
+規則部署是外部系統變更，不會在一般建置或 GitHub Pages 發布時自動執行。
+
+## 版本與備份
+
+完成一個可驗收里程碑後，先通過測試與建置、提交所有變更，再執行：
+
+```bash
+./scripts/checkpoint-version.sh 0.14.0
+```
+
+腳本會確認工作目錄乾淨且 `package.json` 版號一致，建立或驗證 `backup/v0.14.0` 標籤，並把 Git bundle 與原始碼 zip 寫入專案外的 `backups/infinite-moodboard/`。可用 `git switch --detach backup/v0.14.0` 檢查舊版；需要正式回復時，再從該標籤建立修復分支，避免直接覆蓋目前工作。
 
 ## 發布
 

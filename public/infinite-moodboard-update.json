@@ -1,8 +1,8 @@
 {
   "product": "Infinite Moodboard",
   "channel": "stable",
-  "version": "0.7.0",
-  "releasedAt": "2026-10-18",
-  "summary": "新增紙張畫板、列印尺寸、標題說明、Grid、群組、圖層篩選與批次物件操作。",
+  "version": "0.14.0",
+  "releasedAt": "2026-10-20",
+  "summary": "新增跨裝置即時共編、成員邀請、在線狀態、離線變更佇列與可回復版本備份。",
   "url": "https://perrtang.github.io/infinite-moodboard/"
 }

@@ -6588,6 +6588,147 @@ button.status-label:hover {
   color: var(--signal);
 }
 
+.capability.is-error > div > svg,
+.capability.is-error .status-label {
+  color: var(--danger);
+}
+
+.cloud-collaboration-panel {
+  background: var(--quiet-bg);
+  border-radius: 8px;
+  display: grid;
+  gap: 13px;
+  margin-top: 14px;
+  padding: 14px;
+}
+
+.cloud-collaboration-panel.is-error {
+  background: rgb(var(--danger-rgb) / 0.07);
+}
+
+.cloud-collaboration-heading,
+.cloud-collaboration-choice,
+.cloud-collaboration-actions,
+.collaboration-invite-field > div {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.cloud-collaboration-heading > div,
+.cloud-collaboration-choice > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.cloud-collaboration-heading small,
+.cloud-collaboration-choice small {
+  color: var(--text-muted);
+  font-size: calc(10px + var(--ui-font-offset, 0px));
+  line-height: 1.45;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cloud-role-badge {
+  background: rgb(var(--accent-rgb) / 0.11);
+  border-radius: 999px;
+  color: var(--accent);
+  flex: none;
+  font-size: calc(9px + var(--ui-font-offset, 0px));
+  padding: 5px 8px;
+}
+
+.cloud-collaboration-message,
+.cloud-pending-note {
+  align-items: center;
+  color: var(--text-muted);
+  display: flex;
+  font-size: calc(10px + var(--ui-font-offset, 0px));
+  gap: 7px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.cloud-collaboration-message.is-error {
+  color: var(--danger);
+}
+
+.collaboration-peer-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.collaboration-peer-list > span {
+  align-items: center;
+  background: var(--surface-soft);
+  border-radius: 999px;
+  color: var(--text-muted);
+  display: inline-flex;
+  font-size: calc(9px + var(--ui-font-offset, 0px));
+  gap: 5px;
+  min-height: 28px;
+  padding: 0 9px;
+}
+
+.collaboration-peer-list > span.is-self {
+  background: rgb(var(--accent-rgb) / 0.11);
+  color: var(--accent);
+}
+
+.collaboration-peer-list b {
+  color: inherit;
+  font-weight: 600;
+}
+
+.collaboration-peer-list small {
+  color: inherit;
+  opacity: 0.72;
+}
+
+.cloud-collaboration-actions {
+  justify-content: flex-start;
+}
+
+.cloud-collaboration-divider {
+  align-items: center;
+  color: var(--text-muted);
+  display: flex;
+  font-size: calc(9px + var(--ui-font-offset, 0px));
+  gap: 10px;
+}
+
+.cloud-collaboration-divider::before,
+.cloud-collaboration-divider::after {
+  background: var(--border);
+  content: "";
+  flex: 1;
+  height: 1px;
+}
+
+.collaboration-invite-field {
+  display: grid;
+  gap: 7px;
+}
+
+.collaboration-invite-field > span {
+  color: var(--text-muted);
+  font-size: calc(9px + var(--ui-font-offset, 0px));
+  font-weight: 650;
+}
+
+.collaboration-invite-field input {
+  flex: 1;
+  min-width: 0;
+}
+
+.collaboration-resume-button {
+  justify-self: start;
+}
+
 .session-name-field {
   margin-top: 18px;
 }
@@ -7931,6 +8072,20 @@ button.status-label:hover {
   .settings-drive-actions {
     display: grid;
     grid-template-columns: 1fr;
+  }
+
+  .cloud-collaboration-choice,
+  .cloud-collaboration-actions,
+  .collaboration-invite-field > div {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .cloud-collaboration-choice > button,
+  .cloud-collaboration-actions > button,
+  .collaboration-invite-field button {
+    justify-content: center;
+    width: 100%;
   }
 }
 

@@ -206,6 +206,20 @@ import {
   signOutMoodboardSession,
 } from "./auth.js";
 import {
+  clearCollaborationResume,
+  collaborationRoleLabel,
+  loadCollaborationResume,
+  normalizeCollaborationInvite,
+  saveCollaborationResume,
+} from "./collaboration.js";
+import { clearCollaborationQueue } from "./collaboration-queue.js";
+import {
+  collaborationErrorMessage,
+  createMoodboardCollaborationRoom,
+  joinMoodboardCollaborationInvite,
+  resumeMoodboardCollaborationRoom,
+} from "./collaboration-firestore.js";
+import {
   PETFASHION_ACCOUNT_URL,
   PETFASHION_PRIVACY_URL,
   PETFASHION_TERMS_URL,
@@ -318,6 +332,17 @@ const MARKER_COLOR_LABELS = {
 };
 
 const DEFAULT_FILTERS = { symbols: [], colors: [], mode: "any" };
+const EMPTY_CLOUD_COLLABORATION = Object.freeze({
+  status: "idle",
+  message: "",
+  roomId: "",
+  inviteId: "",
+  inviteUrl: "",
+  role: "",
+  canEdit: false,
+  peers: [],
+  pendingCount: 0,
+});
 const MIN_ZOOM = 0.08;
 const MAX_ZOOM = 4;
 const SESSION_ADJECTIVES = ["青色", "安靜", "敏捷", "明亮", "琥珀", "深夜"];
@@ -4697,9 +4722,34 @@ function DriveLibraryModal({
   );
 }
 
-function CollaborationModal({ sessionName, setSessionName, peerCount, driveConnected, driveLinked, onOpenDrive, onClose }) {
+function CollaborationModal({
+  sessionName,
+  setSessionName,
+  peerCount,
+  driveConnected,
+  driveLinked,
+  cloud,
+  initialInvite,
+  resumeAvailable,
+  onCreateRoom,
+  onJoinRoom,
+  onResumeRoom,
+  onCopyInvite,
+  onLeaveRoom,
+  onOpenDrive,
+  onClose,
+}) {
+  const [inviteDraft, setInviteDraft] = useState(initialInvite || "");
+  const cloudConnected = ["connected", "syncing", "offline", "degraded"].includes(cloud.status) && Boolean(cloud.roomId);
+  const cloudBusy = ["creating", "joining", "connecting"].includes(cloud.status);
+  const cloudReady = cloud.status === "connected" || cloud.status === "syncing";
+
+  useEffect(() => {
+    if (initialInvite) setInviteDraft(initialInvite);
+  }, [initialInvite]);
+
   return (
-    <Modal title="協作與 Google Drive" description="離線核心已可用；雲端能力依真實連線狀態分階段啟用。" onClose={onClose} wide>
+    <Modal title="協作與 Google Drive" description="即時共編會在你明確建立或加入空間後，才把這份 Moodboard 傳到共編服務。" onClose={onClose} wide>
       <div className="collaboration-status">
         <section className="capability is-ready">
           <div><Users size={21} /><span><strong>同裝置多分頁共編</strong><small>{`目前 ${peerCount + 1} 個分頁在線，變更會即時同步。`}</small></span></div>
@@ -4713,18 +4763,57 @@ function CollaborationModal({ sessionName, setSessionName, peerCount, driveConne
           <div><HardDrive size={21} /><span><strong>Google Drive 檔案與跨裝置保存</strong><small>{driveConnected ? (driveLinked ? "目前 Moodboard 已連結雲端檔案，本機變更可安全同步。" : "Drive 已連結；儲存目前 Moodboard 後即可跨裝置開啟。") : "需另外取得 drive.file 最小權限；登入本身不會上傳 Moodboard。"}</small></span></div>
           <button className="status-label" type="button" onClick={onOpenDrive}>{driveConnected ? <Check size={14} /> : <CloudOff size={14} />} {driveConnected ? "管理 Drive" : "連結 Drive"}</button>
         </section>
-        <section className="capability is-pending">
-          <div><Share2 size={21} /><span><strong>跨裝置即時共編</strong><small>需協作伺服器與 CRDT 衝突合併；Drive 本身不取代即時同步層。</small></span></div>
-          <span className="status-label"><CloudOff size={14} /> 未部署</span>
+        <section className={`capability ${cloudReady ? "is-ready" : cloud.status === "error" ? "is-error" : "is-pending"}`}>
+          <div><Share2 size={21} /><span><strong>跨裝置即時共編</strong><small>以已驗證的 PETFASHION 帳號控管成員；不同物件的同時修改會自動合併。</small></span></div>
+          <span className="status-label">{cloudReady ? <Check size={14} /> : <CloudOff size={14} />} {cloudReady ? "已連線" : cloudBusy ? "連線中" : "尚未加入"}</span>
         </section>
       </div>
+
+      <section className={`cloud-collaboration-panel is-${cloud.status}`} aria-live="polite">
+        {cloudConnected ? (
+          <>
+            <div className="cloud-collaboration-heading">
+              <div><strong>共編空間</strong><small data-l10n-ignore>{cloud.roomId}</small></div>
+              <span className="cloud-role-badge">{collaborationRoleLabel(cloud.role)}</span>
+            </div>
+            <p className="cloud-collaboration-message">{cloud.message || "即時共編已連線。"}</p>
+            <div className="collaboration-peer-list" aria-label="目前共編成員">
+              {(cloud.peers || []).map((peer) => (
+                <span key={peer.id} className={peer.self ? "is-self" : ""} title={peer.self ? "這個分頁" : peer.name}>
+                  <UserRound size={14} /><b data-l10n-ignore>{peer.name}</b>{peer.self ? <small>你</small> : null}
+                </span>
+              ))}
+              {!cloud.peers?.length ? <span><Users size={14} /><b>等待其他協作者</b></span> : null}
+            </div>
+            {cloud.pendingCount ? <p className="cloud-pending-note"><RefreshCw size={14} className={cloud.status === "syncing" ? "is-spinning" : ""} />{`${cloud.pendingCount} 個變更等待同步`}</p> : null}
+            <div className="cloud-collaboration-actions">
+              <button className="primary-button" type="button" onClick={onCopyInvite} disabled={!cloud.inviteUrl}><Copy size={16} />複製邀請連結</button>
+              <button className="quiet-button" type="button" onClick={onLeaveRoom}><X size={15} />離開共編</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="cloud-collaboration-choice">
+              <div><strong>用目前 Moodboard 開始共編</strong><small>會先建立本機版本，再上傳可合併的共編資料。</small></div>
+              <button className="primary-button" type="button" onClick={onCreateRoom} disabled={cloudBusy}><Users size={16} />{cloud.status === "creating" ? "建立中…" : "建立共編空間"}</button>
+            </div>
+            <div className="cloud-collaboration-divider"><span>或加入別人的空間</span></div>
+            <label className="collaboration-invite-field">
+              <span>邀請連結或代碼</span>
+              <div><input value={inviteDraft} onChange={(event) => setInviteDraft(event.target.value)} placeholder="貼上 ?collab=… 連結" /><button className="secondary-button" type="button" onClick={() => onJoinRoom(inviteDraft)} disabled={cloudBusy || !inviteDraft.trim()}><Share2 size={15} />加入</button></div>
+            </label>
+            {resumeAvailable ? <button className="text-button collaboration-resume-button" type="button" onClick={onResumeRoom} disabled={cloudBusy}><RefreshCw size={14} />繼續上次的共編空間</button> : null}
+            {cloud.message ? <p className={`cloud-collaboration-message${cloud.status === "error" ? " is-error" : ""}`}>{cloud.message}</p> : null}
+          </>
+        )}
+      </section>
       <label className="session-name-field">
         <span>這個分頁顯示名稱</span>
         <input value={sessionName} onChange={(event) => setSessionName(event.target.value.slice(0, 24))} />
       </label>
       <div className="architecture-note">
-        <strong>預定雲端結構</strong>
-        <p>Drive 保存 `.moodboard` 主檔、分享權限與可保留版本；協作服務同步細粒度操作，並定時回寫 Drive 快照。離線修改重連後再合併。</p>
+        <strong>離線與隱私</strong>
+        <p>網路中斷時，變更會先留在這台裝置；恢復連線後再合併。共編不會自動開啟，也不會把其它本機 Moodboard 上傳。</p>
       </div>
       <div className="architecture-note">
         <strong>兩種離線檔案</strong>
@@ -5537,6 +5626,8 @@ function App() {
   const [canvasViewportSize, setCanvasViewportSize] = useState({ width: 0, height: 0 });
   const [sessionName, setSessionNameState] = useState(() => localStorage.getItem("moodboard-session-name") || createSessionName());
   const [peers, setPeers] = useState([]);
+  const [cloudCollaboration, setCloudCollaboration] = useState(EMPTY_CLOUD_COLLABORATION);
+  const [collaborationResume, setCollaborationResume] = useState(() => loadCollaborationResume());
   const [historySignal, setHistorySignal] = useState(0);
   const canUseDirectoryPicker = typeof window.showDirectoryPicker === "function" && navigator.webdriver !== true;
   const providerTestMode = import.meta.env.DEV
@@ -5561,6 +5652,8 @@ function App() {
   const channelRef = useRef(null);
   const peersRef = useRef(new Map());
   const sessionIdRef = useRef(createId("session"));
+  const cloudCollaborationSessionRef = useRef(null);
+  const initialCollaborationInviteRef = useRef(normalizeCollaborationInvite(window.location.href));
   const saveTimerRef = useRef(null);
   const localSavePromiseRef = useRef(Promise.resolve());
   const localPersistenceGenerationRef = useRef(0);
@@ -6328,6 +6421,10 @@ function App() {
     setAuthBusy(true);
     setAuthMessage("");
     try {
+      const collaborationSession = cloudCollaborationSessionRef.current;
+      cloudCollaborationSessionRef.current = null;
+      if (collaborationSession) await collaborationSession.destroy().catch(() => undefined);
+      setCloudCollaboration(EMPTY_CLOUD_COLLABORATION);
       cancelDriveOperations();
       driveTokenRef.current = null;
       window.clearTimeout(driveSyncTimerRef.current);
@@ -6358,7 +6455,13 @@ function App() {
     window.clearTimeout(driveSyncTimerRef.current);
     try {
       await localSavePromiseRef.current.catch(() => undefined);
-      await clearLocalMoodboardData();
+      const collaborationSession = cloudCollaborationSessionRef.current;
+      cloudCollaborationSessionRef.current = null;
+      if (collaborationSession) await collaborationSession.destroy().catch(() => undefined);
+      await Promise.all([clearLocalMoodboardData(), clearCollaborationQueue()]);
+      clearCollaborationResume();
+      setCollaborationResume(null);
+      setCloudCollaboration(EMPTY_CLOUD_COLLABORATION);
       driveTokenRef.current = null;
       const clearedDriveState = saveDriveState(localStorage, {});
       setDriveSettings(clearedDriveState);
@@ -6549,6 +6652,7 @@ function App() {
       board: { ...nextBoard, view: viewRef.current },
       sentAt: new Date().toISOString(),
     });
+    cloudCollaborationSessionRef.current?.updateBoard(nextBoard);
   }, []);
 
   const pushUndo = useCallback((snapshot = boardRef.current) => {
@@ -6608,6 +6712,7 @@ function App() {
     setSessionNameState(value);
     localStorage.setItem("moodboard-session-name", value);
     channelRef.current?.postMessage({ type: "presence", sourceId: sessionIdRef.current, name: value, sentAt: Date.now() });
+    cloudCollaborationSessionRef.current?.setDisplayName(value);
   };
 
   useEffect(() => {
@@ -6688,6 +6793,7 @@ function App() {
             incoming.view = current.view;
             boardRef.current = incoming;
             setBoard(incoming);
+            if (message.origin !== "cloud") cloudCollaborationSessionRef.current?.updateBoard(incoming);
             announce(`${message.name || "另一個分頁"}同步了畫布`, "success");
           }
         } catch {
@@ -6924,9 +7030,177 @@ function App() {
 
   const boardSnapshot = useCallback(() => ({ ...boardRef.current, view: viewRef.current }), []);
 
+  const stopCloudCollaboration = useCallback(async ({ forget = false } = {}) => {
+    const session = cloudCollaborationSessionRef.current;
+    cloudCollaborationSessionRef.current = null;
+    if (session) await session.destroy().catch(() => undefined);
+    setCloudCollaboration(EMPTY_CLOUD_COLLABORATION);
+    if (forget) {
+      clearCollaborationResume();
+      setCollaborationResume(null);
+    }
+  }, []);
+
+  const applyCloudCollaborationBoard = useCallback((incomingBoard) => {
+    try {
+      const incoming = ensureBoard(incomingBoard);
+      incoming.view = viewRef.current;
+      boardRef.current = incoming;
+      setBoard(incoming);
+      selectedIdsRef.current = [];
+      setSelectedIds([]);
+      setKeyObjectId(null);
+      setDirty(true);
+      setSaveState("即時共編已同步");
+      channelRef.current?.postMessage({
+        type: "board-update",
+        origin: "cloud",
+        sourceId: sessionIdRef.current,
+        name: sessionName,
+        board: incoming,
+        sentAt: new Date().toISOString(),
+      });
+    } catch {
+      setCloudCollaboration((current) => ({ ...current, status: "degraded", message: "收到無法辨識的共編資料；目前畫布已保留。" }));
+    }
+  }, [sessionName]);
+
+  const scrubCollaborationInviteFromUrl = useCallback(() => {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has("collab")) return;
+    url.searchParams.delete("collab");
+    window.history.replaceState({}, "", url);
+  }, []);
+
+  const collaborationSessionOptions = useCallback(() => ({
+    board: boardSnapshot(),
+    user: authSession.user,
+    clientId: sessionIdRef.current,
+    displayName: sessionName,
+    onBoard: applyCloudCollaborationBoard,
+    onState: (nextState) => setCloudCollaboration((current) => ({ ...current, ...nextState })),
+  }), [applyCloudCollaborationBoard, authSession.user, boardSnapshot, sessionName]);
+
+  const startCloudCollaboration = useCallback(async () => {
+    if (!authReady) {
+      requestAdvancedFeature("collaboration");
+      return;
+    }
+    await stopCloudCollaboration({ forget: false });
+    setCloudCollaboration({ ...EMPTY_CLOUD_COLLABORATION, status: "creating", message: "正在建立安全的共編空間…" });
+    try {
+      await saveVersion(boardSnapshot(), translateInterfaceText("開始即時共編前"), "automatic");
+      const session = await createMoodboardCollaborationRoom(collaborationSessionOptions());
+      cloudCollaborationSessionRef.current = session;
+      const resume = saveCollaborationResume(localStorage, {
+        roomId: session.roomId,
+        boardId: boardRef.current.id,
+        inviteId: session.inviteId,
+      });
+      setCollaborationResume(resume);
+      initialCollaborationInviteRef.current = "";
+      scrubCollaborationInviteFromUrl();
+      announce("共編空間已建立；可複製邀請連結給協作者。", "success");
+    } catch (error) {
+      const message = collaborationErrorMessage(error);
+      setCloudCollaboration({ ...EMPTY_CLOUD_COLLABORATION, status: "error", message });
+      announce(message, "error");
+    }
+  }, [announce, authReady, boardSnapshot, collaborationSessionOptions, requestAdvancedFeature, scrubCollaborationInviteFromUrl, stopCloudCollaboration]);
+
+  const joinCloudCollaboration = useCallback(async (inviteValue) => {
+    if (!authReady) {
+      initialCollaborationInviteRef.current = normalizeCollaborationInvite(inviteValue);
+      requestAdvancedFeature("collaboration");
+      return;
+    }
+    const inviteId = normalizeCollaborationInvite(inviteValue);
+    if (!inviteId) {
+      setCloudCollaboration({ ...EMPTY_CLOUD_COLLABORATION, status: "error", message: "請貼上有效的共編邀請連結或代碼。" });
+      return;
+    }
+    await stopCloudCollaboration({ forget: false });
+    setCloudCollaboration({ ...EMPTY_CLOUD_COLLABORATION, status: "joining", message: "正在確認邀請與成員權限…" });
+    try {
+      await saveVersion(boardSnapshot(), translateInterfaceText("加入即時共編前"), "automatic");
+      const session = await joinMoodboardCollaborationInvite({ ...collaborationSessionOptions(), inviteId });
+      cloudCollaborationSessionRef.current = session;
+      const resume = saveCollaborationResume(localStorage, {
+        roomId: session.roomId,
+        boardId: boardRef.current.id,
+        inviteId: session.inviteId,
+      });
+      setCollaborationResume(resume);
+      initialCollaborationInviteRef.current = "";
+      scrubCollaborationInviteFromUrl();
+      announce("已加入即時共編空間。", "success");
+    } catch (error) {
+      const message = collaborationErrorMessage(error);
+      setCloudCollaboration({ ...EMPTY_CLOUD_COLLABORATION, status: "error", message });
+      announce(message, "error");
+    }
+  }, [announce, authReady, boardSnapshot, collaborationSessionOptions, requestAdvancedFeature, scrubCollaborationInviteFromUrl, stopCloudCollaboration]);
+
+  const resumeCloudCollaboration = useCallback(async () => {
+    if (!authReady || !collaborationResume?.roomId) return;
+    await stopCloudCollaboration({ forget: false });
+    setCloudCollaboration({ ...EMPTY_CLOUD_COLLABORATION, status: "connecting", message: "正在續接上次的共編空間…" });
+    try {
+      await saveVersion(boardSnapshot(), translateInterfaceText("續接即時共編前"), "automatic");
+      const session = await resumeMoodboardCollaborationRoom({
+        ...collaborationSessionOptions(),
+        roomId: collaborationResume.roomId,
+        inviteId: collaborationResume.inviteId,
+      });
+      cloudCollaborationSessionRef.current = session;
+      announce("已續接上次的即時共編空間。", "success");
+    } catch (error) {
+      const message = collaborationErrorMessage(error);
+      setCloudCollaboration({ ...EMPTY_CLOUD_COLLABORATION, status: "error", message });
+      announce(message, "error");
+    }
+  }, [announce, authReady, boardSnapshot, collaborationResume, collaborationSessionOptions, stopCloudCollaboration]);
+
+  const copyCloudCollaborationInvite = useCallback(async () => {
+    if (!cloudCollaboration.inviteUrl) return;
+    try {
+      await navigator.clipboard.writeText(cloudCollaboration.inviteUrl);
+      announce("共編邀請連結已複製。", "success");
+    } catch {
+      announce("無法自動複製；請從網址列手動複製邀請連結。", "warning");
+    }
+  }, [announce, cloudCollaboration.inviteUrl]);
+
+  const leaveCloudCollaboration = useCallback(async () => {
+    await stopCloudCollaboration({ forget: true });
+    announce("已離開共編；目前畫布仍保存在這台裝置。", "success");
+  }, [announce, stopCloudCollaboration]);
+
+  useEffect(() => {
+    if (authReady || !cloudCollaborationSessionRef.current) return;
+    const session = cloudCollaborationSessionRef.current;
+    cloudCollaborationSessionRef.current = null;
+    session.destroy().catch(() => undefined);
+    setCloudCollaboration(EMPTY_CLOUD_COLLABORATION);
+  }, [authReady]);
+
+  useEffect(() => () => {
+    const session = cloudCollaborationSessionRef.current;
+    cloudCollaborationSessionRef.current = null;
+    session?.destroy().catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    const inviteId = initialCollaborationInviteRef.current;
+    if (!hydrated || !inviteId) return;
+    if (authReady) setShowCollaboration(true);
+    else if (authSession.status !== "loading") requestAdvancedFeature("collaboration");
+  }, [authReady, authSession.status, hydrated, requestAdvancedFeature]);
+
   const activateLocalMoodboard = useCallback(async (nextBoard, message) => {
     const current = boardSnapshot();
     try {
+      await stopCloudCollaboration({ forget: false });
       await persistBoardLocally(current);
       if (dirty || current.objects.length) {
         await saveVersion(current, translateInterfaceText("切換 Moodboard 前"), "automatic");
@@ -6957,7 +7231,7 @@ function App() {
       announce(error?.message || "無法切換 Moodboard；目前畫布未受影響。", "error");
       return null;
     }
-  }, [announce, boardSnapshot, cancelDriveOperations, dirty, persistBoardLocally, refreshLocalLibrarySummary]);
+  }, [announce, boardSnapshot, cancelDriveOperations, dirty, persistBoardLocally, refreshLocalLibrarySummary, stopCloudCollaboration]);
 
   const openLocalMoodboard = useCallback((record) => {
     if (!record?.board) {
@@ -9387,10 +9661,16 @@ function App() {
           <button
             className="topbar-button collaboration-button"
             type="button"
-            aria-label={authReady ? `協作，${peers.length + 1} 個分頁在線` : "協作，需要登入"}
+            aria-label={authReady
+              ? cloudCollaboration.roomId
+                ? `協作，${Math.max(1, cloudCollaboration.peers.length)} 位成員在線`
+                : `協作，${peers.length + 1} 個分頁在線`
+              : "協作，需要登入"}
             onClick={() => requestAdvancedFeature("collaboration")}
           >
-            <Users size={17} /><span>協作</span>{authReady && peers.length ? <b>{peers.length + 1}</b> : null}
+            <Users size={17} /><span>協作</span>{authReady && cloudCollaboration.roomId
+              ? <b>{Math.max(1, cloudCollaboration.peers.length)}</b>
+              : authReady && peers.length ? <b>{peers.length + 1}</b> : null}
           </button>
           <button
             className="account-menu-button"
@@ -9916,6 +10196,14 @@ function App() {
           peerCount={peers.length}
           driveConnected={driveSession.connected}
           driveLinked={Boolean(currentDriveLink)}
+          cloud={cloudCollaboration}
+          initialInvite={initialCollaborationInviteRef.current}
+          resumeAvailable={Boolean(collaborationResume?.roomId && collaborationResume.boardId === board.id)}
+          onCreateRoom={startCloudCollaboration}
+          onJoinRoom={joinCloudCollaboration}
+          onResumeRoom={resumeCloudCollaboration}
+          onCopyInvite={copyCloudCollaborationInvite}
+          onLeaveRoom={leaveCloudCollaboration}
           onOpenDrive={() => {
             setShowCollaboration(false);
             openGoogleDriveLibrary();

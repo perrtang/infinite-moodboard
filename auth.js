@@ -59,6 +59,11 @@ const firebaseApp = isMoodboardAuthConfigured
       || initializeApp(firebaseConfig, "infinite-moodboard"))
   : null;
 
+export function getMoodboardFirebaseApp() {
+  if (!firebaseApp) throw new Error("PETFASHION Authentication 尚未設定完成。");
+  return firebaseApp;
+}
+
 let authPromise;
 
 async function moodboardAuth() {
