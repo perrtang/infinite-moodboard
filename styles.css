@@ -2387,6 +2387,98 @@ html[lang="en"] .sidebar-tabs button svg {
   font-size: calc(10px + var(--ui-font-offset, 0px));
 }
 
+.object-color-control {
+  display: grid;
+  gap: 8px;
+}
+
+.object-color-library-heading {
+  align-items: baseline;
+  display: flex;
+  justify-content: space-between;
+}
+
+.object-color-library-heading strong {
+  color: var(--text-soft);
+  font-size: calc(10px + var(--ui-font-offset, 0px));
+}
+
+.object-color-library-heading small {
+  color: var(--text-muted);
+  font-size: calc(8px + var(--ui-font-offset, 0px));
+}
+
+.object-color-swatches {
+  display: grid;
+  gap: 5px;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+}
+
+.object-color-swatches button {
+  align-items: center;
+  background: var(--object-swatch);
+  border: 1px solid rgb(var(--accent-rgb) / 0.28);
+  border-radius: 50%;
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  height: 28px;
+  justify-content: center;
+  min-width: 0;
+  padding: 0;
+  width: 28px;
+}
+
+.object-color-swatches button:hover {
+  box-shadow: 0 0 0 2px rgb(var(--accent-rgb) / 0.32);
+}
+
+.object-color-swatches button.is-active {
+  box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--accent-strong);
+}
+
+.object-color-swatches button:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 2px;
+}
+
+.object-color-swatches svg {
+  filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 1px #000);
+  stroke-width: 3;
+}
+
+.object-color-library-actions {
+  display: grid;
+  gap: 3px;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 0.7fr) minmax(0, 0.7fr);
+}
+
+.object-color-library-actions button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  font-size: calc(9px + var(--ui-font-offset, 0px));
+  gap: 5px;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 5px;
+}
+
+.object-color-library-actions button:hover,
+.object-color-library-actions button:focus-visible {
+  background: rgb(var(--accent-rgb) / 0.07);
+  color: var(--text);
+}
+
+.object-color-library-actions button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .property-wide {
   grid-column: 1 / -1;
 }
@@ -8682,6 +8774,19 @@ button.status-label:hover {
     justify-content: center;
     min-height: 44px;
     width: 100%;
+  }
+
+  .object-color-swatches {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .object-color-swatches button {
+    height: 44px;
+    width: 44px;
+  }
+
+  .object-color-library-actions button {
+    min-height: 44px;
   }
 }
 

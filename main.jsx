@@ -264,6 +264,13 @@ import {
   serializeInterfaceTheme,
 } from "./theme.js";
 import {
+  loadObjectColorLibrary,
+  mergeObjectColorLibrary,
+  parseObjectColorLibraryFile,
+  saveObjectColorLibrary,
+  serializeObjectColorLibrary,
+} from "./color-library.js";
+import {
   CANVAS_BACKGROUND_STORAGE_KEY,
   DEFAULT_CANVAS_BACKGROUND,
   DEFAULT_INTERFACE_TYPOGRAPHY,
@@ -3102,6 +3109,57 @@ function Micro3DControls({ objects, onChange, active, onActiveChange }) {
   );
 }
 
+function ObjectColorLibraryControl({
+  label,
+  value,
+  colors,
+  onChange,
+  onAdd,
+  onLoad,
+  onExport,
+}) {
+  const currentColor = String(value || "#000000").toUpperCase();
+  return (
+    <div className="object-color-control">
+      <label>
+        <span>{label}</span>
+        <span className="color-input-row">
+          <input type="color" value={value} onChange={(event) => onChange(event.target.value)} />
+          <code>{currentColor}</code>
+        </span>
+      </label>
+      <div className="object-color-library-heading">
+        <strong>色彩庫</strong>
+        <small>儲存在這台裝置</small>
+      </div>
+      <div className="object-color-swatches" role="group" aria-label={`${label}色彩庫`}>
+        {colors.map((color) => {
+          const active = color === currentColor;
+          return (
+            <button
+              key={color}
+              type="button"
+              aria-pressed={active}
+              className={active ? "is-active" : ""}
+              style={{ "--object-swatch": color }}
+              title={color}
+              onClick={() => onChange(color)}
+            >
+              {active ? <Check size={12} aria-hidden="true" /> : null}
+              <span className="sr-only">{color}</span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="object-color-library-actions">
+        <button type="button" onClick={() => onAdd(currentColor)}><Plus size={14} /> 加入目前色彩</button>
+        <button type="button" onClick={onLoad}><FolderOpen size={14} /> 載入</button>
+        <button type="button" onClick={onExport}><Download size={14} /> 匯出</button>
+      </div>
+    </div>
+  );
+}
+
 function Inspector({
   board,
   selectedIds,
@@ -3136,6 +3194,10 @@ function Inspector({
   onResizeArtboardPreset,
   selectionGrouped,
   onToggleGroup,
+  objectColorLibrary,
+  onAddObjectColor,
+  onLoadObjectColorLibrary,
+  onExportObjectColorLibrary,
   readOnly = false,
   mobilePanel,
   setMobilePanel,
@@ -3255,10 +3317,15 @@ function Inspector({
                   </label>
                   <label><span>大小</span><div className="input-with-suffix"><input type="number" min="6" max="512" value={Math.round(object.fontSize * 10) / 10} onChange={(event) => onUpdateObject(object.id, { fontSize: Math.max(6, Number(event.target.value) || 6) })} /><b>px</b></div></label>
                 </div>
-                <label>
-                  <span>文字色彩</span>
-                  <span className="color-input-row"><input type="color" value={object.color} onChange={(event) => onUpdateObject(object.id, { color: event.target.value })} /><code>{object.color.toUpperCase()}</code></span>
-                </label>
+                <ObjectColorLibraryControl
+                  label="文字色彩"
+                  value={object.color}
+                  colors={objectColorLibrary}
+                  onChange={(color) => onUpdateObject(object.id, { color })}
+                  onAdd={onAddObjectColor}
+                  onLoad={onLoadObjectColorLibrary}
+                  onExport={onExportObjectColorLibrary}
+                />
                 <div className="text-alignment-fields">
                   <TextAlignmentControl
                     label="段落對齊"
@@ -3369,10 +3436,15 @@ function Inspector({
                     </div>
                   </div>
                 ) : null}
-                <label>
-                  <span>填滿色彩</span>
-                  <span className="color-input-row"><input type="color" value={object.fill} onChange={(event) => onUpdateObject(object.id, { fill: event.target.value })} /><code>{object.fill.toUpperCase()}</code></span>
-                </label>
+                <ObjectColorLibraryControl
+                  label="填滿色彩"
+                  value={object.fill}
+                  colors={objectColorLibrary}
+                  onChange={(fill) => onUpdateObject(object.id, { fill })}
+                  onAdd={onAddObjectColor}
+                  onLoad={onLoadObjectColorLibrary}
+                  onExport={onExportObjectColorLibrary}
+                />
                 <div className="shape-quick-sizes">
                   <strong>快速尺寸</strong>
                   <label>
@@ -6045,6 +6117,7 @@ function App() {
   const [previewTheme, setPreviewTheme] = useState(null);
   const [interfaceTypography, setInterfaceTypography] = useState(loadStoredInterfaceTypography);
   const [canvasBackground, setCanvasBackground] = useState(loadStoredCanvasBackground);
+  const [objectColorLibrary, setObjectColorLibrary] = useState(loadObjectColorLibrary);
   const [updateCheck, setUpdateCheck] = useState({ status: "idle", manifest: null, checkedAt: null, message: "" });
   const [updatePreference, setUpdatePreference] = useState(loadUpdatePreference);
   const [updateAction, setUpdateAction] = useState({ status: "idle", message: "" });
@@ -6097,6 +6170,7 @@ function App() {
   const svgInputRef = useRef(null);
   const boardInputRef = useRef(null);
   const themeInputRef = useRef(null);
+  const objectColorLibraryInputRef = useRef(null);
   const fileHandleRef = useRef(null);
   const driveTokenRef = useRef(null);
   const driveOperationEpochRef = useRef(0);
@@ -6420,6 +6494,10 @@ function App() {
   useEffect(() => {
     localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(customThemes));
   }, [customThemes]);
+
+  useEffect(() => {
+    saveObjectColorLibrary(localStorage, objectColorLibrary);
+  }, [objectColorLibrary]);
 
   useEffect(() => {
     localStorage.setItem(ACTIVE_THEME_STORAGE_KEY, activeTheme.id);
@@ -7279,6 +7357,34 @@ function App() {
       announce(error.message || "介面配色匯入失敗。", "error");
     }
   }, [announce]);
+
+  const addObjectColorToLibrary = useCallback((color) => {
+    const next = mergeObjectColorLibrary(objectColorLibrary, [color]);
+    if (next.length === objectColorLibrary.length) {
+      announce("這個色彩已經在色彩庫中。", "success");
+      return;
+    }
+    setObjectColorLibrary(next);
+    announce(`已將 ${String(color).toUpperCase()} 加入物件色彩庫。`, "success");
+  }, [announce, objectColorLibrary]);
+
+  const exportObjectColorLibrary = useCallback(() => {
+    const blob = new Blob([serializeObjectColorLibrary(objectColorLibrary)], { type: "application/json;charset=utf-8" });
+    downloadBlob(blob, "Infinite-Moodboard-物件色彩庫.moodcolors");
+    announce(`已匯出 ${objectColorLibrary.length} 個物件色彩。`, "success");
+  }, [announce, objectColorLibrary]);
+
+  const importObjectColorLibraryFile = useCallback(async (file) => {
+    try {
+      const imported = parseObjectColorLibraryFile(await file.text());
+      const next = mergeObjectColorLibrary(objectColorLibrary, imported);
+      const added = next.length - objectColorLibrary.length;
+      setObjectColorLibrary(next);
+      announce(added > 0 ? `已載入 ${added} 個新色彩。` : "色彩庫中的顏色都已存在。", "success");
+    } catch (error) {
+      announce(error.message || "物件色彩庫載入失敗。", "error");
+    }
+  }, [announce, objectColorLibrary]);
 
   const closeInterfaceThemes = useCallback(() => {
     setPreviewTheme(null);
@@ -10920,6 +11026,10 @@ function App() {
           onResizeArtboardPreset={resizeArtboardPreset}
           selectionGrouped={selectionGrouped}
           onToggleGroup={toggleSelectionGroup}
+          objectColorLibrary={objectColorLibrary}
+          onAddObjectColor={addObjectColorToLibrary}
+          onLoadObjectColorLibrary={() => objectColorLibraryInputRef.current?.click()}
+          onExportObjectColorLibrary={exportObjectColorLibrary}
           readOnly={cloudReadOnly}
           mobilePanel={mobilePanel}
           setMobilePanel={setMobilePanel}
@@ -11158,6 +11268,7 @@ function App() {
       <input ref={svgInputRef} className="sr-only" type="file" accept=".svg,image/svg+xml" multiple onChange={onSvgInput} />
       <input ref={boardInputRef} className="sr-only" type="file" accept=".moodboard,.json,application/json" onChange={(event) => { const [file] = event.target.files || []; if (file) importBoardFile(file); event.target.value = ""; }} />
       <input ref={themeInputRef} className="sr-only" type="file" accept=".moodtheme,.json,application/json" onChange={(event) => { const [file] = event.target.files || []; if (file) importInterfaceThemeFile(file); event.target.value = ""; }} />
+      <input ref={objectColorLibraryInputRef} className="sr-only" type="file" accept=".moodcolors,.json,application/json" onChange={(event) => { const [file] = event.target.files || []; if (file) importObjectColorLibraryFile(file); event.target.value = ""; }} />
     </main>
   );
 }

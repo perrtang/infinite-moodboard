@@ -55,6 +55,14 @@ test("shape quick sizes and editable polygon or star controls are localized", ()
   assert.equal(translateInterfaceText("多邊形邊數", "zh-Hans"), "多边形边数");
 });
 
+test("object color library controls and feedback are localized", () => {
+  assert.equal(translateInterfaceText("色彩庫", "en"), "Color library");
+  assert.equal(translateInterfaceText("加入目前色彩", "en"), "Add current color");
+  assert.equal(translateInterfaceText("文字色彩色彩庫", "en"), "Text color library");
+  assert.equal(translateInterfaceText("已載入 3 個新色彩。", "en"), "Loaded 3 new colors.");
+  assert.equal(translateInterfaceText("儲存在這台裝置", "zh-Hans"), "保存在这台设备");
+});
+
 test("workspace search, ruler, and shortcut copy is localized", () => {
   assert.equal(translateInterfaceText("搜尋或篩選圖層", "en"), "Search or filter layers");
   assert.equal(translateInterfaceText("尺規與輔助導引線", "en"), "Rulers and guides");
