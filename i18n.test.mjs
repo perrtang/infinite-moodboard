@@ -37,6 +37,19 @@ test("paper, annotation, grid, and semantic grouping copy is localized", () => {
   assert.equal(translateInterfaceText("紙張＋內容", "zh-Hans"), "纸张＋内容");
 });
 
+test("shape quick sizes and editable polygon or star controls are localized", () => {
+  assert.equal(translateInterfaceText("多邊形", "en"), "Polygon");
+  assert.equal(translateInterfaceText("多邊形邊數", "en"), "Polygon sides");
+  assert.equal(translateInterfaceText("星形樣式", "en"), "Star style");
+  assert.equal(translateInterfaceText("內縮比例", "en"), "Inner radius");
+  assert.equal(translateInterfaceText("快速尺寸", "en"), "Quick sizes");
+  assert.equal(translateInterfaceText("紙張尺寸", "en"), "Paper sizes");
+  assert.equal(translateInterfaceText("限時動態／短影音", "en"), "Story / short video");
+  assert.equal(translateInterfaceText("12 芒 · 32%", "en"), "12 points · 32%");
+  assert.equal(translateInterfaceText("紙張尺寸", "zh-Hans"), "纸张尺寸");
+  assert.equal(translateInterfaceText("多邊形邊數", "zh-Hans"), "多边形边数");
+});
+
 test("workspace search, ruler, and shortcut copy is localized", () => {
   assert.equal(translateInterfaceText("搜尋或篩選圖層", "en"), "Search or filter layers");
   assert.equal(translateInterfaceText("尺規與輔助導引線", "en"), "Rulers and guides");

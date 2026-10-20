@@ -2,6 +2,12 @@
 
 Infinite Moodboard 是 PETFASHION 的免費、離線優先視覺工作台。圖片、影片、文字、SVG、版本與構圖運算都在瀏覽器中進行；使用者可下載可編輯的 `.moodboard` 工作檔，或輸出 PNG、WebP、AVIF、PDF 與唯讀 HTML。
 
+## v0.15.0 重點（本機待發布）
+
+- 形狀 Inspector 新增 A3、A4、A5、B5、Letter 直式／橫式快速尺寸，並提供常見正方形貼文、直式貼文、限時動態／短影音、橫式分享圖與 16:9 影片封面尺寸。
+- 多邊形可調整 3–24 邊；星形可調整 3–24 芒及 15–85% 內縮比例，並提供經典、銳利、飽滿與放射四種快捷樣式。
+- 套用快速尺寸時維持物件可見中心與原始尺寸復原資料；畫布、縮圖、合成輸出與可攜式 HTML 都保留相同幾何外觀。
+
 ## v0.14.0 重點（本機待發布）
 
 - 新增跨裝置即時共編：必須使用已完成 Email 驗證的 PETFASHION 帳號，且只會在使用者主動建立或加入共編空間後上傳目前 Moodboard。
@@ -104,10 +110,10 @@ npx firebase-tools deploy --only firestore:rules
 完成一個可驗收里程碑後，先通過測試與建置、提交所有變更，再執行：
 
 ```bash
-./scripts/checkpoint-version.sh 0.14.0
+./scripts/checkpoint-version.sh 0.15.0
 ```
 
-腳本會確認工作目錄乾淨且 `package.json` 版號一致，建立或驗證 `backup/v0.14.0` 標籤，並把 Git bundle 與原始碼 zip 寫入專案外的 `backups/infinite-moodboard/`。可用 `git switch --detach backup/v0.14.0` 檢查舊版；需要正式回復時，再從該標籤建立修復分支，避免直接覆蓋目前工作。
+腳本會確認工作目錄乾淨且 `package.json` 版號一致，建立或驗證 `backup/v0.15.0` 標籤，並把 Git bundle 與原始碼 zip 寫入專案外的 `backups/infinite-moodboard/`。可用 `git switch --detach backup/v0.15.0` 檢查舊版；需要正式回復時，再從該標籤建立修復分支，避免直接覆蓋目前工作。
 
 ## 發布
 

@@ -1,8 +1,8 @@
 {
   "product": "Infinite Moodboard",
   "channel": "stable",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "releasedAt": "2026-10-20",
-  "summary": "新增跨裝置即時共編、成員邀請、在線狀態、離線變更佇列與可回復版本備份。",
+  "summary": "新增形狀常用紙張與社群尺寸、多邊形邊數，以及可調整的星形樣式、芒數與內縮比例。",
   "url": "https://perrtang.github.io/infinite-moodboard/"
 }

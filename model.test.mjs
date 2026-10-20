@@ -20,6 +20,7 @@ import {
   reorderCapturesByVisualDrop,
   reorderObjectsByVisualDrop,
   resizeArtboardToPreset,
+  resizeObjectToDimensions,
   resizeObjectFromHandle,
   resizeObjectsFromHandle,
   resizeTextFrameToDimension,
@@ -28,6 +29,8 @@ import {
   rotateObjectsAroundPoint,
   safeFilename,
   scaleObjectsAroundPoint,
+  shapeClipPath,
+  shapePolygonPoints,
   selectionActionAnchorInViewport,
   selectionIdsForObject,
   selectionWorldBounds,
@@ -336,6 +339,51 @@ test("artboards wrap the selected visual bounds with predictable padding and pap
   assert.equal(a4Landscape.paperPreset, "a4");
 });
 
+test("shape parameters normalize safely and generate editable polygon and star geometry", () => {
+  const board = ensureBoard({
+    schemaVersion: 11,
+    objects: [
+      { id: "polygon", type: "shape", shapeKind: "polygon", shapeSides: 99, width: 160, height: 160 },
+      { id: "star", type: "shape", shapeKind: "star", starPoints: 2, starInnerRatio: 2, width: 160, height: 160 },
+      { id: "legacy-star", type: "shape", shapeKind: "star", width: 160, height: 160 },
+    ],
+  });
+
+  assert.equal(board.schemaVersion, 12);
+  assert.equal(board.objects[0].shapeSides, 24);
+  assert.equal(board.objects[1].starPoints, 3);
+  assert.equal(board.objects[1].starInnerRatio, 0.85);
+  assert.equal(board.objects[2].starPoints, 5);
+  assert.equal(board.objects[2].starInnerRatio, 0.42);
+  assert.equal(shapePolygonPoints({ shapeKind: "polygon", shapeSides: 8 }).length, 8);
+  assert.equal(shapePolygonPoints({ shapeKind: "star", starPoints: 7, starInnerRatio: 0.3 }).length, 14);
+  assert.match(shapeClipPath({ shapeKind: "star", starPoints: 7, starInnerRatio: 0.3 }), /^polygon\(/);
+});
+
+test("shape quick sizes preserve the visible center and original-size recovery values", () => {
+  const object = {
+    id: "shape",
+    type: "shape",
+    anchor: "tl",
+    pivotX: 140,
+    pivotY: 90,
+    width: 180,
+    height: 120,
+    originalWidth: 180,
+    originalHeight: 120,
+    rotation: 28,
+  };
+  const before = selectionWorldBounds([object]);
+  const resized = resizeObjectToDimensions(object, 794, 1123);
+  const after = selectionWorldBounds([resized]);
+
+  assert.deepEqual([resized.width, resized.height], [794, 1123]);
+  assert.deepEqual([resized.originalWidth, resized.originalHeight], [180, 120]);
+  assert.equal(resized.anchor, "tl");
+  assert.ok(Math.abs(before.centerX - after.centerX) < 0.00001);
+  assert.ok(Math.abs(before.centerY - after.centerY) < 0.00001);
+});
+
 test("grid arrangement keeps every object and creates equal row and column spacing", () => {
   const source = Array.from({ length: 5 }, (_, index) => ({
     id: `object-${index}`,
@@ -469,7 +517,7 @@ test("legacy objects gain a stable original size and can restore it", () => {
   });
   const resized = { ...board.objects[0], width: 640, height: 360 };
   const restored = restoreObjectSize(resized);
-  assert.equal(board.schemaVersion, 11);
+  assert.equal(board.schemaVersion, 12);
   assert.deepEqual(
     [board.objects[0].tiltX, board.objects[0].tiltY, board.objects[0].depth, board.objects[0].perspective],
     [0, 0, 0, 1000],
@@ -495,7 +543,7 @@ test("linked text frames preserve their story, visible segment, and overflow sta
   });
   const object = board.objects[0];
 
-  assert.equal(board.schemaVersion, 11);
+  assert.equal(board.schemaVersion, 12);
   assert.equal(object.text, "這是一段完整文字");
   assert.equal(object.textFlowId, "story-one");
   assert.equal(object.textFlowOrder, 2);
@@ -753,7 +801,7 @@ test("the last composition survives file normalization as a dedicated recovery s
     },
   });
 
-  assert.equal(board.schemaVersion, 11);
+  assert.equal(board.schemaVersion, 12);
   assert.equal(board.lastComposition.id, "previous-composition");
   assert.equal(board.lastComposition.name, "切換前的構圖");
   assert.deepEqual(board.lastComposition.view, { x: 80, y: -45, zoom: 1.4 });
@@ -1138,6 +1186,8 @@ test("portable HTML is a self-contained, script-safe, read-only browser view", (
         type: "shape",
         name: "星形",
         shapeKind: "star",
+        starPoints: 9,
+        starInnerRatio: 0.28,
         fill: "#58e6ff",
         pivotX: 420,
         pivotY: 260,
@@ -1166,6 +1216,9 @@ test("portable HTML is a self-contained, script-safe, read-only browser view", (
   assert.match(html, /"textVerticalAlign":"bottom"/);
   assert.match(html, /text\.style\.justifyContent/);
   assert.match(html, /"type":"shape"/);
+  assert.match(html, /"starPoints":9/);
+  assert.match(html, /"starInnerRatio":0\.28/);
+  assert.match(html, /"shapeClipPath":"polygon\(/);
   assert.match(html, /\\u003c\/script>/);
   assert.doesNotMatch(html, /<script>alert/);
   assert.doesNotMatch(html, /https?:\/\//);

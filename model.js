@@ -1,4 +1,4 @@
-export const BOARD_SCHEMA_VERSION = 11;
+export const BOARD_SCHEMA_VERSION = 12;
 
 export const ANCHORS = {
   tl: { x: 0, y: 0, label: "左上" },
@@ -35,6 +35,9 @@ export const RESIZE_HANDLE_OPPOSITES = {
 };
 
 export const SHAPE_KINDS = ["rectangle", "triangle", "polygon", "star"];
+export const SHAPE_SIDE_LIMITS = Object.freeze({ minimum: 3, maximum: 24 });
+export const STAR_POINT_LIMITS = Object.freeze({ minimum: 3, maximum: 24 });
+export const STAR_INNER_RATIO_LIMITS = Object.freeze({ minimum: 0.15, maximum: 0.85 });
 export const PAPER_PRESETS = Object.freeze({
   fit: { label: "符合內容", width: null, height: null },
   a3: { label: "A3", width: 1123, height: 1587 },
@@ -172,6 +175,9 @@ function normalizeObject(object, index) {
     textAlignLast: TEXT_LAST_ALIGNMENTS.includes(object?.textAlignLast) ? object.textAlignLast : "left",
     textVerticalAlign: TEXT_VERTICAL_ALIGNMENTS.includes(object?.textVerticalAlign) ? object.textVerticalAlign : "top",
     shapeKind: SHAPE_KINDS.includes(object?.shapeKind) ? object.shapeKind : "rectangle",
+    shapeSides: Math.round(clampNumber(object?.shapeSides, 6, SHAPE_SIDE_LIMITS.minimum, SHAPE_SIDE_LIMITS.maximum)),
+    starPoints: Math.round(clampNumber(object?.starPoints, 5, STAR_POINT_LIMITS.minimum, STAR_POINT_LIMITS.maximum)),
+    starInnerRatio: clampNumber(object?.starInnerRatio, 0.42, STAR_INNER_RATIO_LIMITS.minimum, STAR_INNER_RATIO_LIMITS.maximum),
     fill: typeof object?.fill === "string" && object.fill
       ? object.fill
       : inferredType === "artboard" ? "#fffdf7" : "#58e6ff",
@@ -303,6 +309,58 @@ export function resizeArtboardToPreset(object, presetKey, orientation = "portrai
     paperPreset: presetKey,
     paperOrientation: landscape ? "landscape" : "portrait",
   };
+}
+
+export function resizeObjectToDimensions(object, nextWidth, nextHeight) {
+  if (!object || typeof object !== "object") return object;
+  const width = Math.max(24, finiteNumber(nextWidth, object.width));
+  const height = Math.max(24, finiteNumber(nextHeight, object.height));
+  const originalAnchor = ANCHORS[object.anchor] ? object.anchor : "mc";
+  const centered = originalAnchor === "mc" ? { ...object, anchor: "mc" } : movePivotPreservingPlacement(object, "mc");
+  const resized = {
+    ...centered,
+    width,
+    height,
+    updatedAt: new Date().toISOString(),
+  };
+  return originalAnchor === "mc" ? resized : movePivotPreservingPlacement(resized, originalAnchor);
+}
+
+export function shapePolygonPoints(object = {}) {
+  if (object.shapeKind === "triangle") {
+    return [[0.5, 0.02], [0.98, 0.98], [0.02, 0.98]];
+  }
+
+  if (object.shapeKind === "polygon") {
+    const sides = Math.round(clampNumber(object.shapeSides, 6, SHAPE_SIDE_LIMITS.minimum, SHAPE_SIDE_LIMITS.maximum));
+    const startAngle = -Math.PI / 2 - (sides % 2 === 0 ? Math.PI / sides : 0);
+    return Array.from({ length: sides }, (_, index) => {
+      const angle = startAngle + (Math.PI * 2 * index) / sides;
+      return [0.5 + Math.cos(angle) * 0.49, 0.5 + Math.sin(angle) * 0.49];
+    });
+  }
+
+  if (object.shapeKind === "star") {
+    const points = Math.round(clampNumber(object.starPoints, 5, STAR_POINT_LIMITS.minimum, STAR_POINT_LIMITS.maximum));
+    const innerRatio = clampNumber(object.starInnerRatio, 0.42, STAR_INNER_RATIO_LIMITS.minimum, STAR_INNER_RATIO_LIMITS.maximum);
+    return Array.from({ length: points * 2 }, (_, index) => {
+      const radius = index % 2 === 0 ? 0.49 : 0.49 * innerRatio;
+      const angle = -Math.PI / 2 + (Math.PI * index) / points;
+      return [0.5 + Math.cos(angle) * radius, 0.5 + Math.sin(angle) * radius];
+    });
+  }
+
+  return null;
+}
+
+function formatShapeCoordinate(value) {
+  return String(Number((value * 100).toFixed(3)));
+}
+
+export function shapeClipPath(object) {
+  const points = shapePolygonPoints(object);
+  if (!points) return "none";
+  return `polygon(${points.map(([x, y]) => `${formatShapeCoordinate(x)}% ${formatShapeCoordinate(y)}%`).join(", ")})`;
 }
 
 export function arrangeObjectsInGrid(objects, options = {}) {

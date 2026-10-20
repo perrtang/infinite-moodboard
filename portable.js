@@ -1,4 +1,5 @@
 import { normalizeInterfaceLocale, translateInterfaceText } from "./i18n.js";
+import { shapeClipPath } from "./model.js";
 
 const VIEWER_MARKERS = {
   heart: "♥",
@@ -72,6 +73,10 @@ export function createPortableHtml(board, options = {}) {
         textAlignLast: ["left", "center", "right"].includes(object.textAlignLast) ? object.textAlignLast : "left",
         textVerticalAlign: ["top", "middle", "bottom"].includes(object.textVerticalAlign) ? object.textVerticalAlign : "top",
         shapeKind: object.shapeKind,
+        shapeSides: object.shapeSides,
+        starPoints: object.starPoints,
+        starInnerRatio: object.starInnerRatio,
+        shapeClipPath: shapeClipPath(object),
         fill: object.fill,
         paperPreset: object.paperPreset,
         markers: Array.isArray(object.markers)
@@ -261,11 +266,7 @@ export function createPortableHtml(board, options = {}) {
             shape.setAttribute("role", "img");
             shape.setAttribute("aria-label", object.name || copy.shapeObject);
             shape.style.setProperty("--shape-fill", object.fill || "#58e6ff");
-            shape.style.clipPath = {
-              triangle: "polygon(50% 2%, 98% 98%, 2% 98%)",
-              polygon: "polygon(25% 3%, 75% 3%, 99% 50%, 75% 97%, 25% 97%, 1% 50%)",
-              star: "polygon(50% 1%, 61.8% 35.1%, 97.6% 35.8%, 68.9% 57.1%, 79.4% 91.3%, 50% 71%, 20.6% 91.3%, 31.1% 57.1%, 2.4% 35.8%, 38.2% 35.1%)",
-            }[object.shapeKind] || "none";
+            shape.style.clipPath = object.shapeClipPath || "none";
             frame.appendChild(shape);
           } else {
             const media = document.createElement(isVideo ? "video" : "img");

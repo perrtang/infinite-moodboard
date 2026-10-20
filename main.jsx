@@ -131,6 +131,7 @@ import {
   reorderCapturesByVisualDrop,
   reorderObjectsByVisualDrop,
   resizeArtboardToPreset,
+  resizeObjectToDimensions,
   restoreObjectSize,
   restoreViewCapture,
   resizeObjectFromHandle,
@@ -140,6 +141,8 @@ import {
   resizeTransformFromHandle,
   rotateObjectsAroundPoint,
   safeFilename,
+  shapeClipPath,
+  shapePolygonPoints,
   selectionActionAnchorInViewport,
   selectionIdsForObject,
   selectionWorldBounds,
@@ -394,9 +397,31 @@ const TEXT_FRAME_HANDLES = [
 const SHAPE_LABELS = {
   rectangle: "矩形",
   triangle: "三角形",
-  polygon: "六邊形",
+  polygon: "多邊形",
   star: "星形",
 };
+
+const SHAPE_PRINT_SIZE_PRESETS = Object.entries(PAPER_PRESETS)
+  .filter(([, preset]) => preset.width && preset.height)
+  .flatMap(([key, preset]) => [
+    { id: `${key}-portrait`, label: `${preset.label} · ${preset.width} × ${preset.height}`, width: preset.width, height: preset.height },
+    { id: `${key}-landscape`, label: `${preset.label} · ${preset.height} × ${preset.width}`, width: preset.height, height: preset.width },
+  ]);
+
+const SHAPE_SOCIAL_SIZE_PRESETS = [
+  { id: "social-square", label: "正方形貼文", width: 1080, height: 1080 },
+  { id: "social-portrait", label: "直式貼文", width: 1080, height: 1350 },
+  { id: "social-story", label: "限時動態／短影音", width: 1080, height: 1920 },
+  { id: "social-share", label: "橫式分享圖", width: 1200, height: 630 },
+  { id: "social-video", label: "16:9 影片封面", width: 1920, height: 1080 },
+];
+
+const STAR_STYLE_PRESETS = [
+  { id: "classic", label: "經典", starPoints: 5, starInnerRatio: 0.42 },
+  { id: "sharp", label: "銳利", starPoints: 5, starInnerRatio: 0.24 },
+  { id: "full", label: "飽滿", starPoints: 5, starInnerRatio: 0.64 },
+  { id: "burst", label: "放射", starPoints: 12, starInnerRatio: 0.32 },
+];
 
 const LAYER_TYPE_FILTERS = [
   ["all", "全部"],
@@ -917,6 +942,9 @@ function createShapeObject(kind, point) {
     perspective: 1000,
     anchor: "mc",
     shapeKind: preset.shapeKind,
+    shapeSides: 6,
+    starPoints: 5,
+    starInnerRatio: 0.42,
     fill: "#58e6ff",
     markers: [],
     visible: true,
@@ -934,14 +962,18 @@ function escapeXmlAttribute(value) {
     .replaceAll(">", "&gt;");
 }
 
+function shapeSvgPoints(object) {
+  const points = shapePolygonPoints(object);
+  if (!points) return "";
+  return points.map(([x, y]) => `${Number((x * 100).toFixed(3))},${Number((y * 100).toFixed(3))}`).join(" ");
+}
+
 function shapeSvgMarkup(object, x, y, width, height) {
   const fill = escapeXmlAttribute(object.fill || "#58e6ff");
-  const content = {
-    rectangle: `<rect x="1" y="1" width="98" height="98" rx="2" fill="${fill}"/>`,
-    triangle: `<polygon points="50,2 98,98 2,98" fill="${fill}"/>`,
-    polygon: `<polygon points="25,3 75,3 99,50 75,97 25,97 1,50" fill="${fill}"/>`,
-    star: `<polygon points="50,1 61.8,35.1 97.6,35.8 68.9,57.1 79.4,91.3 50,71 20.6,91.3 31.1,57.1 2.4,35.8 38.2,35.1" fill="${fill}"/>`,
-  }[object.shapeKind] || `<rect x="1" y="1" width="98" height="98" rx="2" fill="${fill}"/>`;
+  const points = shapeSvgPoints(object);
+  const content = points
+    ? `<polygon points="${points}" fill="${fill}"/>`
+    : `<rect x="1" y="1" width="98" height="98" rx="2" fill="${fill}"/>`;
   return `<g transform="translate(${x} ${y}) scale(${width / 100} ${height / 100})">${content}</g>`;
 }
 
@@ -954,11 +986,7 @@ function objectHtmlVisualMarkup(object, sourceOverride = "") {
     return `<div style="box-sizing:border-box;display:flex;flex-direction:column;justify-content:${layout.justifyContent};text-align:${layout.textAlign};text-align-last:${layout.textAlignLast};width:100%;height:100%;overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere;color:${escapeXmlAttribute(object.color || "#edf7fb")};font-family:${escapeXmlAttribute(object.fontFamily || DEFAULT_TEXT_FONT)};font-size:${Math.max(6, Number(object.fontSize) || 32)}px;font-weight:${escapeXmlAttribute(object.fontWeight || "600")};line-height:1.2;">${escapeXmlAttribute(objectDisplayText(object))}</div>`;
   }
   if (isShapeObject(object)) {
-    const clipPath = {
-      triangle: "polygon(50% 2%, 98% 98%, 2% 98%)",
-      polygon: "polygon(25% 3%, 75% 3%, 99% 50%, 75% 97%, 25% 97%, 1% 50%)",
-      star: "polygon(50% 1%, 61.8% 35.1%, 97.6% 35.8%, 68.9% 57.1%, 79.4% 91.3%, 50% 71%, 20.6% 91.3%, 31.1% 57.1%, 2.4% 35.8%, 38.2% 35.1%)",
-    }[object.shapeKind] || "none";
+    const clipPath = shapeClipPath(object);
     return `<div style="width:100%;height:100%;background:${escapeXmlAttribute(object.fill || "#58e6ff")};clip-path:${clipPath};"></div>`;
   }
   return `<img src="${escapeXmlAttribute(sourceOverride || object.src)}" alt="" style="display:block;width:100%;height:100%;object-fit:fill;"/>`;
@@ -1164,11 +1192,7 @@ function drawTextObjectSource(context, object, width, height) {
 }
 
 function drawShapeObjectSource(context, object, width, height) {
-  const normalizedPoints = {
-    triangle: [[0.5, 0.02], [0.98, 0.98], [0.02, 0.98]],
-    polygon: [[0.25, 0.03], [0.75, 0.03], [0.99, 0.5], [0.75, 0.97], [0.25, 0.97], [0.01, 0.5]],
-    star: [[0.5, 0.01], [0.618, 0.351], [0.976, 0.358], [0.689, 0.571], [0.794, 0.913], [0.5, 0.71], [0.206, 0.913], [0.311, 0.571], [0.024, 0.358], [0.382, 0.351]],
-  }[object.shapeKind];
+  const normalizedPoints = shapePolygonPoints(object);
   context.fillStyle = object.fill || "#58e6ff";
   context.beginPath();
   if (normalizedPoints) {
@@ -1719,6 +1743,7 @@ function MediaElement({ object, className = "", controls = false, decorative = f
     );
   }
   if (isShapeObject(object)) {
+    const points = shapeSvgPoints(object);
     return (
       <svg
         className={`object-shape-visual ${className}`}
@@ -1729,10 +1754,7 @@ function MediaElement({ object, className = "", controls = false, decorative = f
         aria-hidden={decorative || undefined}
         style={style}
       >
-        {object.shapeKind === "triangle" ? <polygon points="50,2 98,98 2,98" fill={object.fill} /> : null}
-        {object.shapeKind === "polygon" ? <polygon points="25,3 75,3 99,50 75,97 25,97 1,50" fill={object.fill} /> : null}
-        {object.shapeKind === "star" ? <polygon points="50,1 61.8,35.1 97.6,35.8 68.9,57.1 79.4,91.3 50,71 20.6,91.3 31.1,57.1 2.4,35.8 38.2,35.1" fill={object.fill} /> : null}
-        {!["triangle", "polygon", "star"].includes(object.shapeKind) ? <rect x="1" y="1" width="98" height="98" rx="2" fill={object.fill} /> : null}
+        {points ? <polygon points={points} fill={object.fill} /> : <rect x="1" y="1" width="98" height="98" rx="2" fill={object.fill} />}
       </svg>
     );
   }
@@ -2543,10 +2565,7 @@ function CaptureThumbnail({ capture, board }) {
               </foreignObject>
             ) : isShapeObject(object) ? (
               <g transform={`translate(${-anchor.x * scaledWidth} ${-anchor.y * scaledHeight}) scale(${scaledWidth / 100} ${scaledHeight / 100})`}>
-                {object.shapeKind === "triangle" ? <polygon points="50,2 98,98 2,98" fill={object.fill} /> : null}
-                {object.shapeKind === "polygon" ? <polygon points="25,3 75,3 99,50 75,97 25,97 1,50" fill={object.fill} /> : null}
-                {object.shapeKind === "star" ? <polygon points="50,1 61.8,35.1 97.6,35.8 68.9,57.1 79.4,91.3 50,71 20.6,91.3 31.1,57.1 2.4,35.8 38.2,35.1" fill={object.fill} /> : null}
-                {!["triangle", "polygon", "star"].includes(object.shapeKind) ? <rect x="1" y="1" width="98" height="98" rx="2" fill={object.fill} /> : null}
+                {shapeSvgPoints(object) ? <polygon points={shapeSvgPoints(object)} fill={object.fill} /> : <rect x="1" y="1" width="98" height="98" rx="2" fill={object.fill} />}
               </g>
             ) : (
               <image href={object.src} x={-anchor.x * scaledWidth} y={-anchor.y * scaledHeight} width={scaledWidth} height={scaledHeight} preserveAspectRatio="none" />
@@ -2969,6 +2988,11 @@ function Inspector({
   const temporaryUnlocked = Boolean(activeResize?.shift && allAspectLocked);
   const effectiveAspectLocked = allAspectLocked && !temporaryUnlocked;
   const knownFont = object && [...FONT_OPTIONS, ...localFontOptions].some((font) => font.value === object.fontFamily);
+  const printSizePreset = object && SHAPE_PRINT_SIZE_PRESETS.find((preset) => preset.width === Math.round(object.width) && preset.height === Math.round(object.height));
+  const socialSizePreset = object && SHAPE_SOCIAL_SIZE_PRESETS.find((preset) => preset.width === Math.round(object.width) && preset.height === Math.round(object.height));
+  const activeStarStyle = object?.shapeKind === "star"
+    ? STAR_STYLE_PRESETS.find((preset) => preset.starPoints === object.starPoints && Math.abs(preset.starInnerRatio - object.starInnerRatio) < 0.001)
+    : null;
 
   const updateDimension = (dimension, rawValue) => {
     if (!object) return;
@@ -2984,6 +3008,11 @@ function Inspector({
     }
     if (isArtboardObject(object)) patch.paperPreset = "custom";
     onUpdateObject(object.id, patch);
+  };
+
+  const applyShapeSizePreset = (preset) => {
+    if (!object || !preset) return;
+    onUpdateObject(object.id, resizeObjectToDimensions(object, preset.width, preset.height));
   };
 
   return (
@@ -3113,14 +3142,103 @@ function Inspector({
                   <select value={object.shapeKind} onChange={(event) => onUpdateObject(object.id, { shapeKind: event.target.value })}>
                     <option value="rectangle">正方形／矩形</option>
                     <option value="triangle">三角形</option>
-                    <option value="polygon">六邊形</option>
+                    <option value="polygon">多邊形</option>
                     <option value="star">星形</option>
                   </select>
                 </label>
+                {object.shapeKind === "polygon" ? (
+                  <label>
+                    <span>多邊形邊數</span>
+                    <input
+                      type="number"
+                      min="3"
+                      max="24"
+                      step="1"
+                      value={object.shapeSides}
+                      onChange={(event) => onUpdateObject(object.id, { shapeSides: Math.max(3, Math.min(24, Math.round(Number(event.target.value) || 3))) })}
+                    />
+                  </label>
+                ) : null}
+                {object.shapeKind === "star" ? (
+                  <div className="star-shape-controls">
+                    <div className="shape-style-heading">
+                      <strong>星形樣式</strong>
+                      <span>{object.starPoints} 芒 · {Math.round(object.starInnerRatio * 100)}%</span>
+                    </div>
+                    <div className="shape-style-presets" role="group" aria-label="星形樣式">
+                      {STAR_STYLE_PRESETS.map((preset) => (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          className={activeStarStyle?.id === preset.id ? "is-active" : ""}
+                          aria-pressed={activeStarStyle?.id === preset.id}
+                          onClick={() => onUpdateObject(object.id, { starPoints: preset.starPoints, starInnerRatio: preset.starInnerRatio })}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="property-grid">
+                      <label>
+                        <span>星芒數</span>
+                        <input
+                          type="number"
+                          min="3"
+                          max="24"
+                          step="1"
+                          value={object.starPoints}
+                          onChange={(event) => onUpdateObject(object.id, { starPoints: Math.max(3, Math.min(24, Math.round(Number(event.target.value) || 3))) })}
+                        />
+                      </label>
+                      <label>
+                        <span>內縮比例</span>
+                        <div className="input-with-suffix">
+                          <input
+                            type="number"
+                            min="15"
+                            max="85"
+                            step="1"
+                            value={Math.round(object.starInnerRatio * 100)}
+                            onChange={(event) => onUpdateObject(object.id, { starInnerRatio: Math.max(0.15, Math.min(0.85, (Number(event.target.value) || 15) / 100)) })}
+                          />
+                          <b>%</b>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+                ) : null}
                 <label>
                   <span>填滿色彩</span>
                   <span className="color-input-row"><input type="color" value={object.fill} onChange={(event) => onUpdateObject(object.id, { fill: event.target.value })} /><code>{object.fill.toUpperCase()}</code></span>
                 </label>
+                <div className="shape-quick-sizes">
+                  <strong>快速尺寸</strong>
+                  <label>
+                    <span>紙張尺寸</span>
+                    <select
+                      value={printSizePreset?.id || ""}
+                      onChange={(event) => applyShapeSizePreset(SHAPE_PRINT_SIZE_PRESETS.find((preset) => preset.id === event.target.value))}
+                    >
+                      <option value="">選擇快速尺寸</option>
+                      {SHAPE_PRINT_SIZE_PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}
+                    </select>
+                  </label>
+                  <label>
+                    <span>社群圖片尺寸</span>
+                    <select
+                      value={socialSizePreset?.id || ""}
+                      onChange={(event) => applyShapeSizePreset(SHAPE_SOCIAL_SIZE_PRESETS.find((preset) => preset.id === event.target.value))}
+                    >
+                      <option value="">選擇快速尺寸</option>
+                      {SHAPE_SOCIAL_SIZE_PRESETS.map((preset) => (
+                        <option key={preset.id} value={preset.id}>
+                          {translateInterfaceText(preset.label)} · {preset.width} × {preset.height}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <p>紙張尺寸依 96ppi 換算；套用後仍可在變形欄調整。</p>
+                </div>
               </section>
             ) : null}
 
