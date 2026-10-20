@@ -11399,57 +11399,59 @@ function App() {
 
             {dragActive && !sourceModeActive ? <div className="drop-overlay"><ImagePlus size={34} /><strong>放開以加入圖片、影片或 SVG</strong><span>原始檔不會上傳到伺服器</span></div> : null}
 
-            <div className="canvas-status">
-              <span>{sourceModeActive ? `${sourceAssets.length} 個來源素材` : `${board.objects.length} 個物件`}</span>
-              {sourceModeActive && activeSourceAsset ? <span data-l10n-ignore>{activeSourceAsset.representative.originalFilename || activeSourceAsset.representative.name}</span> : null}
-              <span title="目前 Moodboard 內容版本">內容 r{board.revision}</span>
-              <span>{saveState}</span>
-              <span className="app-version" aria-label={`Infinite Moodboard 應用程式版本 ${APP_VERSION}`} title={`Infinite Moodboard ${APP_VERSION_LABEL}`}>{APP_VERSION_LABEL}</span>
-            </div>
+            <div className={`canvas-bottom-hud ${rulersVisible && !inspectionActive ? "has-rulers" : ""}`}>
+              <div className="canvas-status" aria-label="Moodboard 狀態">
+                <span className="canvas-status-primary">{sourceModeActive ? `${sourceAssets.length} 個來源素材` : `${board.objects.length} 個物件`}</span>
+                {sourceModeActive && activeSourceAsset ? <span className="canvas-status-source" data-l10n-ignore>{activeSourceAsset.representative.originalFilename || activeSourceAsset.representative.name}</span> : null}
+                <span className="canvas-status-revision" title="目前 Moodboard 內容版本">內容 r{board.revision}</span>
+                <span className="canvas-status-save">{saveState}</span>
+                <span className="app-version" aria-label={`Infinite Moodboard 應用程式版本 ${APP_VERSION}`} title={`Infinite Moodboard ${APP_VERSION_LABEL}`}>{APP_VERSION_LABEL}</span>
+              </div>
 
-            {!sourceModeActive ? <div className="export-dock" role="toolbar" aria-label="匯出與合成輸出">
-              <div className="export-dock-group" role="group" aria-label="匯出個別素材">
-                <label>
-                  <span className="sr-only">匯出範圍</span>
-                  <select value={exportScope} onChange={(event) => setExportScope(event.target.value)} aria-label="匯出範圍">
-                    <option value="selected">選取的物件</option>
-                    <option value="unselected">未選取的物件</option>
-                    <option value="all">全部物件</option>
-                  </select>
-                </label>
-                <button type="button" onClick={exportObjects} disabled={!exportCount || isExporting || isRenderingComposition} title="每個物件各自匯出一個素材檔">
-                  <Download size={16} /> {isExporting ? "匯出中…" : `匯出素材 ${exportCount ? `(${exportCount})` : ""}`}
-                </button>
-              </div>
-              <span className="export-dock-divider" aria-hidden="true" />
-              <div className="export-dock-group composition-output-group" role="group" aria-label="輸出選取物件合成圖">
-                <label>
-                  <span className="sr-only">合成圖格式</span>
-                  <select value={compositionFormat} onChange={(event) => setCompositionFormat(event.target.value)} aria-label="合成圖格式" disabled={isRenderingComposition}>
-                    <option value="png">PNG</option>
-                    <option value="webp">WebP</option>
-                    <option value="avif">AVIF</option>
-                    <option value="pdf">PDF</option>
-                  </select>
-                </label>
-                <label>
-                  <span className="sr-only">合成圖解析度</span>
-                  <select className="composition-scale-select" value={compositionScale} onChange={(event) => setCompositionScale(Number(event.target.value))} aria-label="合成圖解析度" disabled={isRenderingComposition}>
-                    <option value="1">1×</option>
-                    <option value="2">2×</option>
-                  </select>
-                </label>
-                <button
-                  className="composition-output-button"
-                  type="button"
-                  onClick={outputSelectionComposition}
-                  disabled={!compositionCount || isExporting || isRenderingComposition}
-                  title={compositionCount ? "依目前位置、尺寸、旋轉與 3D 外觀輸出成一張檔案；不含操作框。點陣圖保留透明背景，PDF 使用深色畫布背景。" : "請先選取要合成輸出的物件"}
-                >
-                  <ImageDown size={16} /> {isRenderingComposition ? "輸出中…" : `輸出合成圖 ${compositionCount ? `(${compositionCount})` : ""}`}
-                </button>
-              </div>
-            </div> : null}
+              {!sourceModeActive ? <div className="export-dock" role="toolbar" aria-label="匯出與合成輸出">
+                <div className="export-dock-group" role="group" aria-label="匯出個別素材">
+                  <label>
+                    <span className="sr-only">匯出範圍</span>
+                    <select value={exportScope} onChange={(event) => setExportScope(event.target.value)} aria-label="匯出範圍">
+                      <option value="selected">選取的物件</option>
+                      <option value="unselected">未選取的物件</option>
+                      <option value="all">全部物件</option>
+                    </select>
+                  </label>
+                  <button type="button" onClick={exportObjects} disabled={!exportCount || isExporting || isRenderingComposition} title="每個物件各自匯出一個素材檔">
+                    <Download size={16} /> {isExporting ? "匯出中…" : `匯出素材 ${exportCount ? `(${exportCount})` : ""}`}
+                  </button>
+                </div>
+                <span className="export-dock-divider" aria-hidden="true" />
+                <div className="export-dock-group composition-output-group" role="group" aria-label="輸出選取物件合成圖">
+                  <label>
+                    <span className="sr-only">合成圖格式</span>
+                    <select value={compositionFormat} onChange={(event) => setCompositionFormat(event.target.value)} aria-label="合成圖格式" disabled={isRenderingComposition}>
+                      <option value="png">PNG</option>
+                      <option value="webp">WebP</option>
+                      <option value="avif">AVIF</option>
+                      <option value="pdf">PDF</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span className="sr-only">合成圖解析度</span>
+                    <select className="composition-scale-select" value={compositionScale} onChange={(event) => setCompositionScale(Number(event.target.value))} aria-label="合成圖解析度" disabled={isRenderingComposition}>
+                      <option value="1">1×</option>
+                      <option value="2">2×</option>
+                    </select>
+                  </label>
+                  <button
+                    className="composition-output-button"
+                    type="button"
+                    onClick={outputSelectionComposition}
+                    disabled={!compositionCount || isExporting || isRenderingComposition}
+                    title={compositionCount ? "依目前位置、尺寸、旋轉與 3D 外觀輸出成一張檔案；不含操作框。點陣圖保留透明背景，PDF 使用深色畫布背景。" : "請先選取要合成輸出的物件"}
+                  >
+                    <ImageDown size={16} /> {isRenderingComposition ? "輸出中…" : `輸出合成圖 ${compositionCount ? `(${compositionCount})` : ""}`}
+                  </button>
+                </div>
+              </div> : null}
+            </div>
           </div>
         </section>
 

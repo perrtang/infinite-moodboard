@@ -3155,6 +3155,8 @@ html[lang="en"] .sidebar-tabs button svg {
 }
 
 .canvas-column {
+  container-name: canvas-workspace;
+  container-type: inline-size;
   min-width: 0;
   min-height: 0;
   position: relative;
@@ -4328,26 +4330,49 @@ html[lang="en"] .sidebar-tabs button svg {
   margin-top: 7px;
 }
 
+.canvas-bottom-hud {
+  --canvas-hud-inline-start: 12px;
+  --canvas-hud-status-top: 68px;
+  align-items: flex-end;
+  bottom: 12px;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  left: var(--canvas-hud-inline-start);
+  pointer-events: none;
+  position: absolute;
+  right: 12px;
+  z-index: 18;
+}
+
+.canvas-bottom-hud.has-rulers {
+  --canvas-hud-inline-start: 34px;
+  --canvas-hud-status-top: 84px;
+}
+
 .canvas-status,
 .export-dock {
   backdrop-filter: blur(12px);
   background: var(--floating-bg);
   border: 1px solid var(--border);
-  bottom: 12px;
   min-height: 36px;
-  position: absolute;
-  z-index: 16;
 }
 
 .canvas-status {
   border-radius: 6px;
+  flex: 0 1 auto;
   gap: 10px;
-  left: 12px;
+  max-width: min(620px, 100%);
+  min-width: 0;
+  overflow: hidden;
   padding: 0 10px;
+  pointer-events: none;
+  white-space: nowrap;
 }
 
 .canvas-status span {
   color: var(--text-muted);
+  flex: 0 0 auto;
   font-size: calc(9px + var(--ui-font-offset, 0px));
 }
 
@@ -4362,12 +4387,28 @@ html[lang="en"] .sidebar-tabs button svg {
   opacity: 0.72;
 }
 
+.canvas-status .canvas-status-source,
+.canvas-status .canvas-status-save {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .export-dock {
   border-radius: 7px;
+  flex: 0 0 auto;
   gap: 4px;
-  max-width: calc(100% - 24px);
+  max-width: 100%;
   padding: 3px;
-  right: 12px;
+  pointer-events: auto;
+}
+
+@container canvas-workspace (max-width: 780px) {
+  .canvas-status-save {
+    display: none;
+  }
 }
 
 .export-dock-group {
@@ -4443,6 +4484,74 @@ html[lang="en"] .sidebar-tabs button svg {
 .export-dock .composition-output-button:disabled {
   background: rgb(var(--accent-rgb) / 0.025);
   color: rgb(var(--muted-rgb) / 0.42);
+}
+
+@container canvas-workspace (max-width: 650px) {
+  .canvas-bottom-hud,
+  .canvas-bottom-hud.has-rulers {
+    bottom: 0;
+    display: block;
+    left: 0;
+    right: 0;
+    top: 0;
+  }
+
+  .canvas-status {
+    backdrop-filter: none;
+    background: transparent;
+    border: 0;
+    left: var(--canvas-hud-inline-start);
+    min-height: 20px;
+    padding: 0;
+    position: absolute;
+    top: var(--canvas-hud-status-top);
+  }
+
+  .canvas-status span:not(.app-version) {
+    display: none;
+  }
+
+  .canvas-status .app-version {
+    border: 0;
+    padding: 0;
+  }
+
+  .export-dock {
+    align-items: stretch;
+    bottom: 12px;
+    flex-direction: column;
+    gap: 2px;
+    left: var(--canvas-hud-inline-start);
+    max-width: none;
+    position: absolute;
+    right: 12px;
+    width: auto;
+  }
+
+  .export-dock-divider {
+    height: 1px;
+    margin: 0 4px;
+    width: auto;
+  }
+
+  .export-dock-group {
+    width: 100%;
+  }
+
+  .export-dock-group > label:first-child {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .export-dock-group > label:first-child select {
+    max-width: none;
+    width: 100%;
+  }
+
+  .export-dock select,
+  .export-dock button {
+    min-height: 36px;
+  }
 }
 
 .filter-stage {
@@ -8881,11 +8990,23 @@ button.status-label:hover {
     backdrop-filter: none;
     background: transparent;
     border: 0;
-    bottom: auto;
     display: flex;
+    left: 12px;
     min-height: 20px;
     padding: 0;
+    position: absolute;
     top: 68px;
+  }
+
+  .canvas-bottom-hud,
+  .canvas-bottom-hud.has-rulers {
+    --canvas-hud-inline-start: 12px;
+    --canvas-hud-status-top: 68px;
+    bottom: 0;
+    display: block;
+    left: 0;
+    right: 0;
+    top: 0;
   }
 
   .canvas-status span:not(.app-version) {
@@ -8907,6 +9028,7 @@ button.status-label:hover {
     flex-direction: column;
     gap: 2px;
     left: 50%;
+    position: absolute;
     right: auto;
     transform: translateX(-50%);
     width: min(370px, calc(100% - 18px));

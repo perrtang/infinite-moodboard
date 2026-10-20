@@ -26,6 +26,12 @@ Infinite Moodboard runs the canvas, imported media, transforms, exports, and ver
 - Optional Google Drive file storage and opt-in realtime collaboration with view/edit permission requests.
 - 3D, Drive, collaboration, and export runtimes are loaded only when used, keeping the opening bundle smaller.
 
+## v0.33.0 — collision-free canvas HUD release
+
+- Places the lower-left status group and lower-right export controls in one shared responsive HUD row.
+- Offsets the status group from the visible ruler while preserving ruler drag interactions.
+- Truncates secondary status details before controls can overlap and keeps the mobile app-version treatment intact.
+
 ## v0.32.0 — source workspace isolation release
 
 - Turns Sources into an independent workspace with source-specific tools, details, original-file download, and visible-instance locating.
