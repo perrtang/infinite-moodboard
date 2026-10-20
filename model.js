@@ -1,4 +1,4 @@
-export const BOARD_SCHEMA_VERSION = 12;
+export const BOARD_SCHEMA_VERSION = 13;
 
 export const ANCHORS = {
   tl: { x: 0, y: 0, label: "左上" },
@@ -214,7 +214,7 @@ export function createObjectDuplicate(object, options = {}) {
     pivotX: object.pivotX + finiteNumber(options.offset, 28),
     pivotY: object.pivotY + finiteNumber(options.offset, 28),
     groupId: options.groupId === undefined ? object.groupId || null : options.groupId,
-    artboardId: options.artboardId === undefined ? object.artboardId || null : options.artboardId,
+    artboardId: null,
     annotationTargetIds: Array.isArray(object.annotationTargetIds) ? [...object.annotationTargetIds] : [],
     markers: Array.isArray(object.markers)
       ? object.markers.map((marker) => ({ symbol: marker.symbol, color: marker.color }))
@@ -238,6 +238,7 @@ function normalizeGroup(group, index, validObjectIds) {
     id: typeof group?.id === "string" && group.id ? group.id : createId("group"),
     name: typeof group?.name === "string" && group.name.trim() ? group.name.trim() : `群組 ${String(index + 1).padStart(2, "0")}`,
     memberIds,
+    aspectLocked: group?.aspectLocked !== false,
     createdAt: typeof group?.createdAt === "string" ? group.createdAt : now,
     updatedAt: typeof group?.updatedAt === "string" ? group.updatedAt : now,
   };
@@ -250,6 +251,7 @@ export function createGroup(memberIds, overrides = {}) {
     id: overrides.id || createId("group"),
     name: overrides.name || "新群組",
     memberIds: ids,
+    aspectLocked: overrides.aspectLocked !== false,
     createdAt: now,
     updatedAt: overrides.updatedAt || now,
   };
@@ -394,14 +396,23 @@ export function selectionIdsForObject(board, objectId, options = {}) {
   const object = board?.objects?.find((item) => item.id === objectId);
   if (!object) return [];
   if (options.penetrate) return [objectId];
-  if (object.type === "artboard") {
-    return [object.id, ...board.objects.filter((item) => item.artboardId === object.id).map((item) => item.id)];
-  }
   if (object.groupId) {
     const group = board?.groups?.find((item) => item.id === object.groupId);
     if (group?.memberIds?.length) return group.memberIds.filter((id) => board.objects.some((item) => item.id === id));
   }
   return [objectId];
+}
+
+export function selectionAspectLocked(board, objectIds = []) {
+  const ids = [...new Set(objectIds)].filter((id) => typeof id === "string" && id);
+  if (!ids.length) return false;
+  const exactGroup = (board?.groups || []).find((group) => (
+    group.memberIds.length === ids.length
+    && group.memberIds.every((id) => ids.includes(id))
+  ));
+  if (exactGroup) return exactGroup.aspectLocked !== false;
+  const selected = (board?.objects || []).filter((object) => ids.includes(object.id));
+  return selected.length === ids.length && selected.every((object) => object.aspectLocked !== false);
 }
 
 export function compactBoardStructure(board) {
@@ -411,14 +422,13 @@ export function compactBoardStructure(board) {
     .map((group, index) => normalizeGroup(group, index, validIds))
     .filter((group) => group.memberIds.length >= 2);
   const groupIds = new Set(groups.map((group) => group.id));
-  const artboardIds = new Set(objects.filter((object) => object.type === "artboard").map((object) => object.id));
   return {
     ...board,
     groups,
     objects: objects.map((object) => ({
       ...object,
       groupId: groupIds.has(object.groupId) ? object.groupId : null,
-      artboardId: artboardIds.has(object.artboardId) ? object.artboardId : null,
+      artboardId: null,
       annotationTargetIds: Array.isArray(object.annotationTargetIds)
         ? object.annotationTargetIds.filter((id) => validIds.has(id))
         : [],
@@ -505,7 +515,6 @@ export function ensureBoard(value) {
     .map((group, index) => normalizeGroup(group, index, validObjectIds))
     .filter((group) => group.memberIds.length >= 2);
   const groupIds = new Set(groups.map((group) => group.id));
-  const artboardIds = new Set(objects.filter((object) => object.type === "artboard").map((object) => object.id));
   return {
     ...base,
     ...value,
@@ -521,7 +530,7 @@ export function ensureBoard(value) {
     objects: objects.map((object) => ({
       ...object,
       groupId: groupIds.has(object.groupId) ? object.groupId : null,
-      artboardId: artboardIds.has(object.artboardId) ? object.artboardId : null,
+      artboardId: null,
       annotationTargetIds: object.annotationTargetIds.filter((id) => validObjectIds.has(id)),
     })),
     groups,
@@ -779,6 +788,20 @@ export function objectWorldBounds(object) {
     centerX: (left + right) / 2,
     centerY: (top + bottom) / 2,
   };
+}
+
+export function objectsVisuallyOnArtboard(objects = [], artboardId) {
+  const artboardIndex = objects.findIndex((object) => object.id === artboardId && object.type === "artboard");
+  if (artboardIndex < 0) return [];
+  const bounds = objectWorldBounds(objects[artboardIndex]);
+  return objects.filter((object, index) => {
+    if (index <= artboardIndex || object.id === artboardId || object.visible === false || object.type === "artboard") return false;
+    const objectBounds = objectWorldBounds(object);
+    return objectBounds.centerX >= bounds.left
+      && objectBounds.centerX <= bounds.right
+      && objectBounds.centerY >= bounds.top
+      && objectBounds.centerY <= bounds.bottom;
+  });
 }
 
 export function selectionWorldBounds(objects) {

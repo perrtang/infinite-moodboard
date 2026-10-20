@@ -1,8 +1,8 @@
 {
   "product": "Infinite Moodboard",
   "channel": "stable",
-  "version": "0.22.0",
+  "version": "0.23.0",
   "releasedAt": "2026-10-20",
-  "summary": "分享連結改為僅檢視加入，檢視者可申請編輯，擁有者可核准、拒絕或調整成員權限。",
+  "summary": "紙張與紙上物件改為預設獨立，只有群組會共同變形；群組縮放預設維持等比例。",
   "url": "https://perrtang.github.io/infinite-moodboard/"
 }

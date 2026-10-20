@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  BOARD_SCHEMA_VERSION,
   alignObjectsToKey,
   arrangeObjectsInGrid,
   boundsAnchorPoint,
@@ -15,6 +16,7 @@ import {
   matchesFilters,
   movePivotPreservingPlacement,
   objectIntersectsWorldRect,
+  objectsVisuallyOnArtboard,
   objectWorldCorners,
   objectsForExport,
   reorderCapturesByVisualDrop,
@@ -32,6 +34,7 @@ import {
   shapeClipPath,
   shapePolygonPoints,
   selectionActionAnchorInViewport,
+  selectionAspectLocked,
   selectionIdsForObject,
   selectionWorldBounds,
   snapRotationDelta,
@@ -482,7 +485,7 @@ test("shape parameters normalize safely and generate editable polygon and star g
     ],
   });
 
-  assert.equal(board.schemaVersion, 12);
+  assert.equal(board.schemaVersion, BOARD_SCHEMA_VERSION);
   assert.equal(board.objects[0].shapeSides, 24);
   assert.equal(board.objects[1].starPoints, 3);
   assert.equal(board.objects[1].starInnerRatio, 0.85);
@@ -546,11 +549,44 @@ test("semantic groups select together while command-style penetration keeps one 
   };
   assert.deepEqual(selectionIdsForObject(board, "a"), ["a", "b"]);
   assert.deepEqual(selectionIdsForObject(board, "a", { penetrate: true }), ["a"]);
-  assert.deepEqual(selectionIdsForObject(board, "paper"), ["paper", "a", "b"]);
+  assert.deepEqual(selectionIdsForObject(board, "paper"), ["paper"]);
+  assert.equal(group.aspectLocked, true);
+  assert.equal(selectionAspectLocked(board, ["a", "b"]), true);
 
   const compacted = compactBoardStructure({ ...board, objects: board.objects.filter((object) => object.id !== "b") });
   assert.equal(compacted.groups.length, 0);
   assert.equal(compacted.objects.find((object) => object.id === "a").groupId, null);
+  assert.equal(compacted.objects.find((object) => object.id === "a").artboardId, null);
+});
+
+test("paper stays independent and visual fitting does not create a transform relationship", () => {
+  const board = ensureBoard({
+    schemaVersion: 12,
+    objects: [
+      { id: "paper", type: "artboard", pivotX: 100, pivotY: 100, width: 200, height: 200, anchor: "mc" },
+      { id: "inside", type: "shape", pivotX: 100, pivotY: 100, width: 40, height: 40, anchor: "mc", artboardId: "paper" },
+      { id: "outside", type: "shape", pivotX: 400, pivotY: 400, width: 40, height: 40, anchor: "mc" },
+    ],
+  });
+
+  assert.equal(board.objects.find((object) => object.id === "inside").artboardId, null);
+  assert.deepEqual(selectionIdsForObject(board, "paper"), ["paper"]);
+  assert.deepEqual(objectsVisuallyOnArtboard(board.objects, "paper").map((object) => object.id), ["inside"]);
+});
+
+test("semantic group aspect lock defaults on independently of member locks", () => {
+  const group = createGroup(["a", "b"], { id: "group-locked" });
+  const board = {
+    objects: [
+      { id: "a", aspectLocked: false },
+      { id: "b", aspectLocked: false },
+    ],
+    groups: [group],
+  };
+
+  assert.equal(selectionAspectLocked(board, ["a", "b"]), true);
+  assert.equal(selectionAspectLocked({ ...board, groups: [{ ...group, aspectLocked: false }] }, ["a", "b"]), false);
+  assert.equal(selectionAspectLocked({ ...board, groups: [] }, ["a", "b"]), false);
 });
 
 test("source materials collapse duplicate instances into one inspectable source", () => {
@@ -650,7 +686,7 @@ test("legacy objects gain a stable original size and can restore it", () => {
   });
   const resized = { ...board.objects[0], width: 640, height: 360 };
   const restored = restoreObjectSize(resized);
-  assert.equal(board.schemaVersion, 12);
+  assert.equal(board.schemaVersion, BOARD_SCHEMA_VERSION);
   assert.deepEqual(
     [board.objects[0].tiltX, board.objects[0].tiltY, board.objects[0].depth, board.objects[0].perspective],
     [0, 0, 0, 1000],
@@ -676,7 +712,7 @@ test("linked text frames preserve their story, visible segment, and overflow sta
   });
   const object = board.objects[0];
 
-  assert.equal(board.schemaVersion, 12);
+  assert.equal(board.schemaVersion, BOARD_SCHEMA_VERSION);
   assert.equal(object.text, "這是一段完整文字");
   assert.equal(object.textFlowId, "story-one");
   assert.equal(object.textFlowOrder, 2);
@@ -934,7 +970,7 @@ test("the last composition survives file normalization as a dedicated recovery s
     },
   });
 
-  assert.equal(board.schemaVersion, 12);
+  assert.equal(board.schemaVersion, BOARD_SCHEMA_VERSION);
   assert.equal(board.lastComposition.id, "previous-composition");
   assert.equal(board.lastComposition.name, "切換前的構圖");
   assert.deepEqual(board.lastComposition.view, { x: 80, y: -45, zoom: 1.4 });
@@ -1200,6 +1236,30 @@ test("group resize supports unlocked independent axes around the opposite corner
   assert.equal(resized[0].height, 60);
   assert.equal(objectWorldCorners(resized[0])[0].x, bounds.left);
   assert.equal(objectWorldCorners(resized[0])[0].y, bounds.top);
+});
+
+test("a newly created group resizes proportionally until Shift temporarily unlocks it", () => {
+  const objects = [
+    { id: "a", type: "image", anchor: "mc", pivotX: 50, pivotY: 50, width: 40, height: 40, rotation: 0, aspectLocked: false },
+    { id: "b", type: "image", anchor: "mc", pivotX: 150, pivotY: 100, width: 40, height: 40, rotation: 0, aspectLocked: false },
+  ];
+  const group = createGroup(["a", "b"], { id: "group-locked" });
+  const board = { objects, groups: [group] };
+  const bounds = selectionWorldBounds(objects);
+  const locked = selectionAspectLocked(board, ["a", "b"]);
+  const resized = resizeObjectsFromHandle(
+    objects,
+    ["a", "b"],
+    bounds,
+    "se",
+    { x: bounds.right, y: bounds.bottom },
+    { x: bounds.right + bounds.width, y: bounds.bottom + bounds.height / 2 },
+    { preserveAspect: locked },
+  );
+
+  assert.equal(locked, true);
+  assert.equal(resized[0].width / objects[0].width, resized[0].height / objects[0].height);
+  assert.equal(resized[1].width / objects[1].width, resized[1].height / objects[1].height);
 });
 
 test("multi-selection rotates positions and object angles around one pivot", () => {

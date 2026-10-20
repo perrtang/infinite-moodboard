@@ -130,6 +130,7 @@ import {
   objectIntersectsWorldRect,
   objectLocalPointToWorld,
   objectWorldCorners,
+  objectsVisuallyOnArtboard,
   objectsForExport,
   reorderCapturesByVisualDrop,
   reorderObjectsByVisualDrop,
@@ -147,6 +148,7 @@ import {
   shapeClipPath,
   shapePolygonPoints,
   selectionActionAnchorInViewport,
+  selectionAspectLocked,
   selectionIdsForObject,
   selectionWorldBounds,
   snapRotationDelta,
@@ -939,7 +941,6 @@ function createAnnotationObject(targetObjects, options = {}) {
   if (position === "ml") centerX = bounds.left - gap - width / 2;
   if (position === "mr") centerX = bounds.right + gap + width / 2;
   const object = createTextObject({ x: centerX, y: centerY });
-  const artboardIds = [...new Set(targetObjects.map((target) => isArtboardObject(target) ? target.id : target.artboardId).filter(Boolean))];
   const text = String(options.text || "").trim() || translateInterfaceText(kind === "title" ? "標題" : "說明文字");
   return {
     ...object,
@@ -956,7 +957,7 @@ function createAnnotationObject(targetObjects, options = {}) {
     annotationKind: kind,
     annotationPosition: position,
     annotationTargetIds: targetObjects.map((target) => target.id),
-    artboardId: artboardIds.length === 1 ? artboardIds[0] : null,
+    artboardId: null,
   };
 }
 
@@ -2371,6 +2372,7 @@ function LayersPanel({
       return object.type === layerTypeFilter;
     });
   const visibleSelected = board.objects.filter((object) => selectedIds.includes(object.id) && object.visible).length;
+  const groupNames = new Map((board.groups || []).map((group) => [group.id, group.name]));
   const filteredGroups = (board.groups || []).filter((group) => {
     if (!["all", "group"].includes(layerTypeFilter)) return false;
     const members = board.objects.filter((object) => group.memberIds.includes(object.id));
@@ -2486,6 +2488,7 @@ function LayersPanel({
         <div className="layer-list">
           {objects.map((object) => {
             const selected = selectedIds.includes(object.id);
+            const groupName = object.groupId ? groupNames.get(object.groupId) : "";
             const dropBefore = layerDrag?.targetId === object.id && layerDrag.placement === "before";
             const dropAfter = layerDrag?.targetId === object.id && layerDrag.placement === "after";
             const renderPlaceholder = (placement) => (
@@ -2500,7 +2503,7 @@ function LayersPanel({
               <React.Fragment key={object.id}>
                 {dropBefore ? renderPlaceholder("before") : null}
                 <div
-                  className={`layer-row ${selected ? "is-selected" : ""} ${layerDrag?.id === object.id ? "is-dragging" : ""} ${object.groupId ? "is-group-member" : ""} ${object.artboardId ? "is-artboard-child" : ""} ${isArtboardObject(object) ? "is-artboard" : ""}`}
+                  className={`layer-row ${selected ? "is-selected" : ""} ${layerDrag?.id === object.id ? "is-dragging" : ""} ${object.groupId ? "is-group-member" : ""} ${isArtboardObject(object) ? "is-artboard" : ""}`}
                   data-layer-id={object.id}
                 >
                   <button
@@ -2529,7 +2532,7 @@ function LayersPanel({
                     <MediaElement object={object} decorative />
                     <span>
                       <strong data-l10n-ignore>{object.layerName}</strong>
-                      <small data-l10n-ignore>{isArtboardObject(object) ? `${object.name} · ${PAPER_PRESETS[object.paperPreset]?.label || "紙張"}` : object.annotationKind ? `${object.name} · ${object.annotationKind === "title" ? "標題" : "說明"}` : object.name}</small>
+                      <small data-l10n-ignore>{`${isArtboardObject(object) ? `${object.name} · ${PAPER_PRESETS[object.paperPreset]?.label || "紙張"}` : object.annotationKind ? `${object.name} · ${object.annotationKind === "title" ? "標題" : "說明"}` : object.name}${groupName ? ` · ${groupName}` : ""}`}</small>
                     </span>
                     {object.markers.length ? (
                       <span className="layer-markers" aria-label={`${object.markers.length} 個標記`}>
@@ -3140,7 +3143,7 @@ function Inspector({
   const selected = board.objects.filter((object) => selectedIds.includes(object.id));
   const object = selected.length === 1 ? selected[0] : null;
   const keyObject = selected.find((item) => item.id === keyObjectId) || selected[0];
-  const allAspectLocked = selected.length > 0 && selected.every((item) => item.aspectLocked !== false);
+  const allAspectLocked = selectionAspectLocked(board, selectedIds);
   const activeResize = object && resizeGesture?.objectId === object.id ? resizeGesture : selected.length > 1 && groupGesture?.type === "scale" ? groupGesture : null;
   const temporaryUnlocked = Boolean(activeResize?.shift && allAspectLocked);
   const effectiveAspectLocked = allAspectLocked && !temporaryUnlocked;
@@ -3423,9 +3426,9 @@ function Inspector({
                 </label>
                 <label><span>內容邊距</span><div className="input-with-suffix"><input type="number" min="0" max="400" value={Math.round(object.paperPadding || 0)} onChange={(event) => onUpdateObject(object.id, { paperPadding: Math.max(0, Math.min(400, Number(event.target.value) || 0)) })} /><b>px</b></div></label>
                 <button className="secondary-button full-width" type="button" onClick={() => onFitArtboard(object.id)}>
-                  <Maximize2 size={15} /> 依內容與邊距重新符合
+                  <Maximize2 size={15} /> 依目前紙上物件重新符合
                 </button>
-                <p className="section-helper">紙張維持在內容後方；選取紙張時，合成輸出會連同紙上的可見物件一起輸出。</p>
+                <p className="section-helper">紙張與紙上物件預設互相獨立；只有主動建立群組後才會共同變形。重新符合只會計算當下視覺上放在紙上的物件，不會把它們綁定到紙張。</p>
               </section>
             ) : null}
 
@@ -8400,14 +8403,12 @@ function App() {
     const current = boardRef.current;
     const sources = current.objects.filter((object) => selected.has(object.id));
     const idMap = new Map(sources.map((object) => [object.id, createId("object")]));
-    const artboardMap = new Map(sources.filter(isArtboardObject).map((object) => [object.id, idMap.get(object.id)]));
     const selectedGroups = (current.groups || []).filter((group) => group.memberIds.length >= 2 && group.memberIds.every((id) => selected.has(id)));
     const groupMap = new Map(selectedGroups.map((group) => [group.id, createId("group")]));
     const copies = sources.map((object) => {
       const copy = createObjectDuplicate(object, {
         id: idMap.get(object.id),
         groupId: groupMap.get(object.groupId) || null,
-        artboardId: artboardMap.get(object.artboardId) || object.artboardId || null,
       });
       return {
         ...copy,
@@ -8417,7 +8418,7 @@ function App() {
     if (!copies.length) return;
     const newGroups = selectedGroups.map((group) => createGroup(
       group.memberIds.map((id) => idMap.get(id)).filter(Boolean),
-      { id: groupMap.get(group.id), name: `${group.name} 複本` },
+      { id: groupMap.get(group.id), name: `${group.name} 複本`, aspectLocked: group.aspectLocked !== false },
     ));
     applyBoard((boardState) => ({ ...boardState, objects: [...boardState.objects, ...copies], groups: [...(boardState.groups || []), ...newGroups] }));
     const copyIds = copies.map((object) => object.id);
@@ -8448,18 +8449,16 @@ function App() {
     if (!clipboard?.objects?.length) return false;
     const idMap = new Map(clipboard.objects.map((object) => [object.id, createId("object")]));
     const groupMap = new Map((clipboard.groups || []).map((group) => [group.id, createId("group")]));
-    const artboardMap = new Map(clipboard.objects.filter(isArtboardObject).map((object) => [object.id, idMap.get(object.id)]));
     const copies = clipboard.objects.map((object) => createObjectDuplicate(object, {
       id: idMap.get(object.id),
       groupId: groupMap.get(object.groupId) || null,
-      artboardId: artboardMap.get(object.artboardId) || object.artboardId || null,
     })).map((object) => ({
       ...object,
       annotationTargetIds: object.annotationTargetIds.map((id) => idMap.get(id) || id),
     }));
     const groups = (clipboard.groups || []).map((group) => createGroup(
       group.memberIds.map((id) => idMap.get(id)).filter(Boolean),
-      { id: groupMap.get(group.id), name: `${group.name} 複本` },
+      { id: groupMap.get(group.id), name: `${group.name} 複本`, aspectLocked: group.aspectLocked !== false },
     ));
     applyBoard((current) => ({ ...current, objects: [...current.objects, ...copies], groups: [...(current.groups || []), ...groups] }));
     const ids = copies.map((object) => object.id);
@@ -8591,21 +8590,21 @@ function App() {
     if (!artboard) return;
     applyBoard((current) => {
       const targetIds = new Set(targets.map((object) => object.id));
-      const objects = current.objects.map((object) => targetIds.has(object.id) ? { ...object, artboardId: artboard.id } : object);
+      const objects = [...current.objects];
       const firstTargetIndex = Math.min(...objects.map((object, index) => targetIds.has(object.id) ? index : Number.POSITIVE_INFINITY));
       objects.splice(Number.isFinite(firstTargetIndex) ? firstTargetIndex : 0, 0, artboard);
       return { ...current, objects };
     });
-    const nextSelection = [artboard.id, ...targets.map((object) => object.id)];
+    const nextSelection = [artboard.id];
     selectedIdsRef.current = nextSelection;
     setSelectedIds(nextSelection);
     setKeyObjectId(artboard.id);
-    announce(`已加入紙張，四周保留 40px 邊距。`, "success");
+    announce(`已加入獨立紙張，四周保留 40px 邊距；如需連動請再建立群組。`, "success");
   }, [announce, applyBoard]);
 
   const fitArtboardToContents = useCallback((artboardId) => {
     const artboard = boardRef.current.objects.find((object) => object.id === artboardId && isArtboardObject(object));
-    const children = boardRef.current.objects.filter((object) => object.artboardId === artboardId && object.visible);
+    const children = objectsVisuallyOnArtboard(boardRef.current.objects, artboardId);
     if (!artboard || !children.length) {
       announce("這張紙目前沒有可用來符合的內容。", "warning");
       return;
@@ -8990,12 +8989,26 @@ function App() {
   const setSelectedAspectLock = useCallback((locked) => {
     const selected = new Set(selectedIdsRef.current);
     if (!selected.size) return;
-    applyBoard((current) => ({
-      ...current,
-      objects: current.objects.map((object) => selected.has(object.id)
-        ? { ...object, aspectLocked: locked, updatedAt: new Date().toISOString() }
-        : object),
-    }));
+    applyBoard((current) => {
+      const exactGroup = (current.groups || []).find((group) => (
+        group.memberIds.length === selected.size
+        && group.memberIds.every((id) => selected.has(id))
+      ));
+      if (exactGroup) {
+        return {
+          ...current,
+          groups: current.groups.map((group) => group.id === exactGroup.id
+            ? { ...group, aspectLocked: locked, updatedAt: new Date().toISOString() }
+            : group),
+        };
+      }
+      return {
+        ...current,
+        objects: current.objects.map((object) => selected.has(object.id)
+          ? { ...object, aspectLocked: locked, updatedAt: new Date().toISOString() }
+          : object),
+      };
+    });
   }, [applyBoard]);
 
   const updateSelectedMicro3D = useCallback((patch) => {
@@ -9703,7 +9716,7 @@ function App() {
     if (targets.length < 2) return;
     const bounds = selectionWorldBounds(targets);
     const startPoint = screenToWorld(event.clientX, event.clientY);
-    const locked = targets.every((object) => object.aspectLocked !== false);
+    const locked = selectionAspectLocked(base, selectedIdsRef.current);
     const minimumScaleX = targets.reduce((minimum, object) => Math.max(minimum, 24 / object.width), 0.0001);
     const minimumScaleY = targets.reduce((minimum, object) => Math.max(minimum, 24 / object.height), 0.0001);
     const initialTransform = resizeTransformFromHandle(bounds, handleKey, startPoint, startPoint, {
@@ -10328,8 +10341,7 @@ function App() {
 
   const outputSelectionComposition = useCallback(async () => {
     const selected = new Set(selectedIdsRef.current);
-    const selectedArtboards = new Set(boardRef.current.objects.filter((object) => selected.has(object.id) && isArtboardObject(object)).map((object) => object.id));
-    const targets = boardRef.current.objects.filter((object) => object.visible && (selected.has(object.id) || selectedArtboards.has(object.artboardId)));
+    const targets = boardRef.current.objects.filter((object) => object.visible && selected.has(object.id));
     if (!targets.length) {
       announce("請先選取要輸出的物件。", "warning");
       return;
@@ -10419,15 +10431,9 @@ function App() {
     group.memberIds.length === selectedIds.length
     && group.memberIds.every((id) => selectedIds.includes(id))
   ));
-  const selectedArtboard = selectedObjects.find(isArtboardObject);
   const selectionGrouped = Boolean(selectedSemanticGroup);
-  const selectionSemanticLabel = selectedArtboard
-    ? "紙張＋內容"
-    : selectedSemanticGroup?.name || null;
-  const selectionHasArtboard = Boolean(
-    selectedArtboard
-    || (selectedObjects.length && selectedObjects.every((object) => object.artboardId && object.artboardId === selectedObjects[0].artboardId)),
-  );
+  const selectionSemanticLabel = selectedSemanticGroup?.name || null;
+  const selectionHasArtboard = selectedObjects.some(isArtboardObject);
   const selectionActionBounds = selectedObjects.length ? selectionWorldBounds(selectedObjects) : null;
   const multiSelectionBounds = selectedObjects.length > 1 ? selectionWorldBounds(selectedObjects) : null;
   const selectionActionAnchor = selectionActionBounds

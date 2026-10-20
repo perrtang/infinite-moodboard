@@ -1287,8 +1287,7 @@ html[lang="en"] .sidebar-tabs button svg {
   opacity: 0.28;
 }
 
-.layer-row.is-group-member .layer-main,
-.layer-row.is-artboard-child .layer-main {
+.layer-row.is-group-member .layer-main {
   padding-left: 13px;
 }
 
