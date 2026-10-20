@@ -1,8 +1,8 @@
 {
   "product": "Infinite Moodboard",
   "channel": "stable",
-  "version": "0.18.0",
+  "version": "0.19.0",
   "releasedAt": "2026-10-20",
-  "summary": "加入不中斷工作的更新通知、安全自動更新、立即更新前本機儲存與版本備份，以及稍後提醒。",
+  "summary": "精簡手機頂列：左右面板保留直接入口，協作、帳號與設定整合進更多功能選單。",
   "url": "https://perrtang.github.io/infinite-moodboard/"
 }

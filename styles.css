@@ -907,6 +907,77 @@ button:disabled {
   display: none;
 }
 
+.mobile-topbar-more {
+  display: none;
+  position: relative;
+}
+
+.mobile-topbar-menu {
+  background: var(--modal-bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.32);
+  display: grid;
+  gap: 2px;
+  padding: 6px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  width: min(230px, calc(100vw - 16px));
+  z-index: 140;
+}
+
+.mobile-topbar-menu button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+  display: grid;
+  font: inherit;
+  gap: 10px;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  justify-items: start;
+  min-height: 48px;
+  padding: 0 10px;
+  text-align: left;
+  width: 100%;
+}
+
+.mobile-topbar-menu button:hover,
+.mobile-topbar-menu button:focus-visible {
+  background: var(--quiet-bg);
+  outline: none;
+}
+
+.mobile-topbar-menu button:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent-strong);
+}
+
+.mobile-topbar-menu button > svg {
+  color: var(--text-muted);
+  justify-self: center;
+}
+
+.mobile-topbar-menu button > span {
+  font-size: calc(13px + var(--ui-font-offset, 0px));
+  font-weight: 650;
+}
+
+.mobile-topbar-menu button > b {
+  align-items: center;
+  background: var(--accent-fill);
+  border-radius: 999px;
+  color: var(--accent-on);
+  display: inline-flex;
+  font-size: calc(9px + var(--ui-font-offset, 0px));
+  height: 18px;
+  justify-content: center;
+  min-width: 18px;
+  padding: 0 5px;
+}
+
 .app-body {
   display: grid;
   grid-template-columns: var(--panel-width) minmax(0, 1fr) var(--inspector-width);
@@ -7581,10 +7652,20 @@ button.status-label:hover {
 
   .mobile-panel-button,
   .mobile-close,
-  .settings-button {
+  .mobile-topbar-more-button {
     display: flex;
     min-height: 44px;
     min-width: 44px;
+  }
+
+  .mobile-topbar-more {
+    display: block;
+  }
+
+  .topbar-secondary > .collaboration-button,
+  .topbar-secondary > .account-menu-button,
+  .topbar-secondary > .settings-button {
+    display: none;
   }
 
   .collaboration-button {

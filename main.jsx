@@ -28,6 +28,7 @@ import {
   Copy,
   Diamond,
   Download,
+  Ellipsis,
   Eye,
   EyeOff,
   ExternalLink,
@@ -62,6 +63,7 @@ import {
   MousePointer2,
   Palette,
   PanelLeft,
+  PanelRight,
   Pause,
   Play,
   Plus,
@@ -1699,6 +1701,111 @@ function AccountAvatar({ user, size = 28 }) {
       <span>{accountInitials(user)}</span>
       {user?.photoURL ? <img src={user.photoURL} alt="" referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.hidden = true; }} /> : null}
     </span>
+  );
+}
+
+function MobileTopbarMoreMenu({
+  open,
+  onOpenChange,
+  onOpenCollaboration,
+  onOpenAccount,
+  onOpenSettings,
+  collaborationCount = 0,
+}) {
+  const wrapperRef = useRef(null);
+  const triggerRef = useRef(null);
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const focusFrame = window.requestAnimationFrame(() => {
+      menuRef.current?.querySelector('[role="menuitem"]')?.focus();
+    });
+    const closeFromOutside = (event) => {
+      if (!wrapperRef.current?.contains(event.target)) onOpenChange(false);
+    };
+    const closeWithEscape = (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      onOpenChange(false);
+      window.requestAnimationFrame(() => triggerRef.current?.focus());
+    };
+    const closeOnDesktop = () => {
+      if (window.innerWidth > 900) onOpenChange(false);
+    };
+    window.addEventListener("pointerdown", closeFromOutside);
+    window.addEventListener("keydown", closeWithEscape, true);
+    window.addEventListener("resize", closeOnDesktop);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      window.removeEventListener("pointerdown", closeFromOutside);
+      window.removeEventListener("keydown", closeWithEscape, true);
+      window.removeEventListener("resize", closeOnDesktop);
+    };
+  }, [onOpenChange, open]);
+
+  const activate = (callback) => {
+    onOpenChange(false);
+    callback();
+  };
+
+  const navigateMenu = (event) => {
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+    const items = [...(menuRef.current?.querySelectorAll('[role="menuitem"]') || [])];
+    if (!items.length) return;
+    event.preventDefault();
+    const currentIndex = items.indexOf(document.activeElement);
+    const nextIndex = event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? items.length - 1
+        : event.key === "ArrowDown"
+          ? (currentIndex + 1 + items.length) % items.length
+          : (currentIndex - 1 + items.length) % items.length;
+    items[nextIndex].focus();
+  };
+
+  return (
+    <div className="mobile-topbar-more" ref={wrapperRef}>
+      <button
+        className={`icon-button mobile-topbar-more-button ${open ? "is-active" : ""}`}
+        type="button"
+        aria-label="更多功能"
+        title="更多功能"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls="mobile-topbar-more-menu"
+        ref={triggerRef}
+        onClick={() => onOpenChange(!open)}
+      >
+        <Ellipsis size={20} />
+      </button>
+      {open ? (
+        <div
+          className="mobile-topbar-menu"
+          id="mobile-topbar-more-menu"
+          role="menu"
+          aria-label="更多功能"
+          ref={menuRef}
+          onKeyDown={navigateMenu}
+        >
+          <button type="button" role="menuitem" onClick={() => activate(onOpenCollaboration)}>
+            <Users size={18} />
+            <span>協作</span>
+            {collaborationCount > 0 ? <b>{collaborationCount}</b> : null}
+          </button>
+          <button type="button" role="menuitem" onClick={() => activate(onOpenAccount)}>
+            <UserRound size={18} />
+            <span>帳號與隱私</span>
+          </button>
+          <button type="button" role="menuitem" onClick={() => activate(onOpenSettings)}>
+            <SettingsIcon size={18} />
+            <span>設定</span>
+          </button>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -5831,6 +5938,7 @@ function App() {
   const [versionBusy, setVersionBusy] = useState(false);
   const [driveVersions, setDriveVersions] = useState({ status: "idle", items: [], fileId: "", headRevisionId: "", message: "" });
   const [mobilePanel, setMobilePanel] = useState(null);
+  const [mobileTopbarMenuOpen, setMobileTopbarMenuOpen] = useState(false);
   const [leftPanelWidth, setLeftPanelWidth] = useState(() => normalizeLeftPanelWidth(localStorage.getItem("moodboard-left-panel-width")));
   const [leftPanelVisible, setLeftPanelVisible] = useState(() => localStorage.getItem("moodboard-left-panel-visible") !== "false");
   const [rightPanelVisible, setRightPanelVisible] = useState(() => localStorage.getItem("moodboard-right-panel-visible") !== "false");
@@ -10094,7 +10202,15 @@ function App() {
           >
             <PanelLeft size={18} />
           </IconButton>
-          <IconButton className="mobile-panel-button" label="開啟圖層、分群、素材與構圖" onClick={() => setMobilePanel("left")}><PanelLeft size={18} /></IconButton>
+          <IconButton
+            className="mobile-panel-button"
+            label="開啟圖層、分群、素材與構圖側欄"
+            active={mobilePanel === "left"}
+            aria-pressed={mobilePanel === "left"}
+            onClick={() => setMobilePanel((current) => current === "left" ? null : "left")}
+          >
+            <PanelLeft size={18} />
+          </IconButton>
           <button className="topbar-button" type="button" onClick={openBoardFile} title="從這台裝置開啟 .moodboard"><FolderOpen size={17} /><span>開啟</span></button>
           <button className="topbar-button" type="button" onClick={openGoogleDriveLibrary} title="開啟 Google Drive 中的 Moodboard"><Cloud size={17} /><span>Drive</span></button>
           <button className="topbar-button" type="button" onClick={savePreferredBoard} title={authReady ? "優先儲存到 Google Drive" : "儲存到這台裝置"}><Save size={17} /><span>儲存</span></button>
@@ -10152,9 +10268,27 @@ function App() {
             aria-pressed={rightPanelVisible}
             onClick={toggleRightPanel}
           >
-            <SlidersHorizontal size={18} />
+            <PanelRight size={18} />
           </IconButton>
-          <IconButton className="mobile-panel-button" label="物件屬性" onClick={() => setMobilePanel("right")}><SlidersHorizontal size={18} /></IconButton>
+          <IconButton
+            className="mobile-panel-button"
+            label="開啟物件屬性側欄"
+            active={mobilePanel === "right"}
+            aria-pressed={mobilePanel === "right"}
+            onClick={() => setMobilePanel((current) => current === "right" ? null : "right")}
+          >
+            <PanelRight size={18} />
+          </IconButton>
+          <MobileTopbarMoreMenu
+            open={mobileTopbarMenuOpen}
+            onOpenChange={setMobileTopbarMenuOpen}
+            onOpenCollaboration={() => requestAdvancedFeature("collaboration")}
+            onOpenAccount={openAccountSettings}
+            onOpenSettings={openSettings}
+            collaborationCount={authReady && cloudCollaboration.roomId
+              ? Math.max(1, cloudCollaboration.peers.length)
+              : authReady && peers.length ? peers.length + 1 : 0}
+          />
         </div>
       </header>
 
