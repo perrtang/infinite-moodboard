@@ -1,4 +1,4 @@
-export const BOARD_SCHEMA_VERSION = 10;
+export const BOARD_SCHEMA_VERSION = 11;
 
 export const ANCHORS = {
   tl: { x: 0, y: 0, label: "左上" },
@@ -70,6 +70,7 @@ export function createBoard(overrides = {}) {
     revision: 0,
     objects: [],
     groups: [],
+    guides: [],
     captures: [],
     lastComposition: null,
     view: { x: 0, y: 0, zoom: 1 },
@@ -84,6 +85,14 @@ function finiteNumber(value, fallback) {
 
 function clampNumber(value, fallback, minimum, maximum) {
   return Math.min(maximum, Math.max(minimum, finiteNumber(value, fallback)));
+}
+
+function normalizeGuide(guide, index) {
+  return {
+    id: typeof guide?.id === "string" && guide.id ? guide.id : `guide-${index + 1}`,
+    axis: guide?.axis === "x" ? "x" : "y",
+    position: clampNumber(guide?.position, 0, -10000000, 10000000),
+  };
 }
 
 function stableSourceId(src, mime, fallbackId) {
@@ -458,6 +467,7 @@ export function ensureBoard(value) {
       annotationTargetIds: object.annotationTargetIds.filter((id) => validObjectIds.has(id)),
     })),
     groups,
+    guides: Array.isArray(value.guides) ? value.guides.map(normalizeGuide) : [],
     captures: Array.isArray(value.captures) ? value.captures.map(normalizeCapture) : [],
     lastComposition: value.lastComposition && typeof value.lastComposition === "object"
       ? normalizeCapture({ ...value.lastComposition, name: "切換前的構圖" }, -1)

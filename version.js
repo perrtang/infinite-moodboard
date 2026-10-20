@@ -1,6 +1,6 @@
-export const APP_VERSION = "0.7.0";
+export const APP_VERSION = "0.9.0";
 export const APP_VERSION_LABEL = `App v${APP_VERSION}`;
-export const APP_RELEASE_DATE = "2026-10-18";
+export const APP_RELEASE_DATE = "2026-10-20";
 const APP_BASE_URL = import.meta.env?.BASE_URL || "/";
 export const APP_UPDATE_MANIFEST_URL = import.meta.env?.VITE_MOODBOARD_UPDATE_MANIFEST_URL
   || `${APP_BASE_URL.endsWith("/") ? APP_BASE_URL : `${APP_BASE_URL}/`}infinite-moodboard-update.json`;

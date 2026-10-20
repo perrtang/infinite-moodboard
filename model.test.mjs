@@ -78,7 +78,7 @@ import {
 test("application version remains explicit and independent from board revisions", () => {
   assert.match(APP_VERSION, /^\d+\.\d+\.\d+$/);
   assert.equal(APP_VERSION_LABEL, `App v${APP_VERSION}`);
-  assert.equal(APP_RELEASE_DATE, "2026-10-18");
+  assert.equal(APP_RELEASE_DATE, "2026-10-20");
 });
 
 test("application update manifests compare stable semantic versions", () => {
@@ -439,6 +439,28 @@ test("import validation rejects unrelated JSON and normalizes valid boards", () 
   assert.equal(board.objects.length, 0);
 });
 
+test("workspace guides persist in moodboard files and legacy boards receive an empty set", () => {
+  const legacy = ensureBoard({ schemaVersion: 10, name: "舊檔", objects: [] });
+  assert.deepEqual(legacy.guides, []);
+
+  const board = ensureBoard({
+    schemaVersion: 11,
+    name: "導引線測試",
+    objects: [],
+    guides: [
+      { id: "guide-x", axis: "x", position: 128.5 },
+      { id: "guide-y", axis: "y", position: 240 },
+      { id: "guide-invalid", axis: "diagonal", position: "bad" },
+    ],
+  });
+
+  assert.deepEqual(board.guides, [
+    { id: "guide-x", axis: "x", position: 128.5 },
+    { id: "guide-y", axis: "y", position: 240 },
+    { id: "guide-invalid", axis: "y", position: 0 },
+  ]);
+});
+
 test("legacy objects gain a stable original size and can restore it", () => {
   const board = ensureBoard({
     schemaVersion: 1,
@@ -447,7 +469,7 @@ test("legacy objects gain a stable original size and can restore it", () => {
   });
   const resized = { ...board.objects[0], width: 640, height: 360 };
   const restored = restoreObjectSize(resized);
-  assert.equal(board.schemaVersion, 10);
+  assert.equal(board.schemaVersion, 11);
   assert.deepEqual(
     [board.objects[0].tiltX, board.objects[0].tiltY, board.objects[0].depth, board.objects[0].perspective],
     [0, 0, 0, 1000],
@@ -473,7 +495,7 @@ test("linked text frames preserve their story, visible segment, and overflow sta
   });
   const object = board.objects[0];
 
-  assert.equal(board.schemaVersion, 10);
+  assert.equal(board.schemaVersion, 11);
   assert.equal(object.text, "這是一段完整文字");
   assert.equal(object.textFlowId, "story-one");
   assert.equal(object.textFlowOrder, 2);
@@ -731,7 +753,7 @@ test("the last composition survives file normalization as a dedicated recovery s
     },
   });
 
-  assert.equal(board.schemaVersion, 10);
+  assert.equal(board.schemaVersion, 11);
   assert.equal(board.lastComposition.id, "previous-composition");
   assert.equal(board.lastComposition.name, "切換前的構圖");
   assert.deepEqual(board.lastComposition.view, { x: 80, y: -45, zoom: 1.4 });

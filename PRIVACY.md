@@ -1,6 +1,6 @@
 # Infinite Moodboard 公開 Beta 資料說明
 
-更新日期：2026-10-18
+更新日期：2026-10-20
 
 ## 不登入時
 
@@ -15,16 +15,29 @@
 - 登入、登出或切換帳號都不會自動上傳或刪除 Moodboard。
 - 「保持登入」未勾選時使用瀏覽工作階段保存；勾選時才會在該裝置持續登入。
 
+## 連結 Google Drive 時
+
+- PETFASHION 登入只負責身份識別；Google Drive 會另外顯示授權流程，兩者不會互相代替。
+- Infinite Moodboard 只要求 `drive.file` 權限，用來建立、讀取與更新本服務建立或由使用者交給本服務的檔案，不會掃描整個 Google Drive。
+- 連結時會讀取 Google Drive 顯示名稱、Email 與儲存空間用量，分別用來確認目前帳號及在上傳前檢查容量。
+- Drive 存取權杖只保留在目前分頁記憶體，不寫入 IndexedDB 或 localStorage；重新開啟瀏覽器時必須重新授權。
+- 瀏覽器只會在本機保存 Infinite Moodboard 資料夾 ID、檔案 ID、遠端版本、同步時間與自動同步偏好，方便辨識對應工作檔及避免覆蓋較新的版本。
+- 連結 Drive 不會立即上傳。使用者第一次主動儲存後，才建立 `.moodboard` 雲端工作檔；啟用自動同步時，後續變更會先完成本機保存，再延遲同步到同一檔案。
+- 更新既有雲端檔案時會使用遠端版本與條件式請求；若無法取得安全的更新條件或發現其他裝置已修改檔案，就停止覆寫並要求開啟雲端版本或另存複本。
+- 中斷 Drive 只會丟棄目前分頁記憶體中的存取權杖，不刪除 Google Drive 檔案、本機 Moodboard，也不會撤銷 PETFASHION 登入。若要完整撤銷已授予的 Drive 權限，可由 Google 帳戶的第三方連結設定處理。
+
 ## 目前不會做的事
 
-- 不會把 Moodboard、圖片、影片、SVG、版本或構圖上傳至 PETFASHION、GitHub 或 Google Drive。
-- 不會啟用跨裝置即時共編或雲端備份。
+- 不會把 Moodboard、圖片、影片、SVG、版本或構圖上傳至 PETFASHION 或 GitHub。
+- 未經另外連結 Drive 與第一次主動儲存，不會把 Moodboard 上傳至 Google Drive。
+- 不會啟用跨裝置即時共編；Google Drive 保存完整工作檔，不等於多人同時編輯服務。
 - 產品 Email 偏好只保存在目前瀏覽器，不會加入寄送名單；正式啟用前會再次取得同意。
 - 不會公開 Facebook 登入入口。
 
 ## 使用者控制
 
-- Settings > 帳號與隱私可登出、清除目前裝置的自動儲存與本機版本，或前往 PETFASHION 管理／刪除帳號。
+- Settings > 帳號與隱私可登出、清除目前裝置的自動儲存與本機版本，或前往 PETFASHION 管理／刪除帳號；清除本機資料不會刪除 Drive 檔案。
+- Settings > 儲存與同步可關閉自動同步、中斷 Drive、檢查可用空間，或開啟既有雲端工作檔。
 - 使用共用電腦時，應下載需要保留的 `.moodboard` 檔、登出，再清除本機資料。
 
 PETFASHION 的正式政策：[隱私權政策](https://petfashion.tw/privacy)與[服務條款](https://petfashion.tw/terms)。若兩者與本說明有衝突，正式政策優先；公開推廣前仍應由負責人進行法律與政策文字審查。

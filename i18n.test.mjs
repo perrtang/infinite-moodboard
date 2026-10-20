@@ -36,3 +36,30 @@ test("paper, annotation, grid, and semantic grouping copy is localized", () => {
   assert.equal(translateInterfaceText("右下外側", "zh-Hans"), "右下外侧");
   assert.equal(translateInterfaceText("紙張＋內容", "zh-Hans"), "纸张＋内容");
 });
+
+test("workspace search, ruler, and shortcut copy is localized", () => {
+  assert.equal(translateInterfaceText("搜尋或篩選圖層", "en"), "Search or filter layers");
+  assert.equal(translateInterfaceText("尺規與輔助導引線", "en"), "Rulers and guides");
+  assert.equal(translateInterfaceText("平移工具 Shift+H（按住 Shift 可暫時選取）", "en"), "Hand tool Shift+H (hold Shift to select temporarily)");
+  assert.equal(translateInterfaceText("搜尋快速鍵", "en"), "Search shortcuts");
+  assert.equal(translateInterfaceText("顯示或隱藏兩側欄", "en"), "Show or hide both side panels");
+  assert.equal(translateInterfaceText("取消目前調整？", "en"), "Cancel the current adjustment?");
+  assert.equal(translateInterfaceText("移動 3 個物件", "en"), "Move 3 objects");
+  assert.equal(translateInterfaceText("調整「標題」文字框", "en"), "Resize the text frame for “標題”");
+  assert.equal(translateInterfaceText("3D 旋轉物件", "en"), "Rotate object in 3D");
+  assert.equal(translateInterfaceText("搜尋構圖名稱", "zh-Hans"), "搜索构图名称");
+});
+
+test("Google Drive storage and recovery copy is localized", () => {
+  assert.equal(translateInterfaceText("儲存與同步", "en"), "Storage & sync");
+  assert.equal(translateInterfaceText("只要求 drive.file 最小權限", "en"), "Requests only the minimum drive.file permission");
+  assert.match(translateInterfaceText("Google Drive 是主要保存位置；每次編輯仍會先安全保存在這台裝置。", "en"), /saved on this device first/);
+  assert.equal(translateInterfaceText("Google Drive 已同步", "en"), "Google Drive synced");
+  assert.equal(translateInterfaceText("2 / 5 個 Drive 檔案", "en"), "2 / 5 Drive files");
+  assert.equal(translateInterfaceText("目前 Drive 帳號：person@example.com", "en"), "Current Drive account: person@example.com");
+  assert.match(translateInterfaceText("Google Drive 空間不足；畫布仍安全保存在這台裝置。", "en"), /remains safely saved/);
+  assert.match(translateInterfaceText("正在先保存本機版本，再確認 Drive 空間與遠端版本…", "en"), /Saving the local version first/);
+  assert.match(translateInterfaceText("已中斷這個分頁的 Google Drive；雲端檔案、本機畫布與 PETFASHION 登入都未受影響。", "en"), /disconnected from this tab/);
+  assert.equal(translateInterfaceText("儲存與同步", "zh-Hans"), "保存与同步");
+  assert.equal(translateInterfaceText("中斷 Drive 連結", "zh-Hans"), "中断 Drive 连接");
+});

@@ -22,7 +22,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Circle,
+  Cloud,
   CloudOff,
+  CloudUpload,
   Copy,
   Diamond,
   Download,
@@ -48,6 +50,8 @@ import {
   Languages,
   LayoutGrid,
   Layers3,
+  Keyboard,
+  ListFilter,
   LocateFixed,
   Lock,
   LogOut,
@@ -64,11 +68,13 @@ import {
   RectangleHorizontal,
   Redo2,
   RefreshCw,
+  Ruler,
   RotateCcw,
   RotateCcwSquare,
   RotateCw,
   Save,
   Scaling,
+  Search,
   Settings as SettingsIcon,
   Share2,
   ShieldCheck,
@@ -157,6 +163,25 @@ import {
   saveVersion,
 } from "./storage.js";
 import {
+  DriveApiError,
+  DriveConflictError,
+  contentByteLength,
+  downloadGoogleDriveMoodboard,
+  driveErrorMessage,
+  ensureGoogleDriveFolder,
+  evaluateDriveQuota,
+  getGoogleDriveAbout,
+  getGoogleDriveFile,
+  isGoogleDriveConfigured,
+  linkDriveFile,
+  listGoogleDriveMoodboards,
+  loadDriveState,
+  requestGoogleDriveToken,
+  saveDriveState,
+  serializeMoodboardSnapshot,
+  uploadGoogleDriveMoodboard,
+} from "./drive-storage.js";
+import {
   completeMoodboardEmailSignInLink,
   isMoodboardEmailSignInLink,
   linkMoodboardFacebook,
@@ -231,6 +256,15 @@ import {
   setActiveInterfaceLocale,
   translateInterfaceText,
 } from "./i18n.js";
+import {
+  RULER_UNITS,
+  buildRulerTicks,
+  formatGuideValue,
+  matchesListQuery,
+  normalizeRulerUnit,
+  shouldConfirmEscapeCancellation,
+  snapGuidePosition,
+} from "./workspace-tools.js";
 import "./styles.css";
 
 const MARKER_ICONS = {
@@ -359,6 +393,54 @@ const THEME_COLOR_FIELDS = [
 ];
 const LAST_LIGHT_THEME_STORAGE_KEY = "infinite-moodboard-last-light-theme-v1";
 const LAST_DARK_THEME_STORAGE_KEY = "infinite-moodboard-last-dark-theme-v1";
+const RULERS_VISIBLE_STORAGE_KEY = "infinite-moodboard-rulers-visible-v1";
+const GUIDES_VISIBLE_STORAGE_KEY = "infinite-moodboard-guides-visible-v1";
+const RULER_UNIT_STORAGE_KEY = "infinite-moodboard-ruler-unit-v1";
+const RULER_SIZE = 22;
+
+const SHORTCUT_SECTIONS = [
+  {
+    title: "檔案與編輯",
+    items: [
+      ["mod+S", "儲存 Moodboard"],
+      ["mod+O", "開啟 Moodboard"],
+      ["mod+Z", "復原"],
+      ["mod+shift+Z", "重做"],
+      ["mod+A", "選取全部可見物件"],
+      ["mod+C", "複製選取物件"],
+      ["mod+X", "剪下選取物件"],
+      ["mod+V", "貼上物件或媒體"],
+      ["mod+F", "搜尋目前列表"],
+    ],
+  },
+  {
+    title: "工具與物件",
+    items: [
+      ["shift+V", "選取工具"],
+      ["shift+H", "平移工具"],
+      ["shift+3", "切換進階 3D"],
+      ["shift+D", "複製選取物件"],
+      ["shift+G", "建立或解散群組"],
+      ["Space", "暫時平移畫布"],
+      ["Shift", "平移工具中暫時選取"],
+      ["Delete", "刪除選取物件"],
+    ],
+  },
+  {
+    title: "工作區顯示",
+    items: [
+      ["shift+R", "顯示或隱藏尺規"],
+      ["shift+;", "顯示或隱藏輔助導引線"],
+      ["shift+'", "顯示或隱藏格點／格線"],
+      ["shift+[", "顯示或隱藏左側欄"],
+      ["shift+]", "顯示或隱藏右側欄"],
+      ["shift+\\", "顯示或隱藏兩側欄"],
+      ["shift+F", "切換專注模式"],
+      ["?", "顯示或隱藏快速鍵"],
+      ["Escape", "取消目前操作或關閉最上層介面"],
+    ],
+  },
+];
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -409,6 +491,19 @@ function formatTime(value) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function formatStorageSize(value) {
+  const bytes = Math.max(0, Number(value) || 0);
+  if (bytes < 1024) return `${Math.round(bytes)} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let amount = bytes;
+  let unit = -1;
+  do {
+    amount /= 1024;
+    unit += 1;
+  } while (amount >= 1024 && unit < units.length - 1);
+  return `${amount >= 10 ? amount.toFixed(0) : amount.toFixed(1)} ${units[unit]}`;
 }
 
 function createSessionName() {
@@ -1302,6 +1397,207 @@ function IconButton({ label, children, active = false, className = "", ...props 
   );
 }
 
+function platformShortcutLabel(shortcut) {
+  const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+  return shortcut
+    .replaceAll("mod", isMac ? "⌘" : "Ctrl")
+    .replaceAll("shift", "⇧")
+    .split("+")
+    .join(" + ");
+}
+
+function useListSearch(listId) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const inputRef = useRef(null);
+
+  const focusSearch = useCallback(() => {
+    setOpen(true);
+    window.requestAnimationFrame(() => inputRef.current?.focus());
+  }, []);
+
+  useEffect(() => {
+    const openRequestedSearch = (event) => {
+      if (event.detail?.listId === listId) focusSearch();
+    };
+    window.addEventListener("infinite-moodboard:list-search", openRequestedSearch);
+    return () => window.removeEventListener("infinite-moodboard:list-search", openRequestedSearch);
+  }, [focusSearch, listId]);
+
+  return { open, setOpen, query, setQuery, inputRef, focusSearch };
+}
+
+function ListSearchToggle({ search, resultCount, totalCount, label = "搜尋／篩選列表", forceActive = false }) {
+  const active = forceActive || Boolean(search.query.trim());
+  return (
+    <button
+      className={`list-search-toggle ${search.open ? "is-open" : ""} ${active ? "is-active" : ""}`}
+      type="button"
+      aria-label={search.open ? "收合搜尋／篩選" : label}
+      aria-expanded={search.open}
+      aria-pressed={active}
+      onClick={() => search.open ? search.setOpen(false) : search.focusSearch()}
+      title={label}
+    >
+      <ListFilter size={16} aria-hidden="true" />
+      {active ? <span>{resultCount}/{totalCount}</span> : null}
+    </button>
+  );
+}
+
+function ListSearchField({ search, placeholder, children = null }) {
+  if (!search.open) return null;
+  return (
+    <div className="list-search-controls">
+      <label className="list-search-field">
+        <Search size={15} aria-hidden="true" />
+        <span className="sr-only">{placeholder}</span>
+        <input
+          ref={search.inputRef}
+          value={search.query}
+          onChange={(event) => search.setQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== "Escape") return;
+            event.preventDefault();
+            event.stopPropagation();
+            search.setOpen(false);
+          }}
+          placeholder={placeholder}
+        />
+        {search.query ? (
+          <button type="button" aria-label="清除搜尋" onClick={() => { search.setQuery(""); search.inputRef.current?.focus(); }}>
+            <X size={14} />
+          </button>
+        ) : null}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+function WorkspaceRulers({
+  rulersVisible,
+  guidesVisible,
+  guides,
+  draggingGuide,
+  view,
+  viewportSize,
+  unit,
+  onUnitChange,
+  onStartGuide,
+  onDeleteGuide,
+}) {
+  const [unitMenu, setUnitMenu] = useState(null);
+  const horizontalTicks = useMemo(
+    () => buildRulerTicks(viewportSize.width, view.x, view.zoom, unit),
+    [unit, view.x, view.zoom, viewportSize.width],
+  );
+  const verticalTicks = useMemo(
+    () => buildRulerTicks(viewportSize.height, view.y, view.zoom, unit),
+    [unit, view.y, view.zoom, viewportSize.height],
+  );
+
+  useEffect(() => {
+    if (!unitMenu) return undefined;
+    const close = () => setUnitMenu(null);
+    const closeOnEscape = (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      setUnitMenu(null);
+    };
+    window.addEventListener("pointerdown", close);
+    window.addEventListener("blur", close);
+    window.addEventListener("keydown", closeOnEscape, true);
+    return () => {
+      window.removeEventListener("pointerdown", close);
+      window.removeEventListener("blur", close);
+      window.removeEventListener("keydown", closeOnEscape, true);
+    };
+  }, [unitMenu]);
+
+  if (!rulersVisible && !guidesVisible && !draggingGuide) return null;
+
+  const openUnitMenu = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setUnitMenu({ x: event.clientX, y: event.clientY });
+  };
+  const shownGuides = draggingGuide
+    ? [...guides.filter((guide) => guide.id !== draggingGuide.id), draggingGuide]
+    : guides;
+
+  return (
+    <div className="workspace-measurement-layer" aria-label="尺規與輔助導引線">
+      {rulersVisible ? (
+        <>
+          <button className="ruler-corner" type="button" onContextMenu={openUnitMenu} onClick={(event) => openUnitMenu(event)} aria-label={`尺規單位 ${RULER_UNITS[unit].label}；點擊切換`}>
+            {RULER_UNITS[unit].label}
+          </button>
+          <div
+            className="workspace-ruler is-horizontal"
+            role="button"
+            tabIndex={0}
+            aria-label="頂部尺規；拖曳可建立水平導引線"
+            onPointerDown={(event) => onStartGuide(event, "y")}
+            onContextMenu={openUnitMenu}
+          >
+            {horizontalTicks.map((tick) => (
+              <span className={tick.major ? "is-major" : ""} style={{ left: tick.position }} key={`${tick.position}-${tick.value}`}>
+                {tick.major ? <b>{tick.label}</b> : null}
+              </span>
+            ))}
+          </div>
+          <div
+            className="workspace-ruler is-vertical"
+            role="button"
+            tabIndex={0}
+            aria-label="左側尺規；拖曳可建立垂直導引線"
+            onPointerDown={(event) => onStartGuide(event, "x")}
+            onContextMenu={openUnitMenu}
+          >
+            {verticalTicks.map((tick) => (
+              <span className={tick.major ? "is-major" : ""} style={{ top: tick.position }} key={`${tick.position}-${tick.value}`}>
+                {tick.major ? <b>{tick.label}</b> : null}
+              </span>
+            ))}
+          </div>
+        </>
+      ) : null}
+      {(guidesVisible || draggingGuide) ? (
+        <div className="workspace-guides">
+          {shownGuides.map((guide) => {
+            const screenPosition = (guide.axis === "x" ? view.x : view.y) + guide.position * view.zoom;
+            return (
+              <button
+                className={`workspace-guide is-${guide.axis === "x" ? "vertical" : "horizontal"} ${draggingGuide?.id === guide.id ? "is-dragging" : ""}`}
+                style={guide.axis === "x" ? { left: screenPosition } : { top: screenPosition }}
+                type="button"
+                aria-label={`${guide.axis === "x" ? "垂直" : "水平"}導引線 ${formatGuideValue(guide.position, unit)}；拖曳移動，連按兩下刪除`}
+                title="拖曳移動；連按兩下刪除"
+                onPointerDown={(event) => onStartGuide(event, guide.axis, guide.id)}
+                onDoubleClick={(event) => { event.stopPropagation(); onDeleteGuide(guide.id); }}
+                key={guide.id}
+              >
+                {draggingGuide?.id === guide.id ? <span>{formatGuideValue(guide.position, unit)}</span> : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+      {unitMenu ? (
+        <div className="ruler-unit-menu" style={{ left: unitMenu.x, top: unitMenu.y }} role="menu" aria-label="尺規單位" onPointerDown={(event) => event.stopPropagation()}>
+          {Object.entries(RULER_UNITS).map(([id, option]) => (
+            <button type="button" role="menuitemradio" aria-checked={unit === id} className={unit === id ? "is-active" : ""} onClick={() => { onUnitChange(id); setUnitMenu(null); }} key={id}>
+              <span>{option.label}</span>{unit === id ? <Check size={14} /> : null}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function AccountAvatar({ user, size = 28 }) {
   return (
     <span className="account-avatar" style={{ "--account-avatar-size": `${size}px` }} aria-hidden="true">
@@ -1335,11 +1631,11 @@ function SelectionActionBar({ count, hasArtboard, grouped, onAddArtboard, onAddA
       <IconButton label="建立或重新排列 Grid" onClick={onGrid}>
         <LayoutGrid size={16} />
       </IconButton>
-      <IconButton label={grouped ? "解散群組 ⌘⇧G" : "建立群組 ⌘G"} onClick={onToggleGroup} disabled={!grouped && count < 2} active={grouped}>
+      <IconButton label={grouped ? "解散群組 Shift+G" : "建立群組 Shift+G"} onClick={onToggleGroup} disabled={!grouped && count < 2} active={grouped}>
         <Layers3 size={16} />
       </IconButton>
       <span className="selection-action-divider" aria-hidden="true" />
-      <IconButton label={`複製${selectionLabel} ⌘D`} onClick={onDuplicate}>
+      <IconButton label={`複製${selectionLabel} Shift+D`} onClick={onDuplicate}>
         <Copy size={16} />
       </IconButton>
       <IconButton className="danger-icon-button" label={`刪除${selectionLabel}；可按 ⌘Z 復原`} onClick={onDelete}>
@@ -1840,13 +2136,12 @@ function LayersPanel({
   onMoveLayer,
   onReorderLayer,
   onLocate,
-  layerQuery,
-  setLayerQuery,
   layerTypeFilter,
   setLayerTypeFilter,
 }) {
   const [layerDrag, setLayerDrag] = useState(null);
-  const query = layerQuery.trim().toLocaleLowerCase("zh-Hant");
+  const search = useListSearch("layers");
+  const query = search.query.trim().toLocaleLowerCase("zh-Hant");
   const objects = [...board.objects]
     .reverse()
     .filter((object) =>
@@ -1898,34 +2193,55 @@ function LayersPanel({
         placement: dropTarget?.placement || "before",
       });
     };
-    const up = (upEvent) => {
-      dropTarget = resolveTarget(upEvent.clientX, upEvent.clientY) || dropTarget;
+    const cleanup = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", cancel);
+      window.removeEventListener("keydown", cancelOnEscape, true);
+    };
+    const up = (upEvent) => {
+      dropTarget = resolveTarget(upEvent.clientX, upEvent.clientY) || dropTarget;
+      cleanup();
       if (dropTarget) onReorderLayer(movingId, dropTarget.targetId, dropTarget.placement);
       setLayerDrag(null);
     };
+    const cancel = () => {
+      cleanup();
+      setLayerDrag(null);
+    };
+    const cancelOnEscape = (keyEvent) => {
+      if (keyEvent.key !== "Escape") return;
+      keyEvent.preventDefault();
+      keyEvent.stopImmediatePropagation();
+      cancel();
+    };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up, { once: true });
+    window.addEventListener("pointercancel", cancel, { once: true });
+    window.addEventListener("keydown", cancelOnEscape, true);
   };
 
   return (
     <div className="panel-scroll layers-panel">
-      <label className="search-field">
-        <span className="sr-only">搜尋圖層</span>
-        <input
-          value={layerQuery}
-          onChange={(event) => setLayerQuery(event.target.value)}
-          placeholder="搜尋圖層或物件"
+      <div className="panel-list-toolbar">
+        <span>{`${objects.length + filteredGroups.length} / ${board.objects.length + (board.groups || []).length}`}</span>
+        <ListSearchToggle
+          search={search}
+          resultCount={objects.length + filteredGroups.length}
+          totalCount={board.objects.length + (board.groups || []).length}
+          forceActive={layerTypeFilter !== "all"}
+          label="搜尋或篩選圖層"
         />
-      </label>
-      <div className="layer-type-filters" role="radiogroup" aria-label="依物件類型篩選圖層">
-        {LAYER_TYPE_FILTERS.map(([value, label]) => (
-          <button key={value} type="button" role="radio" aria-checked={layerTypeFilter === value} className={layerTypeFilter === value ? "is-active" : ""} onClick={() => setLayerTypeFilter(value)}>
-            {label}
-          </button>
-        ))}
       </div>
+      <ListSearchField search={search} placeholder="搜尋圖層或物件">
+        <div className="layer-type-filters" role="radiogroup" aria-label="依物件類型篩選圖層">
+          {LAYER_TYPE_FILTERS.map(([value, label]) => (
+            <button key={value} type="button" role="radio" aria-checked={layerTypeFilter === value} className={layerTypeFilter === value ? "is-active" : ""} onClick={() => setLayerTypeFilter(value)}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </ListSearchField>
       {selectedIds.length ? (
         <div className="layer-bulk-actions" role="toolbar" aria-label={`${selectedIds.length} 個選取物件批次操作`}>
           <span><strong>{selectedIds.length}</strong> 個選取</span>
@@ -2038,7 +2354,7 @@ function LayersPanel({
           <Layers3 size={24} />
           <strong>{board.objects.length ? "找不到符合的圖層" : "還沒有圖層"}</strong>
           <p>{board.objects.length ? "保留搜尋內容，調整關鍵字或清除搜尋。" : "加入文字、形狀或素材後，每個物件會自動建立自己的圖層。"}</p>
-          {query ? <button type="button" className="text-button" onClick={() => setLayerQuery("")}>清除搜尋</button> : null}
+          {query ? <button type="button" className="text-button" onClick={() => search.setQuery("")}>清除搜尋</button> : null}
         </div>
       )}
     </div>
@@ -2217,8 +2533,11 @@ function CapturesPanel({
   onDeleteCapture,
 }) {
   const [captureDrag, setCaptureDrag] = useState(null);
+  const search = useListSearch("captures");
   const selectedCapture = board.captures.find((capture) => capture.id === selectedCaptureId);
-  const captures = [...board.captures].reverse();
+  const captures = [...board.captures]
+    .reverse()
+    .filter((capture) => matchesListQuery([capture.name, formatTime(capture.updatedAt), `${Math.round(capture.view.zoom * 100)}%`], search.query));
 
   const startCaptureDrag = (event, movingId) => {
     if (event.button !== 0) return;
@@ -2249,17 +2568,32 @@ function CapturesPanel({
         placement: dropTarget?.placement || "before",
       });
     };
-    const up = (upEvent) => {
-      dropTarget = resolveTarget(upEvent.clientX, upEvent.clientY) || dropTarget;
+    const cleanup = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", up);
+      window.removeEventListener("pointercancel", cancel);
+      window.removeEventListener("keydown", cancelOnEscape, true);
+    };
+    const up = (upEvent) => {
+      dropTarget = resolveTarget(upEvent.clientX, upEvent.clientY) || dropTarget;
+      cleanup();
       if (dropTarget) onReorderCapture(movingId, dropTarget.targetId, dropTarget.placement);
       setCaptureDrag(null);
     };
+    const cancel = () => {
+      cleanup();
+      setCaptureDrag(null);
+    };
+    const cancelOnEscape = (keyEvent) => {
+      if (keyEvent.key !== "Escape") return;
+      keyEvent.preventDefault();
+      keyEvent.stopImmediatePropagation();
+      cancel();
+    };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up, { once: true });
-    window.addEventListener("pointercancel", up, { once: true });
+    window.addEventListener("pointercancel", cancel, { once: true });
+    window.addEventListener("keydown", cancelOnEscape, true);
   };
 
   return (
@@ -2269,8 +2603,9 @@ function CapturesPanel({
           <strong>構圖</strong>
           <p>保存目前物件與視窗；切換前會自動保留當下構圖。</p>
         </div>
-        <span>{board.captures.length}</span>
+        <ListSearchToggle search={search} resultCount={captures.length} totalCount={board.captures.length} label="搜尋構圖" />
       </div>
+      <ListSearchField search={search} placeholder="搜尋構圖名稱" />
       <button className="primary-button full-width capture-button" type="button" onClick={onCapture}>
         <Camera size={17} /> 記錄目前構圖
       </button>
@@ -2285,7 +2620,7 @@ function CapturesPanel({
           <RotateCcw size={16} aria-hidden="true" />
         </button>
       ) : null}
-      {board.captures.length ? (
+      {captures.length ? (
         <div className="capture-list">
           {captures.map((capture) => {
             const dropBefore = captureDrag?.targetId === capture.id && captureDrag.placement === "before";
@@ -2346,6 +2681,13 @@ function CapturesPanel({
               ? `將「${captureDrag.name}」放在「${captures.find((capture) => capture.id === captureDrag.targetId)?.name || "目標構圖"}」${captureDrag.placement === "before" ? "上方" : "下方"}`
               : ""}
           </span>
+        </div>
+      ) : board.captures.length ? (
+        <div className="panel-empty capture-empty">
+          <Search size={25} />
+          <strong>找不到符合的構圖</strong>
+          <p>搜尋條件會保留，可以調整或清除。</p>
+          <button type="button" className="text-button" onClick={() => search.setQuery("")}>清除搜尋</button>
         </div>
       ) : (
         <div className="panel-empty capture-empty">
@@ -2622,7 +2964,7 @@ function Inspector({
           <div className="inspector-empty">
             <SlidersHorizontal size={27} />
             <strong>選取一個物件開始編輯</strong>
-            <p>選取工具可操作物件；空白處拖曳可框選，雙擊第二下按住拖曳可平移畫布。平移工具中按住 ⌘／Ctrl 可暫時選取。</p>
+            <p>選取工具可操作物件；空白處拖曳可框選，雙擊第二下按住拖曳可平移畫布。平移工具中按住 Shift 可暫時選取。</p>
             <dl>
               <div><dt>物件</dt><dd>{board.objects.length}</dd></div>
               <div><dt>標記</dt><dd>{board.objects.reduce((total, item) => total + item.markers.length, 0)}</dd></div>
@@ -3352,23 +3694,31 @@ function SelectionGroupOverlay({
 function FilterStage({ objects, selectedIds, onSelect, onClear, filters }) {
   const [viewMode, setViewMode] = useState("grid");
   const [slideIndex, setSlideIndex] = useState(0);
+  const search = useListSearch("filter-results");
   const swipeStartRef = useRef(null);
   const thumbnailTapRef = useRef({ id: null, time: 0 });
-  const activeIndex = objects.length ? Math.min(slideIndex, objects.length - 1) : 0;
-  const activeObject = objects[activeIndex];
+  const listedObjects = objects.filter((object) => matchesListQuery([object.name, object.layerName, object.type], search.query));
+  const activeIndex = listedObjects.length ? Math.min(slideIndex, listedObjects.length - 1) : 0;
+  const activeObject = listedObjects[activeIndex];
   const goToSlide = useCallback((nextIndex) => {
-    if (!objects.length) return;
-    setSlideIndex((nextIndex + objects.length) % objects.length);
-  }, [objects.length]);
+    if (!listedObjects.length) return;
+    setSlideIndex((nextIndex + listedObjects.length) % listedObjects.length);
+  }, [listedObjects.length]);
 
   useEffect(() => {
-    setSlideIndex((current) => objects.length ? Math.min(current, objects.length - 1) : 0);
-  }, [objects.length]);
+    setSlideIndex((current) => listedObjects.length ? Math.min(current, listedObjects.length - 1) : 0);
+  }, [listedObjects.length]);
 
   useEffect(() => {
     if (viewMode !== "original") return undefined;
     const onKeyDown = (event) => {
       if (event.target?.closest?.("video[controls], input, textarea, select")) return;
+      if (event.key === "Escape" && !document.fullscreenElement) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        setViewMode("grid");
+        return;
+      }
       if (event.key === "ArrowLeft") { event.preventDefault(); goToSlide(activeIndex - 1); }
       if (event.key === "ArrowRight") { event.preventDefault(); goToSlide(activeIndex + 1); }
     };
@@ -3377,14 +3727,15 @@ function FilterStage({ objects, selectedIds, onSelect, onClear, filters }) {
   }, [activeIndex, goToSlide, viewMode]);
 
   return (
-    <div className="filter-stage" aria-label="篩選排隊結果">
+    <div className={`filter-stage ${search.open ? "has-list-search" : ""}`} aria-label="篩選排隊結果">
       <header>
         <div>
           <Tags size={18} />
           <span>排隊檢視</span>
-          <strong>{`${objects.length} 個符合`}</strong>
+          <strong>{search.query ? `${listedObjects.length} / ${objects.length}` : `${objects.length} 個符合`}</strong>
         </div>
         <div className="filter-stage-actions">
+          <ListSearchToggle search={search} resultCount={listedObjects.length} totalCount={objects.length} label="搜尋排隊結果" />
           <div className="view-mode-control" role="group" aria-label="檢視方式">
             <button type="button" className={viewMode === "grid" ? "is-active" : ""} aria-pressed={viewMode === "grid"} onClick={() => setViewMode("grid")}><LayoutGrid size={15} /> 縮圖</button>
             <button type="button" className={viewMode === "original" ? "is-active" : ""} aria-pressed={viewMode === "original"} onClick={() => setViewMode("original")}><Square size={15} /> 原圖</button>
@@ -3392,9 +3743,10 @@ function FilterStage({ objects, selectedIds, onSelect, onClear, filters }) {
           <button className="secondary-button" type="button" onClick={onClear}><ArrowLeft size={16} /> 回到 Moodboard</button>
         </div>
       </header>
-      {objects.length && viewMode === "grid" ? (
+      <ListSearchField search={search} placeholder="搜尋物件或圖層" />
+      {listedObjects.length && viewMode === "grid" ? (
         <div className="filter-stage-grid">
-          {objects.map((object, index) => (
+          {listedObjects.map((object, index) => (
             <button
               type="button"
               className={selectedIds.includes(object.id) ? "is-selected" : ""}
@@ -3426,7 +3778,7 @@ function FilterStage({ objects, selectedIds, onSelect, onClear, filters }) {
           ))}
         </div>
       ) : null}
-      {objects.length && viewMode === "original" && activeObject ? (
+      {listedObjects.length && viewMode === "original" && activeObject ? (
         <div
           className="filter-slideshow"
           onPointerDown={(event) => {
@@ -3454,18 +3806,18 @@ function FilterStage({ objects, selectedIds, onSelect, onClear, filters }) {
               <span className="slide-markers">
                 {activeObject.markers.map((marker) => <MarkerIcon key={markerKey(marker)} symbol={marker.symbol} color={marker.color} size={15} />)}
               </span>
-              <span className="slide-count">{activeIndex + 1} / {objects.length}</span>
+              <span className="slide-count">{activeIndex + 1} / {listedObjects.length}</span>
               <button type="button" className="quiet-button" onClick={() => onSelect(activeObject.id, false)}>選取此物件</button>
             </figcaption>
           </figure>
           <button className="slide-arrow is-next" type="button" onClick={() => goToSlide(activeIndex + 1)} aria-label="下一個素材"><ChevronRight size={26} /></button>
         </div>
       ) : (
-        !objects.length ? <div className="stage-empty">
+        !listedObjects.length ? <div className="stage-empty">
           <AlertTriangle size={26} />
-          <strong>目前組合沒有符合的物件</strong>
-          <p>{filters.mode === "all" ? "改用「任一標記」，或減少條件。" : "調整符號、色彩，或清除篩選。"}</p>
-          <button type="button" className="secondary-button" onClick={onClear}>清除篩選</button>
+          <strong>{objects.length ? "找不到符合搜尋的物件" : "目前組合沒有符合的物件"}</strong>
+          <p>{objects.length ? "搜尋條件會保留，可以調整或清除。" : filters.mode === "all" ? "改用「任一標記」，或減少條件。" : "調整符號、色彩，或清除篩選。"}</p>
+          <button type="button" className="secondary-button" onClick={objects.length ? () => search.setQuery("") : onClear}>{objects.length ? "清除搜尋" : "清除篩選"}</button>
         </div> : null
       )}
     </div>
@@ -3475,23 +3827,35 @@ function FilterStage({ objects, selectedIds, onSelect, onClear, filters }) {
 function SourceStage({ sourceAssets }) {
   const [viewMode, setViewMode] = useState("grid");
   const [slideIndex, setSlideIndex] = useState(0);
+  const search = useListSearch("sources");
   const swipeStartRef = useRef(null);
   const thumbnailTapRef = useRef({ id: null, time: 0 });
-  const activeIndex = sourceAssets.length ? Math.min(slideIndex, sourceAssets.length - 1) : 0;
-  const activeSource = sourceAssets[activeIndex];
+  const listedSources = sourceAssets.filter((source) => matchesListQuery([
+    source.representative.originalFilename,
+    source.representative.name,
+    source.representative.mime,
+  ], search.query));
+  const activeIndex = listedSources.length ? Math.min(slideIndex, listedSources.length - 1) : 0;
+  const activeSource = listedSources[activeIndex];
   const goToSlide = useCallback((nextIndex) => {
-    if (!sourceAssets.length) return;
-    setSlideIndex((nextIndex + sourceAssets.length) % sourceAssets.length);
-  }, [sourceAssets.length]);
+    if (!listedSources.length) return;
+    setSlideIndex((nextIndex + listedSources.length) % listedSources.length);
+  }, [listedSources.length]);
 
   useEffect(() => {
-    setSlideIndex((current) => sourceAssets.length ? Math.min(current, sourceAssets.length - 1) : 0);
-  }, [sourceAssets.length]);
+    setSlideIndex((current) => listedSources.length ? Math.min(current, listedSources.length - 1) : 0);
+  }, [listedSources.length]);
 
   useEffect(() => {
     if (viewMode !== "original") return undefined;
     const onKeyDown = (event) => {
       if (event.target?.closest?.("video[controls], input, textarea, select")) return;
+      if (event.key === "Escape" && !document.fullscreenElement) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        setViewMode("grid");
+        return;
+      }
       if (event.key === "ArrowLeft") { event.preventDefault(); goToSlide(activeIndex - 1); }
       if (event.key === "ArrowRight") { event.preventDefault(); goToSlide(activeIndex + 1); }
     };
@@ -3505,23 +3869,25 @@ function SourceStage({ sourceAssets }) {
   }, []);
 
   return (
-    <div className="filter-stage source-stage" aria-label="來源素材檢視">
+    <div className={`filter-stage source-stage ${search.open ? "has-list-search" : ""}`} aria-label="來源素材檢視">
       <header>
         <div>
           <ImageIcon size={18} />
           <span>來源素材</span>
-          <strong>{`${sourceAssets.length} 個來源`}</strong>
+          <strong>{search.query ? `${listedSources.length} / ${sourceAssets.length}` : `${sourceAssets.length} 個來源`}</strong>
         </div>
         <div className="filter-stage-actions">
+          <ListSearchToggle search={search} resultCount={listedSources.length} totalCount={sourceAssets.length} label="搜尋來源素材" />
           <div className="view-mode-control" role="group" aria-label="來源素材檢視方式">
             <button type="button" className={viewMode === "grid" ? "is-active" : ""} aria-pressed={viewMode === "grid"} onClick={() => setViewMode("grid")}><LayoutGrid size={15} /> 縮圖</button>
-            <button type="button" className={viewMode === "original" ? "is-active" : ""} aria-pressed={viewMode === "original"} onClick={() => setViewMode("original")} disabled={!sourceAssets.length}><Square size={15} /> 原圖</button>
+            <button type="button" className={viewMode === "original" ? "is-active" : ""} aria-pressed={viewMode === "original"} onClick={() => setViewMode("original")} disabled={!listedSources.length}><Square size={15} /> 原圖</button>
           </div>
         </div>
       </header>
-      {sourceAssets.length && viewMode === "grid" ? (
+      <ListSearchField search={search} placeholder="搜尋檔名或素材類型" />
+      {listedSources.length && viewMode === "grid" ? (
         <div className="filter-stage-grid source-stage-grid">
-          {sourceAssets.map((source, index) => {
+          {listedSources.map((source, index) => {
             const object = source.representative;
             const typeLabel = isVideoObject(object) ? "影片" : object.mime === "image/svg+xml" ? "SVG" : "圖片";
             return (
@@ -3554,7 +3920,7 @@ function SourceStage({ sourceAssets }) {
           })}
         </div>
       ) : null}
-      {sourceAssets.length && viewMode === "original" && activeSource ? (
+      {listedSources.length && viewMode === "original" && activeSource ? (
         <div
           className="filter-slideshow source-slideshow"
           onPointerDown={(event) => {
@@ -3579,16 +3945,17 @@ function SourceStage({ sourceAssets }) {
                 <strong data-l10n-ignore>{activeSource.representative.originalFilename || activeSource.representative.name}</strong>
                 <small>{`原始素材 · ${activeSource.instanceIds.length} 個畫布實例`}</small>
               </div>
-              <span className="slide-count">{activeIndex + 1} / {sourceAssets.length}</span>
+              <span className="slide-count">{activeIndex + 1} / {listedSources.length}</span>
             </figcaption>
           </figure>
           <button className="slide-arrow is-next" type="button" onClick={() => goToSlide(activeIndex + 1)} aria-label="下一個來源素材"><ChevronRight size={26} /></button>
         </div>
       ) : (
-        !sourceAssets.length ? <div className="stage-empty">
-          <ImageIcon size={26} />
-          <strong>還沒有來源素材</strong>
-          <p>加入圖片、影片或 SVG 後，這裡會依來源各列一份。</p>
+        !listedSources.length ? <div className="stage-empty">
+          {sourceAssets.length ? <Search size={26} /> : <ImageIcon size={26} />}
+          <strong>{sourceAssets.length ? "找不到符合的來源素材" : "還沒有來源素材"}</strong>
+          <p>{sourceAssets.length ? "搜尋條件會保留，可以調整或清除。" : "加入圖片、影片或 SVG 後，這裡會依來源各列一份。"}</p>
+          {sourceAssets.length ? <button type="button" className="secondary-button" onClick={() => search.setQuery("")}>清除搜尋</button> : null}
         </div> : null
       )}
     </div>
@@ -3606,6 +3973,49 @@ function Modal({ title, description, onClose, children, wide = false, dialogRole
         <div className="modal-body">{children}</div>
       </section>
     </div>
+  );
+}
+
+function ShortcutReferenceModal({ onClose }) {
+  const search = useListSearch("shortcuts");
+  const totalCount = SHORTCUT_SECTIONS.reduce((count, section) => count + section.items.length, 0);
+  const sections = SHORTCUT_SECTIONS
+    .map((section) => ({
+      ...section,
+      items: section.items.filter(([shortcut, label]) => matchesListQuery([
+        shortcut,
+        platformShortcutLabel(shortcut),
+        label,
+        section.title,
+      ], search.query)),
+    }))
+    .filter((section) => section.items.length);
+  const resultCount = sections.reduce((count, section) => count + section.items.length, 0);
+
+  return (
+    <Modal title="快速鍵" description="自訂工作區指令統一使用 Shift；檔案與編輯保留熟悉的瀏覽器快速鍵語意。" onClose={onClose} wide>
+      <div className="modal-list-toolbar"><strong>{`${resultCount} / ${totalCount} 個指令`}</strong><ListSearchToggle search={search} resultCount={resultCount} totalCount={totalCount} label="搜尋快速鍵" /></div>
+      <ListSearchField search={search} placeholder="搜尋指令或按鍵" />
+      {sections.length ? (
+        <div className="shortcut-sections">
+          {sections.map((section) => (
+            <section className="shortcut-section" key={section.title}>
+              <h3>{section.title}</h3>
+              <div className="shortcut-list">
+                {section.items.map(([shortcut, label]) => (
+                  <div key={`${section.title}-${shortcut}`}>
+                    <span>{label}</span>
+                    <kbd>{platformShortcutLabel(shortcut)}</kbd>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      ) : (
+        <div className="modal-empty"><Search size={24} /><strong>找不到符合的快速鍵</strong><p>搜尋條件會保留，可以調整或清除。</p><button className="text-button" type="button" onClick={() => search.setQuery("")}>清除搜尋</button></div>
+      )}
+    </Modal>
   );
 }
 
@@ -3733,6 +4143,11 @@ function AuthGate({
       title: "登入後使用協作與同步",
       description: "登入後才能啟用跨分頁協作與未來雲端同步；本機工作仍可繼續使用。",
     }
+    : feature === "drive"
+      ? {
+        title: "登入後連結 Google Drive",
+        description: "PETFASHION 登入只確認身份；下一步仍會另外詢問 Google Drive 檔案權限。",
+      }
     : feature === "3d"
       ? {
         title: "登入後使用進階 3D",
@@ -3910,8 +4325,13 @@ function AuthGate({
 }
 
 function DeleteCompositionWarningModal({ request, onCancel, onConfirm }) {
-  const visibleCompositions = request.affectedCompositions.slice(0, 5);
-  const hiddenCount = request.affectedCompositions.length - visibleCompositions.length;
+  const search = useListSearch("delete-impact");
+  const matchingCompositions = request.affectedCompositions.filter((composition) => matchesListQuery([
+    composition.name,
+    composition.kind,
+  ], search.query));
+  const visibleCompositions = matchingCompositions.slice(0, search.query ? 20 : 5);
+  const hiddenCount = matchingCompositions.length - visibleCompositions.length;
   const objectLabel = request.objectIds.length === 1 ? "這個物件" : `這 ${request.objectIds.length} 個物件`;
   const compositionLabel = request.affectedCompositions.length === 1
     ? "1 個構圖"
@@ -3932,14 +4352,42 @@ function DeleteCompositionWarningModal({ request, onCancel, onConfirm }) {
             <p>刪除後，構圖仍會保留，但無法完整還原被刪除的物件。</p>
           </div>
         </div>
+        <div className="modal-list-toolbar"><strong>受影響的構圖</strong><ListSearchToggle search={search} resultCount={matchingCompositions.length} totalCount={request.affectedCompositions.length} label="搜尋受影響的構圖" /></div>
+        <ListSearchField search={search} placeholder="搜尋構圖名稱" />
         <ul className="delete-impact-list" aria-label="受影響的構圖">
           {visibleCompositions.map((composition) => <li key={composition.id || composition.name}>{composition.name || "未命名構圖"}</li>)}
           {hiddenCount > 0 ? <li className="delete-impact-more">{`另有 ${hiddenCount} 個構圖`}</li> : null}
         </ul>
+        {!matchingCompositions.length ? <div className="modal-empty compact"><Search size={22} /><strong>找不到符合的構圖</strong><button className="text-button" type="button" onClick={() => search.setQuery("")}>清除搜尋</button></div> : null}
         <p className="delete-recovery-note"><Undo2 size={15} aria-hidden="true" /> 若仍要刪除，可立即按 ⌘Z 復原。</p>
         <div className="delete-warning-actions">
           <button className="secondary-button" type="button" onClick={onCancel} autoFocus>取消</button>
           <button className="danger-button" type="button" onClick={onConfirm}><Trash2 size={16} />仍要刪除</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function EscapeCancellationModal({ request, onKeep, onCancel }) {
+  return (
+    <Modal
+      title="取消目前調整？"
+      description="這會放棄尚未完成的調整並回到操作前；其他已完成的編輯不受影響。"
+      onClose={onKeep}
+      dialogRole="alertdialog"
+    >
+      <div className="delete-composition-warning">
+        <div className="delete-impact-summary">
+          <span className="delete-impact-icon" aria-hidden="true"><AlertTriangle size={22} /></span>
+          <div>
+            <strong>{request.label}</strong>
+            <p>選擇保留會套用目前畫面中的結果；取消則精確回到這次操作開始前。</p>
+          </div>
+        </div>
+        <div className="delete-warning-actions">
+          <button className="secondary-button" type="button" onClick={onKeep} autoFocus>保留目前調整</button>
+          <button className="danger-button" type="button" onClick={onCancel}><X size={16} />取消這次調整</button>
         </div>
       </div>
     </Modal>
@@ -3977,6 +4425,13 @@ function DeleteLocalDataModal({ onCancel, onConfirm, isBusy }) {
 }
 
 function VersionModal({ versions, board, versionLabel, setVersionLabel, onCreate, onRestore, onClose, isBusy }) {
+  const search = useListSearch("versions");
+  const listedVersions = versions.filter((version) => matchesListQuery([
+    version.label,
+    version.kind === "manual" ? "手動" : "自動",
+    formatTime(version.createdAt),
+    `${version.objectCount} 個物件`,
+  ], search.query));
   return (
     <Modal title="版本紀錄" description="版本會完整保存畫布與素材；本機最多保留 24 份。" onClose={onClose}>
       <form className="version-create" onSubmit={(event) => { event.preventDefault(); onCreate(); }}>
@@ -3984,9 +4439,11 @@ function VersionModal({ versions, board, versionLabel, setVersionLabel, onCreate
         <button className="primary-button" type="submit" disabled={isBusy}><History size={16} /> 建立版本</button>
       </form>
       <div className="version-current"><span>目前</span><strong>r{board.revision}</strong><small>{`${board.objects.length} 個物件 · ${formatTime(board.updatedAt)}`}</small></div>
-      {versions.length ? (
+      {versions.length ? <div className="modal-list-toolbar"><strong>本機版本</strong><ListSearchToggle search={search} resultCount={listedVersions.length} totalCount={versions.length} label="搜尋版本紀錄" /></div> : null}
+      <ListSearchField search={search} placeholder="搜尋版本備註或日期" />
+      {listedVersions.length ? (
         <div className="version-list">
-          {versions.map((version) => (
+          {listedVersions.map((version) => (
             <article key={version.id}>
               <div><strong data-l10n-ignore>{version.label}</strong><small>{`${version.objectCount} 個物件 · ${formatTime(version.createdAt)}`}</small></div>
               <span className={`version-kind kind-${version.kind}`}>{version.kind === "manual" ? "手動" : "自動"}</span>
@@ -3994,6 +4451,8 @@ function VersionModal({ versions, board, versionLabel, setVersionLabel, onCreate
             </article>
           ))}
         </div>
+      ) : versions.length ? (
+        <div className="modal-empty"><Search size={24} /><strong>找不到符合的版本</strong><p>搜尋條件會保留，可以調整或清除。</p><button className="text-button" type="button" onClick={() => search.setQuery("")}>清除搜尋</button></div>
       ) : (
         <div className="modal-empty"><History size={24} /><strong>尚未建立版本</strong><p>目前畫布仍會自動存到這台裝置；手動版本適合重要節點。</p></div>
       )}
@@ -4001,7 +4460,145 @@ function VersionModal({ versions, board, versionLabel, setVersionLabel, onCreate
   );
 }
 
-function CollaborationModal({ sessionName, setSessionName, peerCount, onClose }) {
+function driveStatusPresentation(driveSession) {
+  if (driveSession.status === "connecting") return { icon: RefreshCw, label: "正在連結 Google Drive…", tone: "working" };
+  if (driveSession.status === "syncing" || driveSession.status === "checking") return { icon: RefreshCw, label: "正在同步到 Google Drive…", tone: "working" };
+  if (driveSession.status === "synced") return { icon: Check, label: "Google Drive 已同步", tone: "success" };
+  if (driveSession.status === "pending") return { icon: CloudUpload, label: "等待同步到 Google Drive", tone: "warning" };
+  if (driveSession.status === "offline") return { icon: CloudOff, label: "目前離線；變更已留在本機", tone: "warning" };
+  if (driveSession.status === "quota") return { icon: AlertTriangle, label: "Google Drive 空間不足", tone: "error" };
+  if (driveSession.status === "conflict") return { icon: AlertTriangle, label: "Drive 上有較新的版本", tone: "error" };
+  if (driveSession.status === "authorization-required") return { icon: CloudOff, label: "需要重新連結 Google Drive", tone: "warning" };
+  if (driveSession.status === "error") return { icon: AlertTriangle, label: "Google Drive 同步失敗", tone: "error" };
+  if (driveSession.connected) return { icon: Cloud, label: "Google Drive 已連結", tone: "success" };
+  return { icon: CloudOff, label: "Google Drive 尚未連結", tone: "muted" };
+}
+
+function DriveLibraryModal({
+  board,
+  currentContentBytes,
+  currentLink,
+  driveSession,
+  driveSettings,
+  onConnect,
+  onDisconnect,
+  onOpenFile,
+  onRefresh,
+  onSave,
+  onSaveCopy,
+  onSetAutoSync,
+  onClose,
+}) {
+  const search = useListSearch("drive-files");
+  const status = driveStatusPresentation(driveSession);
+  const StatusIcon = status.icon;
+  const files = driveSession.files || [];
+  const listedFiles = files.filter((file) => matchesListQuery([
+    file.name,
+    formatTime(file.modifiedTime || file.createdTime || Date.now()),
+    formatStorageSize(file.size),
+  ], search.query));
+  const quota = driveSession.quota;
+  const quotaAssessment = quota ? evaluateDriveQuota(quota, currentContentBytes) : null;
+  const busy = ["connecting", "syncing", "checking"].includes(driveSession.status);
+  const configured = isGoogleDriveConfigured();
+  const quotaLabel = quota?.limit === null
+    ? "Google Drive 未提供固定個人上限；儲存時仍會確認結果。"
+    : quota
+      ? `${formatStorageSize(quota.remaining)} 可用，共 ${formatStorageSize(quota.limit)}`
+      : "連結後會在儲存前檢查可用空間。";
+
+  return (
+    <Modal title="我的 Moodboards" description="Google Drive 是主要保存位置；每次編輯仍會先安全保存在這台裝置。" onClose={onClose} wide>
+      <div className="drive-library">
+        <section className={`drive-status-panel is-${status.tone}`} aria-live="polite">
+          <span className="drive-status-icon" aria-hidden="true"><StatusIcon size={22} className={busy ? "is-spinning" : ""} /></span>
+          <div>
+            <strong>{status.label}</strong>
+            <small>{driveSession.message || quotaLabel}</small>
+          </div>
+          {driveSession.connected ? (
+            <button className="quiet-button" type="button" onClick={onRefresh} disabled={busy}><RefreshCw size={15} />重新整理</button>
+          ) : null}
+        </section>
+
+        <section className="drive-local-draft" aria-label="目前本機畫布">
+          <span><HardDrive size={19} aria-hidden="true" /></span>
+          <div><strong data-l10n-ignore>{board.name}</strong><small>{`目前本機畫布 · 內容 r${board.revision} · ${formatStorageSize(currentContentBytes)}`}</small></div>
+          {currentLink ? <span className="drive-file-badge"><Cloud size={13} />已連結 Drive</span> : <span className="drive-file-badge is-local">尚未建立雲端檔案</span>}
+        </section>
+
+        {!driveSession.connected ? (
+          <section className="drive-permission-intro">
+            <div><ShieldCheck size={23} aria-hidden="true" /><span><strong>只存取你在 Infinite Moodboard 建立的檔案</strong><small>Drive 授權和 PETFASHION 登入分開；不會讀取整個雲端硬碟，也不會因登入而自動上傳。</small></span></div>
+            <div><HardDrive size={23} aria-hidden="true" /><span><strong>本機安全副本永遠先寫入</strong><small>離線、額滿或授權失效時可以繼續工作，之後再重試同步或下載 `.moodboard`。</small></span></div>
+            <button className="primary-button" type="button" onClick={onConnect} disabled={!configured || busy}>
+              {busy ? <RefreshCw size={17} className="is-spinning" /> : <Cloud size={17} />}
+              {configured ? "連結 Google Drive" : "Google Drive 尚未設定"}
+            </button>
+          </section>
+        ) : (
+          <>
+            <div className="drive-toolbar">
+              <label className="drive-auto-sync-choice">
+                <input type="checkbox" checked={driveSettings.autoSync} onChange={(event) => onSetAutoSync(event.target.checked)} />
+                <span><strong>自動同步</strong><small>停止操作後同步最新本機版本</small></span>
+              </label>
+              <div className="drive-toolbar-actions">
+                <button className="secondary-button" type="button" onClick={onSaveCopy} disabled={busy}><Copy size={15} />另存雲端複本</button>
+                <button className="primary-button" type="button" onClick={onSave} disabled={busy || quotaAssessment?.allowed === false}><CloudUpload size={16} />{currentLink ? "立即同步" : "儲存到 Drive"}</button>
+              </div>
+            </div>
+
+            {quotaAssessment?.level === "insufficient" ? (
+              <p className="drive-inline-message is-error" role="alert"><AlertTriangle size={16} />空間不足以安全儲存目前約 {formatStorageSize(currentContentBytes)} 的檔案；畫布仍保存在這台裝置。</p>
+            ) : quotaAssessment?.level === "low" ? (
+              <p className="drive-inline-message is-warning" role="status"><AlertTriangle size={16} />Drive 剩餘空間偏低；建議先清理空間或下載離線備份。</p>
+            ) : null}
+
+            {driveSession.conflict ? (
+              <section className="drive-conflict" role="alert">
+                <AlertTriangle size={20} aria-hidden="true" />
+                <div><strong>Drive 上已有較新的版本</strong><p>為避免覆蓋別台裝置的變更，已停止自動同步。你可以先開啟 Drive 版本，或把目前本機內容另存為複本。</p></div>
+                <div><button className="secondary-button" type="button" onClick={() => onOpenFile(driveSession.conflict)}>開啟 Drive 版本</button><button className="primary-button" type="button" onClick={onSaveCopy}>另存本機內容</button></div>
+              </section>
+            ) : null}
+
+            <div className="modal-list-toolbar">
+              <strong>{`${listedFiles.length} / ${files.length} 個 Drive 檔案`}</strong>
+              <ListSearchToggle search={search} resultCount={listedFiles.length} totalCount={files.length} label="搜尋 Google Drive Moodboard" />
+            </div>
+            <ListSearchField search={search} placeholder="搜尋 Moodboard 名稱或日期" />
+            {listedFiles.length ? (
+              <div className="drive-file-list">
+                {listedFiles.map((file) => (
+                  <article className={currentLink?.fileId === file.id ? "is-current" : ""} key={file.id}>
+                    <span className="drive-file-icon" aria-hidden="true"><FileArchive size={19} /></span>
+                    <div><strong data-l10n-ignore>{file.name}</strong><small>{`${formatTime(file.modifiedTime || file.createdTime)} · ${formatStorageSize(file.size)}`}</small></div>
+                    {currentLink?.fileId === file.id ? <span className="drive-file-badge"><Check size={13} />目前檔案</span> : null}
+                    <button className="quiet-button" type="button" onClick={() => onOpenFile(file)} disabled={busy}>開啟</button>
+                    {file.webViewLink ? <a className="icon-button" href={file.webViewLink} target="_blank" rel="noreferrer" aria-label="在 Google Drive 查看" title="在 Google Drive 查看"><ExternalLink size={15} /></a> : null}
+                  </article>
+                ))}
+              </div>
+            ) : files.length ? (
+              <div className="modal-empty"><Search size={24} /><strong>找不到符合的 Moodboard</strong><p>搜尋條件會保留，可以調整或清除。</p><button className="text-button" type="button" onClick={() => search.setQuery("")}>清除搜尋</button></div>
+            ) : (
+              <div className="modal-empty"><Cloud size={25} /><strong>Drive 裡還沒有 Moodboard</strong><p>按「儲存到 Drive」建立第一個雲端工作檔。</p></div>
+            )}
+
+            <div className="drive-footer-actions">
+              <span><ShieldCheck size={15} />只使用 drive.file 最小權限</span>
+              <button className="quiet-button" type="button" onClick={onDisconnect} title="只中斷目前分頁，不影響 PETFASHION 登入"><CloudOff size={15} />中斷此分頁</button>
+            </div>
+          </>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+function CollaborationModal({ sessionName, setSessionName, peerCount, driveConnected, driveLinked, onOpenDrive, onClose }) {
   return (
     <Modal title="協作與 Google Drive" description="離線核心已可用；雲端能力依真實連線狀態分階段啟用。" onClose={onClose} wide>
       <div className="collaboration-status">
@@ -4013,9 +4610,9 @@ function CollaborationModal({ sessionName, setSessionName, peerCount, onClose })
           <div><History size={21} /><span><strong>本機版本與離線檔案</strong><small>可建立、還原版本，也可隨時下載完整 Infinite Moodboard。</small></span></div>
           <span className="status-label"><Check size={14} /> 已啟用</span>
         </section>
-        <section className="capability is-pending">
-          <div><HardDrive size={21} /><span><strong>Google Drive 檔案、權限、分享連結</strong><small>需 Google Cloud OAuth、Drive API 與正式網域設定。</small></span></div>
-          <span className="status-label"><CloudOff size={14} /> 未連線</span>
+        <section className={`capability ${driveConnected ? "is-ready" : "is-pending"}`}>
+          <div><HardDrive size={21} /><span><strong>Google Drive 檔案與跨裝置保存</strong><small>{driveConnected ? (driveLinked ? "目前 Moodboard 已連結雲端檔案，本機變更可安全同步。" : "Drive 已連結；儲存目前 Moodboard 後即可跨裝置開啟。") : "需另外取得 drive.file 最小權限；登入本身不會上傳 Moodboard。"}</small></span></div>
+          <button className="status-label" type="button" onClick={onOpenDrive}>{driveConnected ? <Check size={14} /> : <CloudOff size={14} />} {driveConnected ? "管理 Drive" : "連結 Drive"}</button>
         </section>
         <section className="capability is-pending">
           <div><Share2 size={21} /><span><strong>跨裝置即時共編</strong><small>需協作伺服器與 CRDT 衝突合併；Drive 本身不取代即時同步層。</small></span></div>
@@ -4046,6 +4643,10 @@ function SettingsModal({
   accountSignedIn,
   accountUser,
   canvasBackground,
+  currentDriveLink,
+  driveCurrentContentBytes,
+  driveSession,
+  driveSettings,
   enableProviderTesting = false,
   initialSection = "general",
   locale,
@@ -4054,12 +4655,17 @@ function SettingsModal({
   updateCheck,
   leftPanelVisible,
   rightPanelVisible,
+  rulersVisible,
+  guidesVisible,
+  rulerUnit,
   onSetMode,
   onSetCanvasBackground,
   onSetLocale,
   onSetTypography,
   onResetTypography,
   onCheckForUpdates,
+  onConnectDrive,
+  onDisconnectDrive,
   onManageThemes,
   onMarketingPreferenceChange,
   onLinkEmail,
@@ -4070,6 +4676,13 @@ function SettingsModal({
   onClearLocalData,
   onToggleLeftPanel,
   onToggleRightPanel,
+  onToggleRulers,
+  onToggleGuides,
+  onSetRulerUnit,
+  onOpenShortcuts,
+  onOpenDriveLibrary,
+  onSaveDrive,
+  onSetDriveAutoSync,
   onClose,
 }) {
   const [section, setSection] = useState(initialSection);
@@ -4113,6 +4726,9 @@ function SettingsModal({
           <button className={section === "account" ? "is-active" : ""} type="button" onClick={() => setSection("account")}>
             <UserRound size={17} /><span>帳號與隱私</span>
           </button>
+          <button className={section === "storage" ? "is-active" : ""} type="button" onClick={() => setSection("storage")}>
+            <Cloud size={17} /><span>儲存與同步</span>
+          </button>
           <button className={section === "general" ? "is-active" : ""} type="button" onClick={() => setSection("general")}>
             <Languages size={17} /><span>一般設定</span>
           </button>
@@ -4142,7 +4758,7 @@ function SettingsModal({
               </div>
               <div className="settings-account-boundary">
                 <ShieldCheck size={20} />
-                <div><strong>本機作品不會自動上傳</strong><p>登入、登出或切換帳號都不會刪除目前瀏覽器中的 Moodboard。日後加入雲端儲存時，必須由你明確選擇檔案與動作。</p></div>
+                <div><strong>Drive 授權由你另外決定</strong><p>登入、登出或切換帳號都不會刪除目前瀏覽器中的 Moodboard。只有另外連結 Google Drive 並啟用同步後，作品才會上傳。</p></div>
               </div>
               {accountSignedIn ? (
                 <div className="settings-login-methods">
@@ -4201,6 +4817,50 @@ function SettingsModal({
                 <div><strong>這台裝置的 Moodboard 資料</strong><small>永久清除目前自動儲存與所有本機版本；已下載的檔案不受影響。</small></div>
                 <button className="danger-button" type="button" onClick={onClearLocalData}><Trash2 size={15} />清除本機資料</button>
               </div>
+            </section>
+          ) : section === "storage" ? (
+            <section className="settings-section" aria-labelledby="settings-storage-title">
+              <div className="settings-section-heading">
+                <div><h3 id="settings-storage-title">儲存與同步</h3><p>優先把工作檔保存到 Google Drive，同時保留本機安全暫存。</p></div>
+              </div>
+              {(() => {
+                const status = driveStatusPresentation(driveSession);
+                const StatusIcon = status.icon;
+                return (
+                  <div className={`settings-drive-status is-${status.tone}`}>
+                    <span aria-hidden="true"><StatusIcon size={20} className={["connecting", "syncing", "checking"].includes(driveSession.status) ? "is-spinning" : ""} /></span>
+                    <div><strong>{status.label}</strong><small>{driveSession.message || (driveSession.user?.emailAddress ? `目前 Drive 帳號：${driveSession.user.emailAddress}` : "Drive 授權和 PETFASHION 登入分開管理。")}</small></div>
+                  </div>
+                );
+              })()}
+              <div className="settings-account-boundary settings-drive-boundary">
+                <ShieldCheck size={20} />
+                <div><strong>只要求 drive.file 最小權限</strong><p>Infinite Moodboard 只能存取本服務建立的檔案；不會掃描整個 Google Drive，也不會保存 Google 存取權杖。</p></div>
+              </div>
+              {driveSession.connected ? (
+                <>
+                  <button className="settings-toggle-row" type="button" aria-pressed={driveSettings.autoSync} onClick={() => onSetDriveAutoSync(!driveSettings.autoSync)}>
+                    <span><CloudUpload size={18} /><span><strong>自動同步</strong><small>編輯先寫入本機，停止操作後再同步到 Drive。</small></span></span>
+                    <b>{driveSettings.autoSync ? "啟用" : "停用"}</b>
+                  </button>
+                  <div className="settings-drive-quota">
+                    <HardDrive size={18} />
+                    <div><strong>Drive 可用空間</strong><small>{driveSession.quota?.limit === null ? "此帳號未提供固定個人上限，儲存時仍會確認結果。" : driveSession.quota ? `${formatStorageSize(driveSession.quota.remaining)} 可用，共 ${formatStorageSize(driveSession.quota.limit)}` : "重新整理後顯示容量資訊。"}</small></div>
+                    <span>{formatStorageSize(driveCurrentContentBytes)}</span>
+                  </div>
+                  <div className="settings-account-links settings-drive-actions">
+                    <button className="primary-button" type="button" onClick={onSaveDrive} disabled={["syncing", "checking"].includes(driveSession.status)}><CloudUpload size={16} />{currentDriveLink ? "立即同步" : "儲存目前 Moodboard"}</button>
+                    <button className="secondary-button" type="button" onClick={onOpenDriveLibrary}><FolderOpen size={15} />我的 Moodboards</button>
+                    <button className="quiet-button" type="button" onClick={onDisconnectDrive} title="只中斷目前分頁，不影響 PETFASHION 登入"><CloudOff size={15} />中斷此分頁</button>
+                  </div>
+                </>
+              ) : (
+                <div className="settings-drive-connect">
+                  <div><Cloud size={22} /><span><strong>連結後才會開始雲端保存</strong><small>目前畫布仍持續自動儲存在這台裝置。</small></span></div>
+                  <button className="primary-button" type="button" onClick={onConnectDrive} disabled={driveSession.status === "connecting"}><Cloud size={16} />連結 Google Drive</button>
+                </div>
+              )}
+              <p className="settings-update-note">若離線、容量不足或授權失效，編輯不會中斷；畫布會標示等待同步，並可隨時下載 `.moodboard` 備份。</p>
             </section>
           ) : section === "general" ? (
             <section className="settings-section" aria-labelledby="settings-general-title">
@@ -4351,7 +5011,29 @@ function SettingsModal({
                   </button>
                 ))}
               </div>
-              <p className="settings-shortcut-note">{translateInterfaceText("⌘' Mac ／ Ctrl' Windows：隱藏或顯示，重新顯示會回到上次的格點或格線。", locale)}</p>
+              <p className="settings-shortcut-note">Shift + ' ：隱藏或顯示，重新顯示會回到上次的格點或格線。</p>
+              <div className="settings-subsection-heading">
+                <Ruler size={17} />
+                <div><strong>尺規與輔助導引線</strong><small>尺規是本機偏好；導引線位置會寫入 .moodboard，但不會輸出到成品。</small></div>
+              </div>
+              <div className="settings-ruler-controls">
+                <button className="settings-toggle-row" type="button" aria-pressed={rulersVisible} onClick={onToggleRulers}>
+                  <span><Ruler size={18} /><span><strong>顯示尺規</strong><small>Shift + R</small></span></span>
+                  <b>{rulersVisible ? "顯示" : "隱藏"}</b>
+                </button>
+                <button className="settings-toggle-row" type="button" aria-pressed={guidesVisible} onClick={onToggleGuides}>
+                  <span><LayoutGrid size={18} /><span><strong>顯示輔助導引線</strong><small>Shift + ;</small></span></span>
+                  <b>{guidesVisible ? "顯示" : "隱藏"}</b>
+                </button>
+              </div>
+              <div className="settings-row settings-ruler-unit-row">
+                <div><strong>尺規單位</strong><small>也可在尺規上按右鍵切換。</small></div>
+                <div className="settings-segmented" role="radiogroup" aria-label="尺規單位">
+                  {Object.entries(RULER_UNITS).map(([id, option]) => (
+                    <button key={id} type="button" role="radio" aria-checked={rulerUnit === id} className={rulerUnit === id ? "is-active" : ""} onClick={() => onSetRulerUnit(id)}>{option.label}</button>
+                  ))}
+                </div>
+              </div>
               <button className="settings-toggle-row" type="button" aria-pressed={leftPanelVisible} onClick={onToggleLeftPanel}>
                 <span><PanelLeft size={18} /><span><strong>左側工作面板</strong><small>圖層、分群、素材與構圖</small></span></span>
                 <b>{leftPanelVisible ? "顯示" : "隱藏"}</b>
@@ -4359,6 +5041,10 @@ function SettingsModal({
               <button className="settings-toggle-row" type="button" aria-pressed={rightPanelVisible} onClick={onToggleRightPanel}>
                 <span><SlidersHorizontal size={18} /><span><strong>右側屬性面板</strong><small>選取物件的內容與變形設定</small></span></span>
                 <b>{rightPanelVisible ? "顯示" : "隱藏"}</b>
+              </button>
+              <button className="settings-toggle-row" type="button" onClick={onOpenShortcuts}>
+                <span><Keyboard size={18} /><span><strong>快速鍵清單</strong><small>開啟可搜尋的指令參考，也可直接按 ?。</small></span></span>
+                <b>查看</b>
               </button>
             </section>
           ) : (
@@ -4403,6 +5089,7 @@ function InterfaceThemeModal({
   onClose,
 }) {
   const displayedTheme = previewTheme || activeTheme;
+  const search = useListSearch("themes");
   const editableTheme = useCallback((theme) => {
     const next = normalizeInterfaceTheme({ ...theme, builtin: false });
     return { ...next, name: theme.builtin ? translateInterfaceText(theme.name, locale) : theme.name };
@@ -4410,12 +5097,17 @@ function InterfaceThemeModal({
   const [draft, setDraft] = useState(() => editableTheme(activeTheme));
   const sameColors = (first, second) => THEME_COLOR_FIELDS.every(([key]) => first.colors[key].toUpperCase() === second.colors[key].toUpperCase());
   const matchingTheme = themes.find((theme) => sameColors(theme, displayedTheme));
+  const listedThemes = themes.filter((theme) => matchesListQuery([
+    theme.name,
+    theme.category,
+    interfaceThemeMode(theme) === "light" ? "淺色" : "深色",
+  ], search.query));
   const themeGroups = [
     ["product", "Infinite 與專案"],
     ["brand", "品牌識別靈感"],
     ["mood", "氣氛主題"],
     ["custom", "我的配色"],
-  ].map(([id, label]) => ({ id, label, themes: themes.filter((theme) => (theme.category || (theme.builtin ? "mood" : "custom")) === id) }))
+  ].map(([id, label]) => ({ id, label, themes: listedThemes.filter((theme) => (theme.category || (theme.builtin ? "mood" : "custom")) === id) }))
     .filter((group) => group.themes.length);
 
   useEffect(() => {
@@ -4459,6 +5151,8 @@ function InterfaceThemeModal({
           <button className="primary-button" type="button" disabled={!matchingTheme || matchingTheme.id === activeTheme.id} onClick={() => onConfirm(matchingTheme?.id)}><Check size={16} />套用配色</button>
         </span>
       </div>
+      <div className="modal-list-toolbar"><strong>可用介面配色</strong><ListSearchToggle search={search} resultCount={listedThemes.length} totalCount={themes.length} label="搜尋介面配色" /></div>
+      <ListSearchField search={search} placeholder="搜尋配色名稱或類型" />
       <section className="theme-library" aria-label="可用介面配色">
         {themeGroups.map((group) => (
           <div className="theme-group" key={group.id}>
@@ -4496,6 +5190,9 @@ function InterfaceThemeModal({
             </div>
           </div>
         ))}
+        {!themeGroups.length ? (
+          <div className="modal-empty"><Search size={24} /><strong>找不到符合的配色</strong><p>搜尋條件會保留，可以調整或清除。</p><button className="text-button" type="button" onClick={() => search.setQuery("")}>清除搜尋</button></div>
+        ) : null}
       </section>
 
       <section className="theme-editor" aria-labelledby="theme-editor-title">
@@ -4529,6 +5226,8 @@ function InterfaceThemeModal({
 }
 
 function ExportDownloadModal({ downloads, canPickDirectory, isExporting, onExportDirectory, onClose }) {
+  const search = useListSearch("downloads");
+  const listedDownloads = downloads.filter((item) => matchesListQuery([item.filename], search.query));
   return (
     <Modal
       title="匯出檔案已準備"
@@ -4542,14 +5241,17 @@ function ExportDownloadModal({ downloads, canPickDirectory, isExporting, onExpor
           <FolderOpen size={17} /> {isExporting ? "匯出中…" : `選擇資料夾並匯出 ${downloads.length} 個檔案`}
         </button>
       ) : null}
+      <div className="modal-list-toolbar"><strong>已準備檔案</strong><ListSearchToggle search={search} resultCount={listedDownloads.length} totalCount={downloads.length} label="搜尋已準備檔案" /></div>
+      <ListSearchField search={search} placeholder="搜尋檔名" />
       <div className="export-download-list">
-        {downloads.map((item) => (
+        {listedDownloads.map((item) => (
           <a className="export-download-link" href={item.url} download={item.filename} key={item.url}>
             <span><ImageIcon size={18} /><strong>{item.filename}</strong></span>
             <span><Download size={16} /> 下載檔案</span>
           </a>
         ))}
       </div>
+      {!listedDownloads.length ? <div className="modal-empty compact"><Search size={22} /><strong>找不到符合的檔案</strong><button className="text-button" type="button" onClick={() => search.setQuery("")}>清除搜尋</button></div> : null}
       <p className="export-download-note">圖片、文字與形狀會輸出為自含 SVG；影片保留原始檔案格式。下載後皆可離線開啟。</p>
     </Modal>
   );
@@ -4612,6 +5314,7 @@ function App() {
   const [interfaceLocale, setInterfaceLocale] = useState(loadInterfaceLocale);
   setActiveInterfaceLocale(interfaceLocale);
   const authPreviewUserRef = useRef(moodboardAuthPreviewUser());
+  const initialDriveSettingsRef = useRef(loadDriveState());
   const initialBoardRef = useRef(createBoard({ name: localizedDefaultBoardName(interfaceLocale) }));
   const [board, setBoard] = useState(initialBoardRef.current);
   const boardRef = useRef(initialBoardRef.current);
@@ -4646,7 +5349,6 @@ function App() {
   const [leftTab, setLeftTab] = useState("layers");
   const [selectedCaptureId, setSelectedCaptureId] = useState(null);
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
-  const [layerQuery, setLayerQuery] = useState("");
   const [layerTypeFilter, setLayerTypeFilter] = useState("all");
   const [markerDraft, setMarkerDraft] = useState({ symbol: "heart", color: "white" });
   const [batchPrefix, setBatchPrefix] = useState("");
@@ -4660,11 +5362,14 @@ function App() {
   const [dirty, setDirty] = useState(false);
   const [toast, setToast] = useState(null);
   const [pendingObjectDeletion, setPendingObjectDeletion] = useState(null);
+  const [escapeCancellationRequest, setEscapeCancellationRequest] = useState(null);
   const [showGridBuilder, setShowGridBuilder] = useState(false);
   const [showAnnotationBuilder, setShowAnnotationBuilder] = useState(false);
   const [showVersions, setShowVersions] = useState(false);
   const [showCollaboration, setShowCollaboration] = useState(false);
+  const [showDriveLibrary, setShowDriveLibrary] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const [settingsInitialSection, setSettingsInitialSection] = useState("general");
   const [showInterfaceThemes, setShowInterfaceThemes] = useState(false);
   const [showDeleteLocalData, setShowDeleteLocalData] = useState(false);
@@ -4681,6 +5386,18 @@ function App() {
   const [authRetryKey, setAuthRetryKey] = useState(0);
   const [pendingAdvancedFeature, setPendingAdvancedFeature] = useState(null);
   const [online, setOnline] = useState(() => navigator.onLine !== false);
+  const [driveSettings, setDriveSettings] = useState(initialDriveSettingsRef.current);
+  const [driveSession, setDriveSession] = useState(() => ({
+    status: initialDriveSettingsRef.current.enabled ? "authorization-required" : "disconnected",
+    connected: false,
+    busy: false,
+    message: initialDriveSettingsRef.current.enabled ? "重新連結後會繼續同步本機變更。" : "",
+    user: null,
+    quota: null,
+    files: [],
+    conflict: null,
+    lastSyncedAt: "",
+  }));
   const [customThemes, setCustomThemes] = useState(loadStoredInterfaceThemes);
   const [activeThemeId, setActiveThemeId] = useState(() => localStorage.getItem(ACTIVE_THEME_STORAGE_KEY) || BUILT_IN_THEMES[0].id);
   const [previewTheme, setPreviewTheme] = useState(null);
@@ -4694,6 +5411,11 @@ function App() {
   const [leftPanelWidth, setLeftPanelWidth] = useState(() => normalizeLeftPanelWidth(localStorage.getItem("moodboard-left-panel-width")));
   const [leftPanelVisible, setLeftPanelVisible] = useState(() => localStorage.getItem("moodboard-left-panel-visible") !== "false");
   const [rightPanelVisible, setRightPanelVisible] = useState(() => localStorage.getItem("moodboard-right-panel-visible") !== "false");
+  const [focusMode, setFocusMode] = useState(false);
+  const [rulersVisible, setRulersVisible] = useState(() => localStorage.getItem(RULERS_VISIBLE_STORAGE_KEY) !== "false");
+  const [guidesVisible, setGuidesVisible] = useState(() => localStorage.getItem(GUIDES_VISIBLE_STORAGE_KEY) !== "false");
+  const [rulerUnit, setRulerUnit] = useState(() => normalizeRulerUnit(localStorage.getItem(RULER_UNIT_STORAGE_KEY)));
+  const [guideDrag, setGuideDrag] = useState(null);
   const [leftPanelResizing, setLeftPanelResizing] = useState(false);
   const [canvasViewportSize, setCanvasViewportSize] = useState({ width: 0, height: 0 });
   const [sessionName, setSessionNameState] = useState(() => localStorage.getItem("moodboard-session-name") || createSessionName());
@@ -4713,12 +5435,19 @@ function App() {
   const boardInputRef = useRef(null);
   const themeInputRef = useRef(null);
   const fileHandleRef = useRef(null);
+  const driveTokenRef = useRef(null);
+  const driveOperationEpochRef = useRef(0);
+  const driveSaveControllerRef = useRef(null);
+  const driveSavePromiseRef = useRef(null);
   const undoRef = useRef([]);
   const redoRef = useRef([]);
   const channelRef = useRef(null);
   const peersRef = useRef(new Map());
   const sessionIdRef = useRef(createId("session"));
   const saveTimerRef = useRef(null);
+  const localSavePromiseRef = useRef(Promise.resolve());
+  const localPersistenceGenerationRef = useRef(0);
+  const driveSyncTimerRef = useRef(null);
   const toastTimerRef = useRef(null);
   const preparedDownloadsRef = useRef([]);
   const emailLinkHandledRef = useRef(false);
@@ -4728,6 +5457,8 @@ function App() {
   const objectTapRef = useRef(null);
   const textEditUndoRef = useRef(false);
   const textEditSessionRef = useRef(null);
+  const objectClipboardRef = useRef([]);
+  const activePointerGestureRef = useRef(null);
 
   const availableThemes = useMemo(() => [...BUILT_IN_THEMES, ...customThemes], [customThemes]);
   const activeTheme = useMemo(
@@ -4743,6 +5474,46 @@ function App() {
     [activeTheme, interfaceTypography, previewTheme],
   );
 
+  const registerPointerGesture = useCallback((gesture) => {
+    const entry = { ...gesture };
+    activePointerGestureRef.current = entry;
+    return () => {
+      if (activePointerGestureRef.current === entry) activePointerGestureRef.current = null;
+    };
+  }, []);
+
+  const requestActivePointerCancellation = useCallback(() => {
+    const gesture = activePointerGestureRef.current;
+    if (!gesture) return false;
+    activePointerGestureRef.current = null;
+    gesture.pause?.();
+    const hasChanges = Boolean(gesture.hasChanges?.());
+    if (shouldConfirmEscapeCancellation({ affectsDocument: gesture.affectsDocument, hasChanges })) {
+      setEscapeCancellationRequest({
+        label: gesture.label || "目前調整",
+        cancel: gesture.cancel,
+        keep: gesture.keep,
+      });
+    } else {
+      gesture.cancel?.();
+    }
+    return true;
+  }, []);
+
+  const keepEscapeAdjustment = useCallback(() => {
+    const request = escapeCancellationRequest;
+    if (!request) return;
+    setEscapeCancellationRequest(null);
+    request.keep?.();
+  }, [escapeCancellationRequest]);
+
+  const cancelEscapeAdjustment = useCallback(() => {
+    const request = escapeCancellationRequest;
+    if (!request) return;
+    setEscapeCancellationRequest(null);
+    request.cancel?.();
+  }, [escapeCancellationRequest]);
+
   const finishStartup = useCallback(() => setIsBooting(false), []);
   const changeLeftTab = useCallback((nextTab) => {
     setLeftTab(nextTab);
@@ -4757,6 +5528,7 @@ function App() {
   }, []);
 
   const toggleLeftPanel = useCallback(() => {
+    setFocusMode(false);
     setLeftPanelVisible((current) => {
       const next = !current;
       localStorage.setItem("moodboard-left-panel-visible", String(next));
@@ -4765,11 +5537,48 @@ function App() {
   }, []);
 
   const toggleRightPanel = useCallback(() => {
+    setFocusMode(false);
     setRightPanelVisible((current) => {
       const next = !current;
       localStorage.setItem("moodboard-right-panel-visible", String(next));
       return next;
     });
+  }, []);
+
+  const toggleBothPanels = useCallback(() => {
+    setFocusMode(false);
+    const nextVisible = !(leftPanelVisible && rightPanelVisible);
+    setLeftPanelVisible(nextVisible);
+    setRightPanelVisible(nextVisible);
+    localStorage.setItem("moodboard-left-panel-visible", String(nextVisible));
+    localStorage.setItem("moodboard-right-panel-visible", String(nextVisible));
+  }, [leftPanelVisible, rightPanelVisible]);
+
+  const showBothPanels = useCallback(() => {
+    setFocusMode(false);
+    setMobilePanel(null);
+    setLeftPanelVisible(true);
+    setRightPanelVisible(true);
+    localStorage.setItem("moodboard-left-panel-visible", "true");
+    localStorage.setItem("moodboard-right-panel-visible", "true");
+  }, []);
+
+  const toggleFocusMode = useCallback(() => {
+    setFocusMode((current) => !current);
+    setMobilePanel(null);
+  }, []);
+
+  const restoreWorkspaceChrome = useCallback(() => {
+    setFocusMode(false);
+    setMobilePanel(null);
+  }, []);
+
+  const toggleRulers = useCallback(() => setRulersVisible((current) => !current), []);
+  const toggleGuides = useCallback(() => setGuidesVisible((current) => !current), []);
+  const changeRulerUnit = useCallback((nextUnit) => setRulerUnit(normalizeRulerUnit(nextUnit)), []);
+
+  const openListSearch = useCallback((listId) => {
+    window.dispatchEvent(new CustomEvent("infinite-moodboard:list-search", { detail: { listId } }));
   }, []);
 
   const onLeftPanelResizeStart = useCallback((event) => {
@@ -4778,18 +5587,39 @@ function App() {
     event.stopPropagation();
     const startX = event.clientX;
     const startWidth = leftPanelWidth;
+    let latestWidth = startWidth;
+    let releaseGesture = () => {};
     setLeftPanelResizing(true);
-    const move = (moveEvent) => updateLeftPanelWidth(startWidth + moveEvent.clientX - startX);
-    const up = () => {
+    const move = (moveEvent) => {
+      latestWidth = updateLeftPanelWidth(startWidth + moveEvent.clientX - startX);
+    };
+    const cleanup = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", up);
+      window.removeEventListener("pointercancel", cancel);
+      releaseGesture();
+    };
+    const up = () => {
+      cleanup();
       setLeftPanelResizing(false);
     };
+    const cancel = () => {
+      cleanup();
+      if (latestWidth !== startWidth) updateLeftPanelWidth(startWidth);
+      setLeftPanelResizing(false);
+    };
+    releaseGesture = registerPointerGesture({
+      label: "調整側欄寬度",
+      affectsDocument: false,
+      hasChanges: () => latestWidth !== startWidth,
+      pause: cleanup,
+      cancel,
+      keep: up,
+    });
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up, { once: true });
-    window.addEventListener("pointercancel", up, { once: true });
-  }, [leftPanelWidth, updateLeftPanelWidth]);
+    window.addEventListener("pointercancel", cancel, { once: true });
+  }, [leftPanelWidth, registerPointerGesture, updateLeftPanelWidth]);
 
   const onLeftPanelResizeKeyDown = useCallback((event) => {
     const step = event.shiftKey ? 32 : 8;
@@ -4865,6 +5695,18 @@ function App() {
   useEffect(() => {
     localStorage.setItem(CANVAS_BACKGROUND_STORAGE_KEY, JSON.stringify(canvasBackground));
   }, [canvasBackground]);
+
+  useEffect(() => {
+    localStorage.setItem(RULERS_VISIBLE_STORAGE_KEY, String(rulersVisible));
+  }, [rulersVisible]);
+
+  useEffect(() => {
+    localStorage.setItem(GUIDES_VISIBLE_STORAGE_KEY, String(guidesVisible));
+  }, [guidesVisible]);
+
+  useEffect(() => {
+    localStorage.setItem(RULER_UNIT_STORAGE_KEY, rulerUnit);
+  }, [rulerUnit]);
 
   useLayoutEffect(() => {
     applyLocalizedDocumentMetadata(interfaceLocale);
@@ -4969,9 +5811,144 @@ function App() {
     toastTimerRef.current = window.setTimeout(() => setToast(null), 3600);
   }, []);
 
+  const updateDriveSettings = useCallback((updater) => {
+    setDriveSettings((current) => {
+      const next = typeof updater === "function" ? updater(current) : updater;
+      return saveDriveState(localStorage, next);
+    });
+  }, []);
+
+  const currentDriveAccessToken = useCallback(() => {
+    const token = driveTokenRef.current;
+    if (!token?.accessToken || token.expiresAt <= Date.now()) return "";
+    return token.accessToken;
+  }, []);
+
+  const cancelDriveOperations = useCallback(() => {
+    driveOperationEpochRef.current += 1;
+    driveSaveControllerRef.current?.abort();
+    driveSaveControllerRef.current = null;
+    driveSavePromiseRef.current = null;
+  }, []);
+
+  const persistBoardLocally = useCallback((snapshot) => {
+    const generation = localPersistenceGenerationRef.current;
+    const previous = localSavePromiseRef.current.catch(() => undefined);
+    const write = previous.then(async () => {
+      if (generation !== localPersistenceGenerationRef.current) {
+        const error = new Error("本機儲存已取消。");
+        error.name = "AbortError";
+        throw error;
+      }
+      await saveCurrentBoard(snapshot);
+      return snapshot;
+    });
+    localSavePromiseRef.current = write.catch(() => undefined);
+    return write;
+  }, []);
+
+  const refreshGoogleDrive = useCallback(async (providedToken = "", providedFolderId = "") => {
+    const operationEpoch = driveOperationEpochRef.current;
+    const accessToken = providedToken || currentDriveAccessToken();
+    if (!accessToken) {
+      setDriveSession((current) => ({ ...current, status: "authorization-required", connected: false, busy: false, message: "請重新連結 Google Drive；本機變更仍安全保留。" }));
+      return null;
+    }
+    setDriveSession((current) => ({ ...current, status: "checking", connected: true, busy: true, message: "正在確認 Drive 檔案與可用空間…" }));
+    try {
+      const folderId = await ensureGoogleDriveFolder(accessToken, providedFolderId || driveSettings.folderId, { create: false });
+      const [about, files] = await Promise.all([
+        getGoogleDriveAbout(accessToken),
+        listGoogleDriveMoodboards(accessToken, folderId),
+      ]);
+      if (operationEpoch !== driveOperationEpochRef.current) return null;
+      updateDriveSettings((current) => ({ ...current, enabled: true, folderId }));
+      setDriveSession((current) => ({
+        ...current,
+        status: "ready",
+        connected: true,
+        busy: false,
+        message: "",
+        user: about.user,
+        quota: about.quota,
+        files,
+      }));
+      return { accessToken, folderId, about, files };
+    } catch (error) {
+      if (operationEpoch !== driveOperationEpochRef.current || error?.name === "AbortError") return null;
+      const authorizationExpired = error?.status === 401;
+      if (authorizationExpired) driveTokenRef.current = null;
+      setDriveSession((current) => ({
+        ...current,
+        status: authorizationExpired ? "authorization-required" : (error?.code === "drive/offline" ? "offline" : "error"),
+        connected: !authorizationExpired,
+        busy: false,
+        message: driveErrorMessage(error),
+      }));
+      return null;
+    }
+  }, [currentDriveAccessToken, driveSettings.folderId, updateDriveSettings]);
+
+  const connectGoogleDrive = useCallback(async () => {
+    if (!authReady) {
+      setShowSettings(false);
+      setPendingAdvancedFeature("drive");
+      return null;
+    }
+    const operationEpoch = driveOperationEpochRef.current;
+    setDriveSession((current) => ({ ...current, status: "connecting", busy: true, message: "Google 會另外詢問 Drive 檔案權限。" }));
+    try {
+      const token = await requestGoogleDriveToken({ loginHint: authSession.user?.email || "" });
+      if (operationEpoch !== driveOperationEpochRef.current) return null;
+      driveTokenRef.current = token;
+      const result = await refreshGoogleDrive(token.accessToken, driveSettings.folderId);
+      if (result) announce("Google Drive 已連結；尚未主動儲存前不會上傳畫布。", "success");
+      return result;
+    } catch (error) {
+      if (operationEpoch !== driveOperationEpochRef.current || error?.name === "AbortError") return null;
+      setDriveSession((current) => ({
+        ...current,
+        status: error?.code === "drive/offline" ? "offline" : "error",
+        connected: false,
+        busy: false,
+        message: driveErrorMessage(error),
+      }));
+      announce(driveErrorMessage(error), "error");
+      return null;
+    }
+  }, [announce, authReady, authSession.user?.email, driveSettings.folderId, refreshGoogleDrive]);
+
+  const disconnectGoogleDrive = useCallback(() => {
+    cancelDriveOperations();
+    driveTokenRef.current = null;
+    window.clearTimeout(driveSyncTimerRef.current);
+    updateDriveSettings((current) => ({ ...current, enabled: false }));
+    setDriveSession({
+      status: "disconnected",
+      connected: false,
+      busy: false,
+      message: "Drive 檔案仍保留在你的帳號中。",
+      user: null,
+      quota: null,
+      files: [],
+      conflict: null,
+      lastSyncedAt: "",
+    });
+    announce("已中斷這個分頁的 Google Drive；雲端檔案、本機畫布與 PETFASHION 登入都未受影響。", "success");
+  }, [announce, cancelDriveOperations, updateDriveSettings]);
+
+  const setDriveAutoSync = useCallback((enabled) => {
+    updateDriveSettings((current) => ({ ...current, autoSync: Boolean(enabled) }));
+    announce(enabled ? "已開啟 Google Drive 自動同步。" : "已關閉自動同步；仍可隨時手動同步。", "success");
+  }, [announce, updateDriveSettings]);
+
   const completeAdvancedFeature = useCallback((feature) => {
     if (feature === "collaboration") {
       setShowCollaboration(true);
+      return;
+    }
+    if (feature === "drive") {
+      setShowDriveLibrary(true);
       return;
     }
     if (feature === "3d") {
@@ -4988,6 +5965,14 @@ function App() {
     setAuthMessage("");
     setPendingAdvancedFeature(feature);
   }, [authReady, completeAdvancedFeature]);
+
+  const openGoogleDriveLibrary = useCallback(() => {
+    if (!authReady) {
+      requestAdvancedFeature("drive");
+      return;
+    }
+    setShowDriveLibrary(true);
+  }, [authReady, requestAdvancedFeature]);
 
   const closeAdvancedFeatureGate = useCallback(() => {
     if (authBusy) return;
@@ -5210,12 +6195,17 @@ function App() {
     setAuthBusy(true);
     setAuthMessage("");
     try {
+      cancelDriveOperations();
+      driveTokenRef.current = null;
+      window.clearTimeout(driveSyncTimerRef.current);
       if (!authPreviewUserRef.current) await signOutMoodboardSession();
       setAuthSession({ status: "signed-out", user: null, error: null });
       setAuthReceipt(null);
       setAuthConsentGranted(false);
       setPendingAdvancedFeature(null);
       setShowCollaboration(false);
+      setShowDriveLibrary(false);
+      setDriveSession((current) => ({ ...current, status: driveSettings.enabled ? "authorization-required" : "disconnected", connected: false, busy: false, message: driveSettings.enabled ? "再次登入並連結 Drive 後可繼續同步。" : "", user: null, quota: null, files: [], conflict: null }));
       setTool("select");
       setShowSettings(false);
       setShowInterfaceThemes(false);
@@ -5225,13 +6215,21 @@ function App() {
     } finally {
       setAuthBusy(false);
     }
-  }, [announce]);
+  }, [announce, cancelDriveOperations, driveSettings.enabled]);
 
   const clearMoodboardFromThisDevice = useCallback(async () => {
     setIsClearingLocalData(true);
+    cancelDriveOperations();
+    localPersistenceGenerationRef.current += 1;
     window.clearTimeout(saveTimerRef.current);
+    window.clearTimeout(driveSyncTimerRef.current);
     try {
+      await localSavePromiseRef.current.catch(() => undefined);
       await clearLocalMoodboardData();
+      driveTokenRef.current = null;
+      const clearedDriveState = saveDriveState(localStorage, {});
+      setDriveSettings(clearedDriveState);
+      setDriveSession({ status: "disconnected", connected: false, busy: false, message: "", user: null, quota: null, files: [], conflict: null, lastSyncedAt: "" });
       const freshBoard = createBoard({ name: localizedDefaultBoardName(interfaceLocale) });
       initialBoardRef.current = freshBoard;
       boardRef.current = freshBoard;
@@ -5248,13 +6246,13 @@ function App() {
       setDirty(false);
       setSaveState("已建立空白本機 Moodboard");
       setShowDeleteLocalData(false);
-      announce("這台裝置上的 Moodboard 自動儲存與本機版本已清除。", "success");
+      announce("這台裝置上的 Moodboard、版本與 Drive 連結資料已清除；雲端檔案未刪除。", "success");
     } catch {
       announce("本機資料無法清除，請關閉其他 Infinite Moodboard 分頁後再試。", "error");
     } finally {
       setIsClearingLocalData(false);
     }
-  }, [announce, interfaceLocale]);
+  }, [announce, cancelDriveOperations, interfaceLocale]);
 
   const setCanvasBackgroundMode = useCallback((mode) => {
     setCanvasBackground((current) => changeCanvasBackgroundMode(current, mode));
@@ -5425,6 +6423,18 @@ function App() {
     setHistorySignal((value) => value + 1);
   }, []);
 
+  const captureGestureHistory = useCallback(() => ({
+    undo: undoRef.current,
+    redo: redoRef.current,
+  }), []);
+
+  const restoreGestureHistory = useCallback((snapshot) => {
+    if (!snapshot) return;
+    undoRef.current = snapshot.undo;
+    redoRef.current = snapshot.redo;
+    setHistorySignal((value) => value + 1);
+  }, []);
+
   const applyBoard = useCallback((nextOrUpdater, options = {}) => {
     const current = boardRef.current;
     const {
@@ -5490,13 +6500,16 @@ function App() {
     if (!hydrated) return undefined;
     window.clearTimeout(saveTimerRef.current);
     setSaveState("儲存中…");
+    const snapshot = { ...board, view };
     saveTimerRef.current = window.setTimeout(() => {
-      saveCurrentBoard({ ...board, view })
+      persistBoardLocally(snapshot)
         .then(() => setSaveState(`本機已儲存 ${new Date().toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" })}`))
-        .catch(() => setSaveState("自動儲存失敗"));
+        .catch((error) => {
+          if (error?.name !== "AbortError") setSaveState("自動儲存失敗");
+        });
     }, 550);
     return () => window.clearTimeout(saveTimerRef.current);
-  }, [board, hydrated, view]);
+  }, [board, hydrated, persistBoardLocally, view]);
 
   useEffect(() => {
     if (!authReady || !hydrated || !("BroadcastChannel" in window)) return undefined;
@@ -5558,6 +6571,87 @@ function App() {
       y: (clientY - rect.top - currentView.y) / currentView.zoom,
     };
   }, []);
+
+  const deleteGuide = useCallback((guideId) => {
+    if (!boardRef.current.guides.some((guide) => guide.id === guideId)) return;
+    applyBoard((current) => ({ ...current, guides: current.guides.filter((guide) => guide.id !== guideId) }));
+    setGuideDrag(null);
+    announce("已刪除輔助導引線", "warning");
+  }, [announce, applyBoard]);
+
+  const startGuideDrag = useCallback((event, axis, guideId = null) => {
+    if (event.button !== 0) return;
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const existing = boardRef.current.guides.find((guide) => guide.id === guideId);
+    const id = existing?.id || createId("guide");
+    const guideAxis = existing?.axis || axis;
+    let latest = existing || { id, axis: guideAxis, position: 0, isNew: true };
+    let releaseGesture = () => {};
+    setGuidesVisible(true);
+
+    const update = (pointerEvent) => {
+      const currentView = viewRef.current;
+      const localPosition = guideAxis === "x"
+        ? pointerEvent.clientX - rect.left
+        : pointerEvent.clientY - rect.top;
+      const viewOffset = guideAxis === "x" ? currentView.x : currentView.y;
+      let position = (localPosition - viewOffset) / currentView.zoom;
+      if (pointerEvent.shiftKey) position = snapGuidePosition(position, rulerUnit);
+      latest = { id, axis: guideAxis, position, isNew: !existing };
+      setGuideDrag(latest);
+    };
+
+    const cleanup = () => {
+      window.removeEventListener("pointermove", update);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", cancel);
+      releaseGesture();
+    };
+    const finish = (pointerEvent) => {
+      update(pointerEvent);
+      cleanup();
+      setGuideDrag(null);
+      const inside = pointerEvent.clientX >= rect.left
+        && pointerEvent.clientX <= rect.right
+        && pointerEvent.clientY >= rect.top
+        && pointerEvent.clientY <= rect.bottom;
+      const droppedOnOriginRuler = rulersVisible && (
+        (guideAxis === "x" && pointerEvent.clientX - rect.left <= RULER_SIZE)
+        || (guideAxis === "y" && pointerEvent.clientY - rect.top <= RULER_SIZE)
+      );
+      if (!inside) return;
+      if (droppedOnOriginRuler) {
+        if (existing) deleteGuide(id);
+        return;
+      }
+      applyBoard((current) => ({
+        ...current,
+        guides: existing
+          ? current.guides.map((guide) => guide.id === id ? { id, axis: guideAxis, position: latest.position } : guide)
+          : [...current.guides, { id, axis: guideAxis, position: latest.position }],
+      }));
+      announce(`${existing ? "已移動" : "已建立"}${guideAxis === "x" ? "垂直" : "水平"}導引線：${formatGuideValue(latest.position, rulerUnit)}`, "success");
+    };
+    const cancel = () => {
+      cleanup();
+      setGuideDrag(null);
+    };
+    update(event);
+    releaseGesture = registerPointerGesture({
+      label: existing ? "移動導引線" : "建立導引線",
+      affectsDocument: false,
+      hasChanges: () => true,
+      pause: cleanup,
+      cancel,
+      keep: finish,
+    });
+    window.addEventListener("pointermove", update);
+    window.addEventListener("pointerup", finish, { once: true });
+    window.addEventListener("pointercancel", cancel, { once: true });
+  }, [announce, applyBoard, deleteGuide, registerPointerGesture, rulerUnit, rulersVisible]);
 
   const selectObject = useCallback((id, additive = false, penetrate = false) => {
     if (loadedTextFlow) {
@@ -5644,10 +6738,11 @@ function App() {
     setShapeMenuOpen(false);
   };
 
-  const importBoardFile = useCallback(async (file, handle = null) => {
+  const importBoardFile = useCallback(async (file, handle = null, { shouldCommit = () => true } = {}) => {
     try {
       const parsed = JSON.parse(await file.text());
       const imported = ensureBoard(parsed);
+      if (!shouldCommit()) return null;
       pushUndo(boardRef.current);
       boardRef.current = imported;
       setBoard(imported);
@@ -5659,8 +6754,10 @@ function App() {
       setDirty(false);
       publishBoard(imported);
       announce(`已開啟「${imported.name}」`, "success");
+      return imported;
     } catch (error) {
       announce(error.message || "Infinite Moodboard 檔案無法開啟。", "error");
+      return null;
     }
   }, [announce, publishBoard, pushUndo]);
 
@@ -5681,6 +6778,194 @@ function App() {
   }, [announce, importBoardFile]);
 
   const boardSnapshot = useCallback(() => ({ ...boardRef.current, view: viewRef.current }), []);
+
+  const currentDriveContentBytes = useMemo(
+    () => contentByteLength(serializeMoodboardSnapshot(board)),
+    [board],
+  );
+  const currentDriveLink = driveSettings.links[board.id] || null;
+
+  const saveBoardToGoogleDrive = useCallback(({ asCopy = false, silent = false } = {}) => {
+    if (!authReady) {
+      if (!silent) requestAdvancedFeature("drive");
+      return Promise.resolve(false);
+    }
+    if (driveSavePromiseRef.current) {
+      if (!silent) announce("Google Drive 正在同步目前版本。", "info");
+      return driveSavePromiseRef.current;
+    }
+    const accessToken = currentDriveAccessToken();
+    if (!accessToken) {
+      setDriveSession((current) => ({ ...current, status: "authorization-required", connected: false, busy: false, message: "請重新連結 Google Drive；本機變更仍安全保留。" }));
+      if (!silent) setShowDriveLibrary(true);
+      return Promise.resolve(false);
+    }
+
+    const snapshot = boardSnapshot();
+    const content = serializeMoodboardSnapshot(snapshot);
+    const uploadBytes = contentByteLength(content);
+    const timestamp = new Intl.DateTimeFormat("sv-SE", { dateStyle: "short", timeStyle: "short" })
+      .format(new Date())
+      .replaceAll(":", "-")
+      .replace(" ", "-");
+    const filename = asCopy
+      ? `${safeFilename(snapshot.name, "moodboard")}-${translateInterfaceText("複本")}-${timestamp}.moodboard`
+      : `${safeFilename(snapshot.name, "moodboard")}.moodboard`;
+    const linkedFile = !asCopy ? driveSettings.links[snapshot.id] : null;
+    const operationEpoch = driveOperationEpochRef.current;
+    const controller = new AbortController();
+    driveSaveControllerRef.current = controller;
+
+    let operation;
+    operation = (async () => {
+      const assertCurrentOperation = () => {
+        if (operationEpoch !== driveOperationEpochRef.current || controller.signal.aborted) {
+          const error = new Error("Google Drive 操作已取消。");
+          error.name = "AbortError";
+          throw error;
+        }
+      };
+      setDriveSession((current) => ({ ...current, status: "checking", connected: true, busy: true, message: "正在先保存本機版本，再確認 Drive 空間與遠端版本…", conflict: null }));
+      try {
+        try {
+          await persistBoardLocally(snapshot);
+          setSaveState(`本機已儲存 ${new Date().toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" })}`);
+        } catch (error) {
+          if (error?.name === "AbortError") throw error;
+          throw new DriveApiError("本機安全副本寫入失敗，因此未開始雲端同步。", { code: "drive/local-save", details: error });
+        }
+        assertCurrentOperation();
+        const about = await getGoogleDriveAbout(accessToken);
+        assertCurrentOperation();
+        const quotaAssessment = evaluateDriveQuota(about.quota, uploadBytes);
+        if (!quotaAssessment.allowed) {
+          throw new DriveApiError("Google Drive 空間不足；畫布仍安全保存在這台裝置。", { code: "drive/quota", reason: "storageQuotaExceeded" });
+        }
+        const folderId = await ensureGoogleDriveFolder(accessToken, driveSettings.folderId);
+        assertCurrentOperation();
+        setDriveSession((current) => ({ ...current, status: "syncing", connected: true, busy: true, quota: about.quota, user: about.user, message: "正在上傳最新的 `.moodboard` 工作檔…" }));
+        const savedFile = await uploadGoogleDriveMoodboard(accessToken, {
+          board: snapshot,
+          content,
+          filename,
+          folderId,
+          existingFile: linkedFile ? { id: linkedFile.fileId } : null,
+          expectedVersion: linkedFile?.version || "",
+          signal: controller.signal,
+        });
+        assertCurrentOperation();
+        updateDriveSettings((current) => linkDriveFile({ ...current, enabled: true, folderId }, snapshot, savedFile));
+        const [postAbout, files] = await Promise.all([
+          getGoogleDriveAbout(accessToken).catch(() => about),
+          listGoogleDriveMoodboards(accessToken, folderId).catch(() => null),
+        ]);
+        assertCurrentOperation();
+        setDriveSession((current) => ({
+          ...current,
+          status: "synced",
+          connected: true,
+          busy: false,
+          message: `已同步 ${formatTime(savedFile.modifiedTime || new Date().toISOString())}`,
+          quota: postAbout.quota,
+          user: postAbout.user,
+          files: files || current.files,
+          conflict: null,
+          lastSyncedAt: new Date().toISOString(),
+        }));
+        if (boardRef.current.revision === snapshot.revision && boardRef.current.updatedAt === snapshot.updatedAt) setDirty(false);
+        if (!silent) announce(asCopy ? "已另存 Google Drive 複本。" : "Google Drive 已同步。", "success");
+        return true;
+      } catch (error) {
+        if (operationEpoch !== driveOperationEpochRef.current || error?.name === "AbortError") return false;
+        const isConflict = error?.code === "drive/conflict";
+        const status = isConflict
+          ? "conflict"
+          : error?.code === "drive/quota"
+            ? "quota"
+            : error?.code === "drive/offline"
+              ? "offline"
+              : error?.status === 401
+                ? "authorization-required"
+                : "error";
+        if (error?.status === 401) driveTokenRef.current = null;
+        setDriveSession((current) => ({
+          ...current,
+          status,
+          connected: status !== "authorization-required",
+          busy: false,
+          message: driveErrorMessage(error),
+          conflict: isConflict ? error.remoteFile : null,
+        }));
+        if (!silent || isConflict) {
+          setShowDriveLibrary(true);
+          announce(driveErrorMessage(error), status === "offline" ? "warning" : "error");
+        }
+        return false;
+      } finally {
+        if (driveSavePromiseRef.current === operation) {
+          driveSavePromiseRef.current = null;
+          driveSaveControllerRef.current = null;
+        }
+      }
+    })();
+    driveSavePromiseRef.current = operation;
+    return operation;
+  }, [announce, authReady, boardSnapshot, currentDriveAccessToken, driveSettings.folderId, driveSettings.links, persistBoardLocally, requestAdvancedFeature, updateDriveSettings]);
+
+  const openGoogleDriveFile = useCallback(async (file) => {
+    const operationEpoch = driveOperationEpochRef.current;
+    const accessToken = currentDriveAccessToken();
+    if (!accessToken) {
+      setDriveSession((current) => ({ ...current, status: "authorization-required", connected: false, busy: false, message: "請重新連結 Google Drive 後再開啟檔案。" }));
+      return;
+    }
+    setDriveSession((current) => ({ ...current, status: "checking", connected: true, busy: true, message: `正在開啟「${file.name}」…` }));
+    try {
+      const current = boardSnapshot();
+      if (dirty || current.objects.length) await saveVersion(current, translateInterfaceText("切換 Drive 檔案前"), "automatic");
+      let metadata = await getGoogleDriveFile(accessToken, file.id);
+      if (operationEpoch !== driveOperationEpochRef.current) return;
+      const content = await downloadGoogleDriveMoodboard(accessToken, file.id, { revisionId: metadata.headRevisionId });
+      if (!metadata.headRevisionId) {
+        const verified = await getGoogleDriveFile(accessToken, file.id);
+        if (verified.version !== metadata.version) throw new DriveConflictError(verified);
+        metadata = verified;
+      }
+      if (operationEpoch !== driveOperationEpochRef.current) return;
+      const imported = await importBoardFile(
+        new File([content], metadata.name, { type: "application/json" }),
+        null,
+        { shouldCommit: () => operationEpoch === driveOperationEpochRef.current },
+      );
+      if (!imported) throw new DriveApiError("Google Drive 檔案內容無法辨識。", { code: "drive/invalid-file" });
+      if (operationEpoch !== driveOperationEpochRef.current) return;
+      updateDriveSettings((state) => linkDriveFile(state, imported, metadata));
+      setDriveSession((session) => ({
+        ...session,
+        status: "synced",
+        connected: true,
+        busy: false,
+        message: `已開啟 ${metadata.name}`,
+        conflict: null,
+        files: session.files.map((entry) => entry.id === metadata.id ? metadata : entry),
+        lastSyncedAt: new Date().toISOString(),
+      }));
+      setShowDriveLibrary(false);
+      announce(`已從 Google Drive 開啟「${imported.name}」；切換前版本已保留。`, "success");
+    } catch (error) {
+      if (operationEpoch !== driveOperationEpochRef.current || error?.name === "AbortError") return;
+      const isConflict = error?.code === "drive/conflict";
+      setDriveSession((current) => ({
+        ...current,
+        status: isConflict ? "conflict" : error?.status === 401 ? "authorization-required" : "error",
+        connected: error?.status !== 401,
+        busy: false,
+        message: driveErrorMessage(error),
+        conflict: isConflict ? error.remoteFile : current.conflict,
+      }));
+      announce(driveErrorMessage(error), "error");
+    }
+  }, [announce, boardSnapshot, currentDriveAccessToken, dirty, importBoardFile, updateDriveSettings]);
 
   const saveBoardFile = useCallback(async (forceDownload = false) => {
     const snapshot = boardSnapshot();
@@ -5708,6 +6993,40 @@ function App() {
       if (error.name !== "AbortError") announce("儲存失敗，畫布仍保留在本機自動儲存。", "error");
     }
   }, [announce, boardSnapshot]);
+
+  const savePreferredBoard = useCallback(() => {
+    if (!authReady) {
+      saveBoardFile(false);
+      return;
+    }
+    if (!currentDriveAccessToken()) {
+      setShowDriveLibrary(true);
+      setDriveSession((current) => ({ ...current, status: driveSettings.enabled ? "authorization-required" : "disconnected", connected: false, busy: false, message: driveSettings.enabled ? "請重新連結後繼續同步。" : "連結 Drive 後即可把目前 Moodboard 保存到雲端。" }));
+      return;
+    }
+    saveBoardToGoogleDrive();
+  }, [authReady, currentDriveAccessToken, driveSettings.enabled, saveBoardFile, saveBoardToGoogleDrive]);
+
+  useEffect(() => {
+    window.clearTimeout(driveSyncTimerRef.current);
+    if (!hydrated || !authReady || !driveSettings.enabled || !driveSettings.autoSync || !currentDriveLink) return undefined;
+    const alreadySynced = currentDriveLink.syncedRevision >= board.revision
+      && (!board.updatedAt || currentDriveLink.syncedUpdatedAt === board.updatedAt);
+    if (alreadySynced) return undefined;
+    if (!online) {
+      setDriveSession((current) => ({ ...current, status: "offline", busy: false, message: "目前離線；最新變更已先保存在這台裝置。" }));
+      return undefined;
+    }
+    if (!currentDriveAccessToken()) {
+      setDriveSession((current) => ({ ...current, status: "authorization-required", connected: false, busy: false, message: "重新連結 Drive 後會繼續同步；本機變更不會遺失。" }));
+      return undefined;
+    }
+    setDriveSession((current) => ({ ...current, status: "pending", connected: true, busy: false, message: "停止操作後會同步最新版本。" }));
+    driveSyncTimerRef.current = window.setTimeout(() => {
+      saveBoardToGoogleDrive({ silent: true });
+    }, 6000);
+    return () => window.clearTimeout(driveSyncTimerRef.current);
+  }, [authReady, board.revision, board.updatedAt, currentDriveAccessToken, currentDriveLink, driveSettings.autoSync, driveSettings.enabled, hydrated, online, saveBoardToGoogleDrive]);
 
   const exportBrowserHtml = useCallback(() => {
     try {
@@ -5757,6 +7076,47 @@ function App() {
   const duplicateSelected = useCallback(() => duplicateObjects(selectedIdsRef.current), [duplicateObjects]);
   const duplicateLayerObject = useCallback((objectId) => duplicateObjects([objectId]), [duplicateObjects]);
 
+  const copySelectedObjects = useCallback(() => {
+    const selected = new Set(selectedIdsRef.current);
+    const objects = boardRef.current.objects.filter((object) => selected.has(object.id));
+    if (!objects.length) return false;
+    const groups = (boardRef.current.groups || []).filter((group) => group.memberIds.every((id) => selected.has(id)));
+    objectClipboardRef.current = {
+      objects: objects.map((object) => ({ ...object, markers: object.markers.map((marker) => ({ ...marker })) })),
+      groups: groups.map((group) => ({ ...group, memberIds: [...group.memberIds] })),
+    };
+    announce(`已複製 ${objects.length} 個物件到內部剪貼簿`, "success");
+    return true;
+  }, [announce]);
+
+  const pasteCopiedObjects = useCallback(() => {
+    const clipboard = objectClipboardRef.current;
+    if (!clipboard?.objects?.length) return false;
+    const idMap = new Map(clipboard.objects.map((object) => [object.id, createId("object")]));
+    const groupMap = new Map((clipboard.groups || []).map((group) => [group.id, createId("group")]));
+    const artboardMap = new Map(clipboard.objects.filter(isArtboardObject).map((object) => [object.id, idMap.get(object.id)]));
+    const copies = clipboard.objects.map((object) => createObjectDuplicate(object, {
+      id: idMap.get(object.id),
+      groupId: groupMap.get(object.groupId) || null,
+      artboardId: artboardMap.get(object.artboardId) || object.artboardId || null,
+    })).map((object) => ({
+      ...object,
+      annotationTargetIds: object.annotationTargetIds.map((id) => idMap.get(id) || id),
+    }));
+    const groups = (clipboard.groups || []).map((group) => createGroup(
+      group.memberIds.map((id) => idMap.get(id)).filter(Boolean),
+      { id: groupMap.get(group.id), name: `${group.name} 複本` },
+    ));
+    applyBoard((current) => ({ ...current, objects: [...current.objects, ...copies], groups: [...(current.groups || []), ...groups] }));
+    const ids = copies.map((object) => object.id);
+    selectedIdsRef.current = ids;
+    setSelectedIds(ids);
+    setKeyObjectId(ids[0] || null);
+    setTool("select");
+    announce(`已貼上 ${copies.length} 個物件`, "success");
+    return true;
+  }, [announce, applyBoard]);
+
   const performDeleteObjects = useCallback((objectIds) => {
     const selected = new Set(objectIds);
     if (!selected.size) return;
@@ -5790,6 +7150,10 @@ function App() {
 
   const deleteSelected = useCallback(() => requestDeleteObjects(selectedIdsRef.current), [requestDeleteObjects]);
   const deleteLayerObject = useCallback((objectId) => requestDeleteObjects([objectId]), [requestDeleteObjects]);
+  const cutSelectedObjects = useCallback(() => {
+    if (!copySelectedObjects()) return;
+    requestDeleteObjects(selectedIdsRef.current);
+  }, [copySelectedObjects, requestDeleteObjects]);
 
   const selectGroup = useCallback((groupId, additive = false) => {
     const group = (boardRef.current.groups || []).find((item) => item.id === groupId);
@@ -6550,6 +7914,7 @@ function App() {
     event.preventDefault();
     const start = { x: event.clientX, y: event.clientY, view: viewRef.current };
     let moved = false;
+    let releaseGesture = () => {};
     const move = (moveEvent) => {
       const dx = moveEvent.clientX - start.x;
       const dy = moveEvent.clientY - start.y;
@@ -6561,20 +7926,38 @@ function App() {
       viewRef.current = nextView;
       setView(nextView);
     };
+    const cleanup = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", cancel);
+      releaseGesture();
+    };
     const up = () => {
+      cleanup();
       setIsPanning(false);
       if (!moved && clearSelectionOnClick) {
         selectedIdsRef.current = [];
         setSelectedIds([]);
       }
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", up);
     };
+    const cancel = () => {
+      cleanup();
+      setIsPanning(false);
+      viewRef.current = start.view;
+      setView(start.view);
+    };
+    releaseGesture = registerPointerGesture({
+      label: "平移畫布",
+      affectsDocument: false,
+      hasChanges: () => moved,
+      pause: cleanup,
+      cancel,
+      keep: up,
+    });
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up, { once: true });
-    window.addEventListener("pointercancel", up, { once: true });
-  }, []);
+    window.addEventListener("pointercancel", cancel, { once: true });
+  }, [registerPointerGesture]);
 
   const onObjectPointerDown = useCallback((event, id) => {
     if (event.button !== 0 || filters.symbols.length || filters.colors.length) return;
@@ -6584,25 +7967,28 @@ function App() {
       announce("請在空白畫布點一下，以建立連結文字框。", "warning");
       return;
     }
-    const temporarySelect = event.metaKey || event.ctrlKey;
+    const penetrate = event.metaKey || event.ctrlKey;
+    const temporarySelect = (tool === "hand" || spaceDown) && event.shiftKey;
+    const selectionOverride = temporarySelect || penetrate;
+    const additive = event.shiftKey && !temporarySelect;
     if ((tool === "hand" || spaceDown) && !temporarySelect) {
       startCanvasPan(event);
       return;
     }
-    if (!["select", "3d"].includes(tool) && !temporarySelect) return;
+    if (!["select", "3d"].includes(tool) && !selectionOverride) return;
     const targetObject = boardRef.current.objects.find((object) => object.id === id);
     if (!targetObject) return;
-    const targetIds = selectionIdsForObject(boardRef.current, id, { penetrate: temporarySelect });
+    const targetIds = selectionIdsForObject(boardRef.current, id, { penetrate });
     const pressTime = performance.now();
     objectClickRef.current = { id, time: pressTime, x: event.clientX, y: event.clientY };
     const previousSelection = [...selectedIdsRef.current];
     let movingIds;
-    if (temporarySelect && !event.shiftKey) {
+    if (temporarySelect) {
       movingIds = targetIds;
       selectedIdsRef.current = movingIds;
       setSelectedIds(movingIds);
       setKeyObjectId(id);
-    } else if (event.shiftKey) {
+    } else if (additive) {
       if (targetIds.every((targetId) => previousSelection.includes(targetId))) {
         const next = previousSelection.filter((item) => !targetIds.includes(item));
         selectedIdsRef.current = next;
@@ -6625,11 +8011,13 @@ function App() {
     if (targetObject.locked) return;
     event.preventDefault();
     const base = boardRef.current;
+    const historyBefore = captureGestureHistory();
     const initial = new Map(base.objects.filter((object) => movingIds.includes(object.id) && !object.locked).map((object) => [object.id, { x: object.pivotX, y: object.pivotY }]));
     const startX = event.clientX;
     const startY = event.clientY;
     const zoom = viewRef.current.zoom;
     let moved = false;
+    let releaseGesture = () => {};
     const move = (moveEvent) => {
       const dx = (moveEvent.clientX - startX) / zoom;
       const dy = (moveEvent.clientY - startY) / zoom;
@@ -6640,23 +8028,44 @@ function App() {
       }
       previewBoard({ ...base, objects: base.objects.map((object) => initial.has(object.id) ? { ...object, pivotX: initial.get(object.id).x + dx, pivotY: initial.get(object.id).y + dy } : object) });
     };
-    const up = () => {
+    const cleanup = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", cancel);
+      releaseGesture();
+    };
+    const up = () => {
+      cleanup();
       if (moved) {
         objectClickRef.current = null;
         objectTapRef.current = null;
         finalizeGesture();
       } else {
-        if (!temporarySelect && !event.shiftKey && targetIds.length === 1 && previousSelection.length > 1 && previousSelection.includes(id)) {
+        if (!selectionOverride && !additive && targetIds.length === 1 && previousSelection.length > 1 && previousSelection.includes(id)) {
           setKeyObjectId(id);
           announce(`已將「${targetObject.layerName}」設為對齊基準`, "success");
         }
       }
     };
+    const cancel = () => {
+      cleanup();
+      objectClickRef.current = null;
+      objectTapRef.current = null;
+      previewBoard(base);
+      if (moved) restoreGestureHistory(historyBefore);
+    };
+    releaseGesture = registerPointerGesture({
+      label: movingIds.length > 1 ? `移動 ${movingIds.length} 個物件` : `移動「${targetObject.layerName}」`,
+      affectsDocument: true,
+      hasChanges: () => moved,
+      pause: cleanup,
+      cancel,
+      keep: up,
+    });
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up, { once: true });
-  }, [announce, filters.colors.length, filters.symbols.length, finalizeGesture, loadedTextFlow, previewBoard, pushUndo, spaceDown, startCanvasPan, tool]);
+    window.addEventListener("pointercancel", cancel, { once: true });
+  }, [announce, captureGestureHistory, filters.colors.length, filters.symbols.length, finalizeGesture, loadedTextFlow, previewBoard, pushUndo, registerPointerGesture, restoreGestureHistory, spaceDown, startCanvasPan, tool]);
 
   const onObjectPointerUp = useCallback((event, id) => {
     if (event.button !== 0 || tool === "hand" || tool === "3d" || spaceDown || filters.symbols.length || filters.colors.length) return;
@@ -6687,8 +8096,11 @@ function App() {
     const base = boardRef.current;
     const object = base.objects.find((item) => item.id === id);
     if (!object) return;
+    const historyBefore = captureGestureHistory();
     pushUndo(base);
     setRotationGesture(true);
+    let moved = false;
+    let releaseGesture = () => {};
     const startPoint = screenToWorld(event.clientX, event.clientY);
     const startAngle = Math.atan2(startPoint.y - object.pivotY, startPoint.x - object.pivotX) * 180 / Math.PI;
     const move = (moveEvent) => {
@@ -6696,19 +8108,39 @@ function App() {
       const angle = Math.atan2(point.y - object.pivotY, point.x - object.pivotX) * 180 / Math.PI;
       const delta = angle - startAngle;
       const rotation = object.rotation + (moveEvent.shiftKey ? snapRotationDelta(delta) : delta);
+      if (Math.abs(rotation - object.rotation) > 0.01) moved = true;
       previewBoard({ ...base, objects: base.objects.map((item) => item.id === id ? { ...item, rotation } : item) });
     };
-    const up = () => {
+    const cleanup = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", up);
-      setRotationGesture(false);
-      finalizeGesture();
+      window.removeEventListener("pointercancel", cancel);
+      releaseGesture();
     };
+    const up = () => {
+      cleanup();
+      setRotationGesture(false);
+      if (moved) finalizeGesture();
+      else restoreGestureHistory(historyBefore);
+    };
+    const cancel = () => {
+      cleanup();
+      setRotationGesture(false);
+      previewBoard(base);
+      restoreGestureHistory(historyBefore);
+    };
+    releaseGesture = registerPointerGesture({
+      label: `旋轉「${object.layerName}」`,
+      affectsDocument: true,
+      hasChanges: () => moved,
+      pause: cleanup,
+      cancel,
+      keep: up,
+    });
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up, { once: true });
-    window.addEventListener("pointercancel", up, { once: true });
-  }, [finalizeGesture, previewBoard, pushUndo, screenToWorld]);
+    window.addEventListener("pointercancel", cancel, { once: true });
+  }, [captureGestureHistory, finalizeGesture, previewBoard, pushUndo, registerPointerGesture, restoreGestureHistory, screenToWorld]);
 
   const onResizeStart = useCallback((event, id, handleKey) => {
     event.preventDefault();
@@ -6717,7 +8149,10 @@ function App() {
     const base = boardRef.current;
     const object = base.objects.find((item) => item.id === id);
     if (!object || object.locked) return;
+    const historyBefore = captureGestureHistory();
     pushUndo(base);
+    let moved = false;
+    let releaseGesture = () => {};
     const startPoint = screenToWorld(event.clientX, event.clientY);
     const locked = object.aspectLocked !== false;
     setResizeGesture({
@@ -6735,6 +8170,7 @@ function App() {
         fromCenter: moveEvent.altKey,
         preserveAspect: locked && !moveEvent.shiftKey,
       });
+      if (Math.abs(nextObject.width - object.width) > 0.1 || Math.abs(nextObject.height - object.height) > 0.1) moved = true;
       previewBoard({ ...base, objects: base.objects.map((item) => item.id === id ? nextObject : item) });
       setResizeGesture({
         objectId: id,
@@ -6746,17 +8182,36 @@ function App() {
         scaleY: nextObject.height / object.height,
       });
     };
-    const up = () => {
+    const cleanup = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", up);
-      setResizeGesture(null);
-      finalizeGesture();
+      window.removeEventListener("pointercancel", cancel);
+      releaseGesture();
     };
+    const up = () => {
+      cleanup();
+      setResizeGesture(null);
+      if (moved) finalizeGesture();
+      else restoreGestureHistory(historyBefore);
+    };
+    const cancel = () => {
+      cleanup();
+      setResizeGesture(null);
+      previewBoard(base);
+      restoreGestureHistory(historyBefore);
+    };
+    releaseGesture = registerPointerGesture({
+      label: `縮放「${object.layerName}」`,
+      affectsDocument: true,
+      hasChanges: () => moved,
+      pause: cleanup,
+      cancel,
+      keep: up,
+    });
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up, { once: true });
-    window.addEventListener("pointercancel", up, { once: true });
-  }, [finalizeGesture, previewBoard, pushUndo, screenToWorld]);
+    window.addEventListener("pointercancel", cancel, { once: true });
+  }, [captureGestureHistory, finalizeGesture, previewBoard, pushUndo, registerPointerGesture, restoreGestureHistory, screenToWorld]);
 
   const onTextFrameResizeStart = useCallback((event, id, handleKey) => {
     event.preventDefault();
@@ -6765,7 +8220,9 @@ function App() {
     const base = boardRef.current;
     const object = base.objects.find((item) => item.id === id);
     if (!isTextObject(object) || object.locked) return;
+    const historyBefore = captureGestureHistory();
     let didMove = false;
+    let releaseGesture = () => {};
     const startPoint = screenToWorld(event.clientX, event.clientY);
     setTextFrameGesture({ objectId: id, handle: handleKey });
     const move = (moveEvent) => {
@@ -6782,18 +8239,40 @@ function App() {
       previewBoard({ ...base, objects: base.objects.map((item) => item.id === id ? nextObject : item) });
       setTextFrameGesture({ objectId: id, handle: handleKey });
     };
-    const up = () => {
+    const cleanup = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", up);
-      setTextFrameGesture(null);
-      if (didMove) finalizeGesture();
+      window.removeEventListener("pointercancel", cancel);
+      releaseGesture();
+    };
+    const refocusEditor = () => {
       requestAnimationFrame(() => document.querySelector(`[data-object-id="${id}"] .canvas-text-editor`)?.focus({ preventScroll: true }));
     };
+    const up = () => {
+      cleanup();
+      setTextFrameGesture(null);
+      if (didMove) finalizeGesture();
+      refocusEditor();
+    };
+    const cancel = () => {
+      cleanup();
+      setTextFrameGesture(null);
+      previewBoard(base);
+      if (didMove) restoreGestureHistory(historyBefore);
+      refocusEditor();
+    };
+    releaseGesture = registerPointerGesture({
+      label: `調整「${object.layerName}」文字框`,
+      affectsDocument: true,
+      hasChanges: () => didMove,
+      pause: cleanup,
+      cancel,
+      keep: up,
+    });
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up, { once: true });
-    window.addEventListener("pointercancel", up, { once: true });
-  }, [finalizeGesture, previewBoard, pushUndo, screenToWorld]);
+    window.addEventListener("pointercancel", cancel, { once: true });
+  }, [captureGestureHistory, finalizeGesture, previewBoard, pushUndo, registerPointerGesture, restoreGestureHistory, screenToWorld]);
 
   const onGroupRotateStart = useCallback((event) => {
     event.preventDefault();
@@ -6806,7 +8285,10 @@ function App() {
     const pivot = boundsAnchorPoint(bounds, selectionAnchor);
     const startPoint = screenToWorld(event.clientX, event.clientY);
     const startAngle = Math.atan2(startPoint.y - pivot.y, startPoint.x - pivot.x) * 180 / Math.PI;
+    const historyBefore = captureGestureHistory();
     pushUndo(base);
+    let moved = false;
+    let releaseGesture = () => {};
     setRotationGesture(true);
     setGroupGesture({ type: "rotate", bounds, pivot, degrees: 0 });
     const move = (moveEvent) => {
@@ -6814,21 +8296,42 @@ function App() {
       const angle = Math.atan2(point.y - pivot.y, point.x - pivot.x) * 180 / Math.PI;
       const rawDelta = angle - startAngle;
       const degrees = moveEvent.shiftKey ? snapRotationDelta(rawDelta) : rawDelta;
+      if (Math.abs(degrees) > 0.01) moved = true;
       previewBoard({ ...base, objects: rotateObjectsAroundPoint(base.objects, selectedIdsRef.current, pivot, degrees) });
       setGroupGesture({ type: "rotate", bounds, pivot, degrees });
     };
-    const up = () => {
+    const cleanup = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", up);
+      window.removeEventListener("pointercancel", cancel);
+      releaseGesture();
+    };
+    const up = () => {
+      cleanup();
       setRotationGesture(false);
       setGroupGesture(null);
-      finalizeGesture();
+      if (moved) finalizeGesture();
+      else restoreGestureHistory(historyBefore);
     };
+    const cancel = () => {
+      cleanup();
+      setRotationGesture(false);
+      setGroupGesture(null);
+      previewBoard(base);
+      restoreGestureHistory(historyBefore);
+    };
+    releaseGesture = registerPointerGesture({
+      label: `旋轉 ${targets.length} 個物件`,
+      affectsDocument: true,
+      hasChanges: () => moved,
+      pause: cleanup,
+      cancel,
+      keep: up,
+    });
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up, { once: true });
-    window.addEventListener("pointercancel", up, { once: true });
-  }, [finalizeGesture, previewBoard, pushUndo, screenToWorld, selectionAnchor]);
+    window.addEventListener("pointercancel", cancel, { once: true });
+  }, [captureGestureHistory, finalizeGesture, previewBoard, pushUndo, registerPointerGesture, restoreGestureHistory, screenToWorld, selectionAnchor]);
 
   const onGroupResizeStart = useCallback((event, handleKey) => {
     event.preventDefault();
@@ -6849,7 +8352,10 @@ function App() {
       minimumScaleX,
       minimumScaleY,
     });
+    const historyBefore = captureGestureHistory();
     pushUndo(base);
+    let moved = false;
+    let releaseGesture = () => {};
     setGroupGesture({
       type: "scale",
       bounds,
@@ -6870,6 +8376,7 @@ function App() {
         minimumScaleY,
       };
       const transform = resizeTransformFromHandle(bounds, handleKey, startPoint, point, options);
+      if (Math.abs(transform.scaleX - 1) > 0.001 || Math.abs(transform.scaleY - 1) > 0.001) moved = true;
       previewBoard({ ...base, objects: resizeObjectsFromHandle(base.objects, selectedIdsRef.current, bounds, handleKey, startPoint, point, options) });
       setGroupGesture({
         type: "scale",
@@ -6883,17 +8390,36 @@ function App() {
         alt: moveEvent.altKey,
       });
     };
-    const up = () => {
+    const cleanup = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", up);
-      setGroupGesture(null);
-      finalizeGesture();
+      window.removeEventListener("pointercancel", cancel);
+      releaseGesture();
     };
+    const up = () => {
+      cleanup();
+      setGroupGesture(null);
+      if (moved) finalizeGesture();
+      else restoreGestureHistory(historyBefore);
+    };
+    const cancel = () => {
+      cleanup();
+      setGroupGesture(null);
+      previewBoard(base);
+      restoreGestureHistory(historyBefore);
+    };
+    releaseGesture = registerPointerGesture({
+      label: `縮放 ${targets.length} 個物件`,
+      affectsDocument: true,
+      hasChanges: () => moved,
+      pause: cleanup,
+      cancel,
+      keep: up,
+    });
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up, { once: true });
-    window.addEventListener("pointercancel", up, { once: true });
-  }, [finalizeGesture, previewBoard, pushUndo, screenToWorld]);
+    window.addEventListener("pointercancel", cancel, { once: true });
+  }, [captureGestureHistory, finalizeGesture, previewBoard, pushUndo, registerPointerGesture, restoreGestureHistory, screenToWorld]);
 
   const onMicro3DRotateStart = useCallback((event, axis = "free", onClick) => {
     event.preventDefault();
@@ -6903,9 +8429,11 @@ function App() {
     const selected = new Set(selectedIdsRef.current);
     const targetIds = new Set(base.objects.filter((object) => selected.has(object.id) && !object.locked).map((object) => object.id));
     if (!targetIds.size) return;
+    const historyBefore = captureGestureHistory();
     const startX = event.clientX;
     const startY = event.clientY;
     let moved = false;
+    let releaseGesture = () => {};
     setMicro3DGesture({ axis, deltaX: 0, deltaY: 0, deltaZ: 0 });
     const move = (moveEvent) => {
       const precision = moveEvent.altKey ? 0.16 : 0.42;
@@ -6945,18 +8473,36 @@ function App() {
       });
       setMicro3DGesture({ axis: activeAxis, deltaX, deltaY, deltaZ });
     };
-    const up = () => {
+    const cleanup = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", up);
+      window.removeEventListener("pointercancel", cancel);
+      releaseGesture();
+    };
+    const up = () => {
+      cleanup();
       setMicro3DGesture(null);
       if (moved) finalizeGesture();
       else onClick?.();
     };
+    const cancel = () => {
+      cleanup();
+      setMicro3DGesture(null);
+      previewBoard(base);
+      if (moved) restoreGestureHistory(historyBefore);
+    };
+    releaseGesture = registerPointerGesture({
+      label: targetIds.size > 1 ? `3D 旋轉 ${targetIds.size} 個物件` : "3D 旋轉物件",
+      affectsDocument: true,
+      hasChanges: () => moved,
+      pause: cleanup,
+      cancel,
+      keep: up,
+    });
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up, { once: true });
-    window.addEventListener("pointercancel", up, { once: true });
-  }, [finalizeGesture, previewBoard, pushUndo]);
+    window.addEventListener("pointercancel", cancel, { once: true });
+  }, [captureGestureHistory, finalizeGesture, previewBoard, pushUndo, registerPointerGesture, restoreGestureHistory]);
 
   const onObjectDoubleClick = useCallback((event, id) => {
     event.preventDefault();
@@ -6971,7 +8517,7 @@ function App() {
       placeTextOverflow(event);
       return;
     }
-    if (event.button === 1 || tool === "hand" || spaceDown) {
+    if (event.button === 1 || spaceDown || (tool === "hand" && !event.shiftKey)) {
       startCanvasPan(event);
       return;
     }
@@ -6992,8 +8538,11 @@ function App() {
     const canvasRect = canvasRef.current?.getBoundingClientRect();
     if (!canvasRect) return;
     const startClient = { x: event.clientX, y: event.clientY };
+    const previousSelected = [...selectedIdsRef.current];
+    const previousKeyObjectId = keyObjectId;
     const initialSelected = event.shiftKey ? [...selectedIdsRef.current] : [];
     let moved = false;
+    let releaseGesture = () => {};
 
     const move = (moveEvent) => {
       const dx = moveEvent.clientX - startClient.x;
@@ -7020,21 +8569,41 @@ function App() {
       setSelectedIds(nextSelection);
       if (!event.shiftKey) setKeyObjectId(nextSelection[0] || null);
     };
+    const cleanup = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", cancel);
+      releaseGesture();
+    };
     const up = () => {
+      cleanup();
       if (!moved && !event.shiftKey) {
         selectedIdsRef.current = [];
         setSelectedIds([]);
       }
       blankClickRef.current = moved ? null : { time: performance.now(), x: startClient.x, y: startClient.y };
       setMarquee(null);
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", up);
     };
+    const cancel = () => {
+      cleanup();
+      selectedIdsRef.current = previousSelected;
+      setSelectedIds(previousSelected);
+      setKeyObjectId(previousKeyObjectId);
+      setMarquee(null);
+      blankClickRef.current = null;
+    };
+    releaseGesture = registerPointerGesture({
+      label: "框選物件",
+      affectsDocument: false,
+      hasChanges: () => moved,
+      pause: cleanup,
+      cancel,
+      keep: up,
+    });
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up, { once: true });
-    window.addEventListener("pointercancel", up, { once: true });
-  }, [filters.colors.length, filters.symbols.length, loadedTextFlow, placeTextOverflow, screenToWorld, spaceDown, startCanvasPan, tool]);
+    window.addEventListener("pointercancel", cancel, { once: true });
+  }, [filters.colors.length, filters.symbols.length, keyObjectId, loadedTextFlow, placeTextOverflow, registerPointerGesture, screenToWorld, spaceDown, startCanvasPan, tool]);
 
   const zoomAround = useCallback((clientX, clientY, nextZoom) => {
     const rect = canvasRef.current?.getBoundingClientRect();
@@ -7112,7 +8681,43 @@ function App() {
   }, [addMediaFiles, canvasCenterWorld]);
 
   useEffect(() => {
+    const selectAllVisibleObjects = () => {
+      const ids = boardRef.current.objects.filter((object) => object.visible).map((object) => object.id);
+      selectedIdsRef.current = ids;
+      setSelectedIds(ids);
+      setKeyObjectId(ids[0] || null);
+      if (ids.length) setTool("select");
+      announce(ids.length ? `已選取全部 ${ids.length} 個可見物件` : "目前沒有可選取的物件。", ids.length ? "success" : "warning");
+    };
+    const openCurrentListSearch = () => {
+      let listId = "layers";
+      if (pendingObjectDeletion) listId = "delete-impact";
+      else if (preparedDownloads.length) listId = "downloads";
+      else if (showShortcuts) listId = "shortcuts";
+      else if (showVersions) listId = "versions";
+      else if (showInterfaceThemes) listId = "themes";
+      else if (leftTab === "sources") listId = "sources";
+      else if (leftTab === "captures") listId = "captures";
+      else if (leftTab === "filters" && (filters.symbols.length || filters.colors.length)) listId = "filter-results";
+      else {
+        setFocusMode(false);
+        setLeftTab("layers");
+        if (!leftPanelVisible) {
+          setLeftPanelVisible(true);
+          localStorage.setItem("moodboard-left-panel-visible", "true");
+        }
+      }
+      window.requestAnimationFrame(() => openListSearch(listId));
+    };
     const keyDown = (event) => {
+      if (event.key === "Escape" && document.fullscreenElement) return;
+      if (escapeCancellationRequest) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          keepEscapeAdjustment();
+        }
+        return;
+      }
       if (pendingAdvancedFeature) {
         if (event.key === "Escape") {
           event.preventDefault();
@@ -7134,8 +8739,12 @@ function App() {
         }
         return;
       }
-      if (["Meta", "Control"].includes(event.key)) setModifierDown(true);
+      if (event.key === "Escape" && requestActivePointerCancellation()) {
+        event.preventDefault();
+        return;
+      }
       if (event.key === "Shift") {
+        setModifierDown(true);
         setResizeGesture((current) => current ? { ...current, shift: true } : current);
         setGroupGesture((current) => current?.type === "scale" ? { ...current, shift: true } : current);
       }
@@ -7155,6 +8764,11 @@ function App() {
         closeInterfaceThemes();
         return;
       }
+      if (event.key === "Escape" && showDriveLibrary) {
+        event.preventDefault();
+        setShowDriveLibrary(false);
+        return;
+      }
       if (event.key === "Escape" && showSettings) {
         event.preventDefault();
         setShowSettings(false);
@@ -7170,44 +8784,81 @@ function App() {
         setShowAnnotationBuilder(false);
         return;
       }
+      if (event.key === "Escape" && showShortcuts) {
+        event.preventDefault();
+        setShowShortcuts(false);
+        return;
+      }
       if (event.code === "Space" && !typing) { event.preventDefault(); setSpaceDown(true); }
       if (typing) return;
       const modifier = event.metaKey || event.ctrlKey;
-      if (modifier && !event.altKey && !event.shiftKey && (event.code === "Quote" || event.key === "'")) {
-        event.preventDefault();
-        toggleCanvasBackground();
-        return;
+      const key = event.key.toLowerCase();
+      if (modifier && !event.altKey) {
+        if (key === "s") { event.preventDefault(); savePreferredBoard(); return; }
+        if (key === "o") { event.preventDefault(); openBoardFile(); return; }
+        if (key === "f") { event.preventDefault(); openCurrentListSearch(); return; }
+        if (key === "a") { event.preventDefault(); selectAllVisibleObjects(); return; }
+        if (key === "c") { event.preventDefault(); copySelectedObjects(); return; }
+        if (key === "x") { event.preventDefault(); cutSelectedObjects(); return; }
+        if (key === "v" && objectClipboardRef.current?.objects?.length) { event.preventDefault(); pasteCopiedObjects(); return; }
+        if (key === "z" && event.shiftKey) { event.preventDefault(); redo(); return; }
+        if (key === "z") { event.preventDefault(); undo(); return; }
       }
-      if (!modifier && event.key.toLowerCase() === "v") setTool("select");
-      if (!modifier && event.key.toLowerCase() === "h") setTool("hand");
-      if (!modifier && event.key.toLowerCase() === "r" && selectedIdsRef.current.length) {
-        if (tool === "3d") setTool("select");
-        else requestAdvancedFeature("3d");
+      const shiftOnly = event.shiftKey && !modifier && !event.altKey;
+      if (shiftOnly) {
+        if (event.code === "Slash") { event.preventDefault(); setShowShortcuts((current) => !current); return; }
+        if (event.code === "KeyV") { event.preventDefault(); setTool("select"); return; }
+        if (event.code === "KeyH") { event.preventDefault(); setTool("hand"); return; }
+        if (event.code === "Digit3") {
+          event.preventDefault();
+          if (selectedIdsRef.current.length) {
+            if (tool === "3d") setTool("select");
+            else requestAdvancedFeature("3d");
+          }
+          return;
+        }
+        if (event.code === "KeyR") { event.preventDefault(); toggleRulers(); return; }
+        if (event.code === "Semicolon") { event.preventDefault(); toggleGuides(); return; }
+        if (event.code === "Quote") { event.preventDefault(); toggleCanvasBackground(); return; }
+        if (event.code === "BracketLeft") { event.preventDefault(); toggleLeftPanel(); return; }
+        if (event.code === "BracketRight") { event.preventDefault(); toggleRightPanel(); return; }
+        if (event.code === "Backslash") { event.preventDefault(); toggleBothPanels(); return; }
+        if (event.code === "KeyF") { event.preventDefault(); toggleFocusMode(); return; }
+        if (event.code === "KeyD") {
+          event.preventDefault();
+          if (!event.repeat) duplicateSelected();
+          return;
+        }
+        if (event.code === "KeyG") {
+          event.preventDefault();
+          if (!event.repeat) toggleSelectionGroup();
+          return;
+        }
       }
-      if (modifier && event.key.toLowerCase() === "s") { event.preventDefault(); saveBoardFile(); }
-      if (modifier && event.key.toLowerCase() === "d") { event.preventDefault(); duplicateSelected(); }
-      if (modifier && event.key.toLowerCase() === "g") {
-        event.preventDefault();
-        if (event.shiftKey) ungroupSelection();
-        else toggleSelectionGroup();
-      }
-      if (modifier && event.key.toLowerCase() === "z" && event.shiftKey) { event.preventDefault(); redo(); }
-      else if (modifier && event.key.toLowerCase() === "z") { event.preventDefault(); undo(); }
       if (["Backspace", "Delete"].includes(event.key)) { event.preventDefault(); deleteSelected(); }
       if (event.key === "Escape") {
+        event.preventDefault();
         if (shapeMenuOpen) setShapeMenuOpen(false);
+        else if (dragActive) setDragActive(false);
         else if (preparedDownloads.length) closePreparedDownloads();
         else if (showVersions) setShowVersions(false);
         else if (showCollaboration) setShowCollaboration(false);
+        else if (mobilePanel) setMobilePanel(null);
         else if (filters.symbols.length || filters.colors.length) setFilters(DEFAULT_FILTERS);
         else if (tool === "3d") setTool("select");
-        else setSelectedIds([]);
+        else if (focusMode) restoreWorkspaceChrome();
+        else if (!leftPanelVisible && !rightPanelVisible) showBothPanels();
+        else if (selectedIdsRef.current.length) {
+          selectedIdsRef.current = [];
+          setSelectedIds([]);
+          setKeyObjectId(null);
+        }
       }
     };
     const keyUp = (event) => {
       if (event.code === "Space") setSpaceDown(false);
-      if (["Meta", "Control"].includes(event.key)) setModifierDown(false);
       if (event.key === "Shift") {
+        setModifierDown(false);
         setResizeGesture((current) => current ? { ...current, shift: false } : current);
         setGroupGesture((current) => current?.type === "scale" ? { ...current, shift: false } : current);
       }
@@ -7234,7 +8885,7 @@ function App() {
       window.removeEventListener("keyup", keyUp);
       window.removeEventListener("blur", blur);
     };
-  }, [announce, cancelPendingObjectDeletion, closeAdvancedFeatureGate, closeInterfaceThemes, closePreparedDownloads, deleteSelected, duplicateSelected, filters.colors.length, filters.symbols.length, isClearingLocalData, loadedTextFlow, pendingAdvancedFeature, pendingObjectDeletion, preparedDownloads.length, redo, requestAdvancedFeature, saveBoardFile, shapeMenuOpen, showAnnotationBuilder, showCollaboration, showDeleteLocalData, showGridBuilder, showInterfaceThemes, showSettings, showVersions, toggleCanvasBackground, toggleSelectionGroup, tool, undo, ungroupSelection]);
+  }, [announce, cancelPendingObjectDeletion, closeAdvancedFeatureGate, closeInterfaceThemes, closePreparedDownloads, copySelectedObjects, cutSelectedObjects, deleteSelected, dragActive, duplicateSelected, escapeCancellationRequest, filters.colors.length, filters.symbols.length, focusMode, isClearingLocalData, keepEscapeAdjustment, leftPanelVisible, leftTab, loadedTextFlow, mobilePanel, openBoardFile, openListSearch, pasteCopiedObjects, pendingAdvancedFeature, pendingObjectDeletion, preparedDownloads.length, redo, requestActivePointerCancellation, requestAdvancedFeature, restoreWorkspaceChrome, rightPanelVisible, savePreferredBoard, shapeMenuOpen, showAnnotationBuilder, showBothPanels, showCollaboration, showDeleteLocalData, showDriveLibrary, showGridBuilder, showInterfaceThemes, showSettings, showShortcuts, showVersions, toggleBothPanels, toggleCanvasBackground, toggleFocusMode, toggleGuides, toggleLeftPanel, toggleRightPanel, toggleRulers, toggleSelectionGroup, tool, undo]);
 
   const exportObjects = useCallback((scopeOverride) => {
     const scope = typeof scopeOverride === "string" ? scopeOverride : exportScope;
@@ -7390,16 +9041,21 @@ function App() {
     && !micro3DGesture,
   );
   const resolvedKeyObjectId = selectedIds.includes(keyObjectId) ? keyObjectId : (selectedIds[0] || null);
+  const effectiveLeftPanelVisible = !focusMode && leftPanelVisible;
+  const effectiveRightPanelVisible = !focusMode && rightPanelVisible;
+  const topbarSaveState = currentDriveLink || driveSettings.enabled
+    ? driveStatusPresentation(driveSession).label
+    : (dirty ? "有未寫入檔案的變更" : saveState);
 
   return (
     <main
       ref={appRootRef}
-      className={`moodboard-app ${isPanning ? "is-panning" : ""} ${isBooting ? "is-booting" : "is-boot-ready"}`}
+      className={`moodboard-app ${isPanning ? "is-panning" : ""} ${isBooting ? "is-booting" : "is-boot-ready"} ${focusMode ? "is-focus-mode" : ""}`}
       style={interfaceThemeStyle}
       aria-busy={isBooting}
     >
       {isBooting ? <StartupSequence onComplete={finishStartup} /> : null}
-      <header className="app-topbar" aria-hidden={isBooting || undefined} inert={isBooting ? true : undefined}>
+      <header className="app-topbar" aria-hidden={isBooting || focusMode || undefined} inert={isBooting || focusMode ? true : undefined}>
         <div className="brand-block">
           <span className="brand-mark" aria-hidden="true">∞</span>
           <div><strong>Infinite Moodboard</strong><small>PETFASHION 創意工具</small></div>
@@ -7416,16 +9072,17 @@ function App() {
             <PanelLeft size={18} />
           </IconButton>
           <IconButton className="mobile-panel-button" label="開啟圖層、分群、素材與構圖" onClick={() => setMobilePanel("left")}><PanelLeft size={18} /></IconButton>
-          <button className="topbar-button" type="button" onClick={openBoardFile}><FolderOpen size={17} /><span>開啟</span></button>
-          <button className="topbar-button" type="button" onClick={() => saveBoardFile(false)} title="儲存可繼續編輯的 .moodboard 工作檔"><Save size={17} /><span>儲存</span></button>
+          <button className="topbar-button" type="button" onClick={openBoardFile} title="從這台裝置開啟 .moodboard"><FolderOpen size={17} /><span>開啟</span></button>
+          <button className="topbar-button" type="button" onClick={openGoogleDriveLibrary} title="開啟 Google Drive 中的 Moodboard"><Cloud size={17} /><span>Drive</span></button>
+          <button className="topbar-button" type="button" onClick={savePreferredBoard} title={authReady ? "優先儲存到 Google Drive" : "儲存到這台裝置"}><Save size={17} /><span>儲存</span></button>
           <button className="topbar-button" type="button" onClick={exportBrowserHtml} title="匯出可用一般瀏覽器開啟的唯讀 HTML"><FileCode2 size={17} /><span>瀏覽器版</span></button>
-          <IconButton label="下載離線備份" onClick={() => saveBoardFile(true)}><FileArchive size={18} /></IconButton>
+          <IconButton label="儲存到這台裝置" onClick={() => saveBoardFile(false)}><FileArchive size={18} /></IconButton>
         </div>
 
         <label className="board-title-field">
           <span className="sr-only">Infinite Moodboard 名稱</span>
           <input value={board.name} onChange={(event) => applyBoard((current) => ({ ...current, name: event.target.value }))} />
-          <small>{dirty ? "有未寫入檔案的變更" : saveState}</small>
+          <small>{topbarSaveState}</small>
         </label>
 
         <div className="topbar-secondary">
@@ -7472,8 +9129,19 @@ function App() {
         </div>
       </header>
 
+      {focusMode || (!leftPanelVisible && !rightPanelVisible) ? (
+        <button
+          className={`workspace-chrome-restore ${focusMode ? "" : "is-panels-only"}`}
+          type="button"
+          onClick={focusMode ? restoreWorkspaceChrome : showBothPanels}
+          title="顯示工作區面板（Esc）"
+        >
+          <PanelLeft size={17} /><span>顯示面板</span><kbd>Esc</kbd>
+        </button>
+      ) : null}
+
       <div
-        className={`app-body ${leftPanelVisible ? "" : "is-left-hidden"} ${rightPanelVisible ? "" : "is-right-hidden"} ${leftPanelResizing ? "is-resizing-left" : ""}`}
+        className={`app-body ${effectiveLeftPanelVisible ? "" : "is-left-hidden"} ${effectiveRightPanelVisible ? "" : "is-right-hidden"} ${leftPanelResizing ? "is-resizing-left" : ""}`}
         style={{ "--panel-width": `${leftPanelWidth}px` }}
         aria-hidden={isBooting || undefined}
         inert={isBooting ? true : undefined}
@@ -7494,8 +9162,6 @@ function App() {
           onMoveLayer={moveLayer}
           onReorderLayer={reorderLayer}
           onLocate={locateObject}
-          layerQuery={layerQuery}
-          setLayerQuery={setLayerQuery}
           layerTypeFilter={layerTypeFilter}
           setLayerTypeFilter={setLayerTypeFilter}
           leftTab={leftTab}
@@ -7523,10 +9189,10 @@ function App() {
         <section className="canvas-column">
           <div className="canvas-toolbar" aria-label="畫布工具">
             <div className="tool-group">
-              <IconButton label="選取工具 V" active={tool === "select"} aria-pressed={tool === "select"} onClick={() => setTool("select")}><MousePointer2 size={18} /></IconButton>
-              <IconButton label="平移工具 H（按住 ⌘／Ctrl 可暫時選取）" active={tool === "hand"} aria-pressed={tool === "hand"} onClick={() => setTool("hand")}><Hand size={18} /></IconButton>
+              <IconButton label="選取工具 Shift+V" active={tool === "select"} aria-pressed={tool === "select"} onClick={() => setTool("select")}><MousePointer2 size={18} /></IconButton>
+              <IconButton label="平移工具 Shift+H（按住 Shift 可暫時選取）" active={tool === "hand"} aria-pressed={tool === "hand"} onClick={() => setTool("hand")}><Hand size={18} /></IconButton>
               <IconButton
-                label={authReady ? "進階 3D 旋轉工具 R（拖曳選取物件旋轉）" : "進階 3D 旋轉工具 R（需要登入）"}
+                label={authReady ? "進階 3D 旋轉工具 Shift+3（拖曳選取物件旋轉）" : "進階 3D 旋轉工具 Shift+3（需要登入）"}
                 active={tool === "3d"}
                 aria-pressed={tool === "3d"}
                 disabled={!selectedIds.length}
@@ -7566,6 +9232,20 @@ function App() {
             onDragLeave={(event) => { if (event.target === event.currentTarget) setDragActive(false); }}
             onDrop={onDrop}
           >
+            {!inspectionActive ? (
+              <WorkspaceRulers
+                rulersVisible={rulersVisible}
+                guidesVisible={guidesVisible}
+                guides={board.guides || []}
+                draggingGuide={guideDrag}
+                view={view}
+                viewportSize={canvasViewportSize}
+                unit={rulerUnit}
+                onUnitChange={changeRulerUnit}
+                onStartGuide={startGuideDrag}
+                onDeleteGuide={deleteGuide}
+              />
+            ) : null}
             <div
               className={`world-layer ${inspectionActive ? "is-filter-muted" : ""}`}
               style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})` }}
@@ -7580,7 +9260,7 @@ function App() {
                   soleSelected={soleSelectedId === object.id}
                   multiSelected={selectedIds.length > 1 && selectedIds.includes(object.id)}
                   keyObject={selectedIds.length > 1 && resolvedKeyObjectId === object.id}
-                  selectionEnabled={tool !== "hand"}
+                  selectionEnabled={tool !== "hand" || modifierDown}
                   inverseZoom={1 / view.zoom}
                   onPointerDown={onObjectPointerDown}
                   onPointerUp={onObjectPointerUp}
@@ -7761,6 +9441,14 @@ function App() {
       {mobilePanel ? <button className="mobile-scrim" type="button" aria-label="關閉面板" onClick={() => setMobilePanel(null)} /> : null}
       {toast ? <div className={`toast toast-${toast.tone}`} role="status">{toast.tone === "success" ? <Check size={16} /> : toast.tone === "error" ? <AlertTriangle size={16} /> : null}<span>{toast.message}</span></div> : null}
 
+      {escapeCancellationRequest ? (
+        <EscapeCancellationModal
+          request={escapeCancellationRequest}
+          onKeep={keepEscapeAdjustment}
+          onCancel={cancelEscapeAdjustment}
+        />
+      ) : null}
+
       {pendingObjectDeletion ? (
         <DeleteCompositionWarningModal
           request={pendingObjectDeletion}
@@ -7786,6 +9474,10 @@ function App() {
           accountSignedIn={identitySignedIn}
           accountUser={authSession.user}
           canvasBackground={canvasBackground}
+          currentDriveLink={currentDriveLink}
+          driveCurrentContentBytes={currentDriveContentBytes}
+          driveSession={driveSession}
+          driveSettings={driveSettings}
           enableProviderTesting={providerTestMode}
           initialSection={settingsInitialSection}
           locale={interfaceLocale}
@@ -7794,12 +9486,17 @@ function App() {
           updateCheck={updateCheck}
           leftPanelVisible={leftPanelVisible}
           rightPanelVisible={rightPanelVisible}
+          rulersVisible={rulersVisible}
+          guidesVisible={guidesVisible}
+          rulerUnit={rulerUnit}
           onSetMode={setInterfaceMode}
           onSetCanvasBackground={setCanvasBackgroundMode}
           onSetLocale={(nextLocale) => setInterfaceLocale(normalizeInterfaceLocale(nextLocale))}
           onSetTypography={updateInterfaceTypography}
           onResetTypography={resetInterfaceTypography}
           onCheckForUpdates={checkForAppUpdates}
+          onConnectDrive={connectGoogleDrive}
+          onDisconnectDrive={disconnectGoogleDrive}
           onManageThemes={openInterfaceThemes}
           onMarketingPreferenceChange={updateMoodboardMarketingPreference}
           onLinkEmail={linkEmailToMoodboardAccount}
@@ -7816,6 +9513,19 @@ function App() {
           }}
           onToggleLeftPanel={toggleLeftPanel}
           onToggleRightPanel={toggleRightPanel}
+          onToggleRulers={toggleRulers}
+          onToggleGuides={toggleGuides}
+          onSetRulerUnit={changeRulerUnit}
+          onOpenShortcuts={() => {
+            setShowSettings(false);
+            setShowShortcuts(true);
+          }}
+          onOpenDriveLibrary={() => {
+            setShowSettings(false);
+            openGoogleDriveLibrary();
+          }}
+          onSaveDrive={() => saveBoardToGoogleDrive()}
+          onSetDriveAutoSync={setDriveAutoSync}
           onClose={() => setShowSettings(false)}
         />
       ) : null}
@@ -7876,7 +9586,38 @@ function App() {
           isBusy={versionBusy}
         />
       ) : null}
-      {showCollaboration ? <CollaborationModal sessionName={sessionName} setSessionName={setSessionName} peerCount={peers.length} onClose={() => setShowCollaboration(false)} /> : null}
+      {showShortcuts ? <ShortcutReferenceModal onClose={() => setShowShortcuts(false)} /> : null}
+      {showDriveLibrary ? (
+        <DriveLibraryModal
+          board={board}
+          currentContentBytes={currentDriveContentBytes}
+          currentLink={currentDriveLink}
+          driveSession={driveSession}
+          driveSettings={driveSettings}
+          onConnect={connectGoogleDrive}
+          onDisconnect={disconnectGoogleDrive}
+          onOpenFile={openGoogleDriveFile}
+          onRefresh={() => refreshGoogleDrive()}
+          onSave={() => saveBoardToGoogleDrive()}
+          onSaveCopy={() => saveBoardToGoogleDrive({ asCopy: true })}
+          onSetAutoSync={setDriveAutoSync}
+          onClose={() => setShowDriveLibrary(false)}
+        />
+      ) : null}
+      {showCollaboration ? (
+        <CollaborationModal
+          sessionName={sessionName}
+          setSessionName={setSessionName}
+          peerCount={peers.length}
+          driveConnected={driveSession.connected}
+          driveLinked={Boolean(currentDriveLink)}
+          onOpenDrive={() => {
+            setShowCollaboration(false);
+            openGoogleDriveLibrary();
+          }}
+          onClose={() => setShowCollaboration(false)}
+        />
+      ) : null}
       {preparedDownloads.length ? (
         <ExportDownloadModal
           downloads={preparedDownloads}
