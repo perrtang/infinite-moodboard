@@ -48,11 +48,17 @@ import {
 import {
   BUILT_IN_THEMES,
   DEFAULT_INTERFACE_THEME_ID,
+  FASHION_MONOCHROME_COLORS,
+  INTERFACE_MODE_STORAGE_KEY,
   contrastRatio,
   interfaceThemeCssVariables,
   interfaceThemeMode,
+  loadInterfaceModePreference,
+  normalizeInterfaceMode,
   normalizeInterfaceTheme,
   parseInterfaceThemeFile,
+  resolveInterfaceMode,
+  resolveInterfaceThemeForMode,
   serializeInterfaceTheme,
 } from "./theme.js";
 import {
@@ -162,6 +168,10 @@ test("interface locale detection and language packs cover Traditional Chinese, S
   assert.equal(translateInterfaceText("構圖 03", "en"), "Composition 03");
   assert.equal(translateInterfaceText("已加入 3 個素材", "en"), "Added 3 assets");
   assert.equal(translateInterfaceText("已切換為深色模式。", "en"), "Switched to dark mode.");
+  assert.equal(translateInterfaceText("自動跟隨裝置", "en"), "Follow device");
+  assert.equal(translateInterfaceText("目前跟隨裝置：淺色", "en"), "Following device: Light");
+  assert.equal(translateInterfaceText("已切換為自動跟隨裝置；目前使用深色模式。", "en"), "Now following the device; currently using dark mode.");
+  assert.equal(translateInterfaceText("自動跟隨裝置", "zh-Hans"), "自动跟随设备");
   assert.equal(translateInterfaceText("已重新顯示畫布格線。", "en"), "Canvas grid shown again.");
   assert.equal(translateInterfaceText("立即更新", "en"), "Update now");
   assert.equal(translateInterfaceText("安全自動更新", "zh-Hans"), "安全自动更新");
@@ -238,6 +248,48 @@ test("interface themes include the product and organization brand palettes", () 
   assert.equal(netflix.colors.accent, "#E50914");
   assert.equal(starbucks.colors.accent, "#00754A");
   assert.equal(starbucks.category, "brand");
+});
+
+test("interface mode supports system following while preserving legacy explicit choices", () => {
+  const values = new Map();
+  const storage = {
+    getItem: (key) => values.get(key) ?? null,
+  };
+  const fashionMonochrome = BUILT_IN_THEMES.find((theme) => theme.id === DEFAULT_INTERFACE_THEME_ID);
+  const petfashion = BUILT_IN_THEMES.find((theme) => theme.id === "petfashion-editorial");
+
+  assert.equal(normalizeInterfaceMode("unknown"), "system");
+  assert.equal(resolveInterfaceMode("system", false), "light");
+  assert.equal(resolveInterfaceMode("system", true), "dark");
+  assert.equal(resolveInterfaceMode("light", true), "light");
+  assert.equal(loadInterfaceModePreference(storage, fashionMonochrome), "system");
+
+  values.set("infinite-moodboard-active-interface-theme-v1", petfashion.id);
+  assert.equal(loadInterfaceModePreference(storage, petfashion), "light");
+  values.set(INTERFACE_MODE_STORAGE_KEY, "system");
+  assert.equal(loadInterfaceModePreference(storage, petfashion), "system");
+});
+
+test("fashion monochrome resolves to grayscale white or black surfaces for the active mode", () => {
+  const theme = BUILT_IN_THEMES.find((item) => item.id === DEFAULT_INTERFACE_THEME_ID);
+  const light = resolveInterfaceThemeForMode(theme, "light");
+  const dark = resolveInterfaceThemeForMode(theme, "dark");
+
+  assert.equal(light.id, theme.id);
+  assert.equal(dark.id, theme.id);
+  assert.deepEqual(light.colors, FASHION_MONOCHROME_COLORS.light);
+  assert.deepEqual(dark.colors, FASHION_MONOCHROME_COLORS.dark);
+  assert.equal(interfaceThemeMode(light), "light");
+  assert.equal(interfaceThemeMode(dark), "dark");
+  assert.equal(interfaceThemeCssVariables(light).colorScheme, "light");
+  assert.equal(interfaceThemeCssVariables(dark).colorScheme, "dark");
+  for (const variant of [light, dark]) {
+    for (const color of Object.values(variant.colors)) {
+      const [, red, green, blue] = color.match(/^#([0-9A-F]{2})([0-9A-F]{2})([0-9A-F]{2})$/i);
+      assert.equal(red.toUpperCase(), green.toUpperCase());
+      assert.equal(green.toUpperCase(), blue.toUpperCase());
+    }
+  }
 });
 
 test("the default fashion monochrome theme keeps all interface color channels grayscale", () => {

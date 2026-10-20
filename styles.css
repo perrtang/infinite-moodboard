@@ -5709,6 +5709,14 @@ html[lang="en"] .sidebar-tabs button svg {
   color: var(--accent-strong);
 }
 
+.settings-mode-options {
+  flex: 0 0 auto;
+}
+
+.settings-mode-options button {
+  white-space: nowrap;
+}
+
 .settings-language-options {
   display: grid;
   gap: 8px;
@@ -7724,6 +7732,18 @@ button.status-label:hover {
   .settings-theme-row > button,
   .theme-confirm-actions button {
     min-height: 44px;
+  }
+
+  .settings-mode-options {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .settings-mode-options button {
+    justify-content: center;
+    min-width: 0;
+    padding-inline: 6px;
   }
 
   .settings-custom-size,

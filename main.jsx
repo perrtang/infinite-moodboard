@@ -59,6 +59,7 @@ import {
   Mail,
   Maximize2,
   Minimize2,
+  Monitor,
   Moon,
   MousePointer2,
   Palette,
@@ -247,11 +248,16 @@ import {
   ACTIVE_THEME_STORAGE_KEY,
   BUILT_IN_THEMES,
   DEFAULT_INTERFACE_THEME_ID,
+  INTERFACE_MODE_STORAGE_KEY,
   THEME_STORAGE_KEY,
   interfaceThemeCssVariables,
   interfaceThemeMode,
+  loadInterfaceModePreference,
+  normalizeInterfaceMode,
   normalizeInterfaceTheme,
   parseInterfaceThemeFile,
+  resolveInterfaceMode,
+  resolveInterfaceThemeForMode,
   serializeInterfaceTheme,
 } from "./theme.js";
 import {
@@ -471,6 +477,10 @@ const GUIDES_VISIBLE_STORAGE_KEY = "infinite-moodboard-guides-visible-v1";
 const RULER_UNIT_STORAGE_KEY = "infinite-moodboard-ruler-unit-v1";
 const CANVAS_TOOLBAR_POSITION_STORAGE_KEY = "infinite-moodboard-canvas-toolbar-position-v1";
 const RULER_SIZE = 22;
+
+function currentSystemInterfaceMode() {
+  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
 
 function readSessionValue(key) {
   try {
@@ -5142,6 +5152,7 @@ function SettingsModal({
   initialSection = "general",
   locale,
   mode,
+  resolvedMode,
   typography,
   updateCheck,
   updateAction,
@@ -5398,10 +5409,14 @@ function SettingsModal({
                 <div><h3 id="settings-appearance-title">外觀</h3><p>快速調整明暗配色與介面文字；偏好只保存在這台裝置。</p></div>
               </div>
               <div className="settings-row settings-mode-row">
-                <div><strong>介面模式</strong><small>會記住各模式最近使用的配色。</small></div>
-                <div className="settings-segmented" aria-label="介面明暗模式">
-                  <button type="button" className={mode === "light" ? "is-active" : ""} aria-pressed={mode === "light"} onClick={() => onSetMode("light")}><Sun size={16} />淺色</button>
-                  <button type="button" className={mode === "dark" ? "is-active" : ""} aria-pressed={mode === "dark"} onClick={() => onSetMode("dark")}><Moon size={16} />深色</button>
+                <div>
+                  <strong>介面模式</strong>
+                  <small>{mode === "system" ? `目前跟隨裝置：${resolvedMode === "dark" ? "深色" : "淺色"}` : "自動會即時跟隨裝置；也會記住淺色與深色最近使用的配色。"}</small>
+                </div>
+                <div className="settings-segmented settings-mode-options" role="radiogroup" aria-label="介面明暗模式">
+                  <button type="button" role="radio" className={mode === "system" ? "is-active" : ""} aria-checked={mode === "system"} onClick={() => onSetMode("system")}><Monitor size={16} />自動跟隨裝置</button>
+                  <button type="button" role="radio" className={mode === "light" ? "is-active" : ""} aria-checked={mode === "light"} onClick={() => onSetMode("light")}><Sun size={16} />淺色</button>
+                  <button type="button" role="radio" className={mode === "dark" ? "is-active" : ""} aria-checked={mode === "dark"} onClick={() => onSetMode("dark")}><Moon size={16} />深色</button>
                 </div>
               </div>
               <div className="settings-row settings-theme-row">
@@ -5926,6 +5941,12 @@ function App() {
   const [syncJobs, setSyncJobs] = useState([]);
   const [customThemes, setCustomThemes] = useState(loadStoredInterfaceThemes);
   const [activeThemeId, setActiveThemeId] = useState(() => localStorage.getItem(ACTIVE_THEME_STORAGE_KEY) || DEFAULT_INTERFACE_THEME_ID);
+  const [systemInterfaceMode, setSystemInterfaceMode] = useState(currentSystemInterfaceMode);
+  const [interfaceModePreference, setInterfaceModePreference] = useState(() => {
+    const legacyTheme = [...BUILT_IN_THEMES, ...customThemes].find((theme) => theme.id === activeThemeId)
+      || BUILT_IN_THEMES[0];
+    return loadInterfaceModePreference(localStorage, legacyTheme);
+  });
   const [previewTheme, setPreviewTheme] = useState(null);
   const [interfaceTypography, setInterfaceTypography] = useState(loadStoredInterfaceTypography);
   const [canvasBackground, setCanvasBackground] = useState(loadStoredCanvasBackground);
@@ -6010,14 +6031,42 @@ function App() {
       || BUILT_IN_THEMES[0],
     [activeThemeId, availableThemes],
   );
-  const activeThemeMode = useMemo(() => interfaceThemeMode(activeTheme), [activeTheme]);
+  const resolvedInterfaceMode = useMemo(
+    () => resolveInterfaceMode(interfaceModePreference, systemInterfaceMode === "dark"),
+    [interfaceModePreference, systemInterfaceMode],
+  );
+  const effectiveActiveTheme = useMemo(
+    () => resolveInterfaceThemeForMode(activeTheme, resolvedInterfaceMode),
+    [activeTheme, resolvedInterfaceMode],
+  );
+  const effectivePreviewTheme = useMemo(
+    () => previewTheme ? resolveInterfaceThemeForMode(previewTheme, resolvedInterfaceMode) : null,
+    [previewTheme, resolvedInterfaceMode],
+  );
+  const displayedAvailableThemes = useMemo(
+    () => availableThemes.map((theme) => resolveInterfaceThemeForMode(theme, resolvedInterfaceMode)),
+    [availableThemes, resolvedInterfaceMode],
+  );
+  const visualInterfaceTheme = effectivePreviewTheme || effectiveActiveTheme;
   const interfaceThemeStyle = useMemo(
     () => ({
-      ...interfaceThemeCssVariables(previewTheme || activeTheme),
+      ...interfaceThemeCssVariables(visualInterfaceTheme),
       ...interfaceTypographyCssVariables(interfaceTypography),
     }),
-    [activeTheme, interfaceTypography, previewTheme],
+    [interfaceTypography, visualInterfaceTheme],
   );
+
+  const themeForResolvedMode = useCallback((targetMode) => {
+    const supportsMode = (theme) => theme.id === DEFAULT_INTERFACE_THEME_ID || interfaceThemeMode(theme) === targetMode;
+    const current = availableThemes.find((theme) => theme.id === activeThemeId);
+    if (current && supportsMode(current)) return current;
+    const storageKey = targetMode === "light" ? LAST_LIGHT_THEME_STORAGE_KEY : LAST_DARK_THEME_STORAGE_KEY;
+    const rememberedId = localStorage.getItem(storageKey);
+    return availableThemes.find((theme) => theme.id === rememberedId && supportsMode(theme))
+      || availableThemes.find((theme) => theme.id === DEFAULT_INTERFACE_THEME_ID)
+      || availableThemes.find(supportsMode)
+      || BUILT_IN_THEMES[0];
+  }, [activeThemeId, availableThemes]);
 
   const registerPointerGesture = useCallback((gesture) => {
     const entry = { ...gesture };
@@ -6240,6 +6289,29 @@ function App() {
   }, [canvasToolbarPosition, canvasViewportSize]);
 
   useEffect(() => {
+    const media = window.matchMedia?.("(prefers-color-scheme: dark)");
+    if (!media) return undefined;
+    const update = (event) => setSystemInterfaceMode(event.matches ? "dark" : "light");
+    setSystemInterfaceMode(media.matches ? "dark" : "light");
+    if (media.addEventListener) media.addEventListener("change", update);
+    else media.addListener?.(update);
+    return () => {
+      if (media.removeEventListener) media.removeEventListener("change", update);
+      else media.removeListener?.(update);
+    };
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(INTERFACE_MODE_STORAGE_KEY, interfaceModePreference);
+  }, [interfaceModePreference]);
+
+  useEffect(() => {
+    if (interfaceModePreference !== "system") return;
+    const nextTheme = themeForResolvedMode(resolvedInterfaceMode);
+    if (nextTheme?.id && nextTheme.id !== activeThemeId) setActiveThemeId(nextTheme.id);
+  }, [activeThemeId, interfaceModePreference, resolvedInterfaceMode, themeForResolvedMode]);
+
+  useEffect(() => {
     localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(customThemes));
   }, [customThemes]);
 
@@ -6326,9 +6398,12 @@ function App() {
   }, [authRetryKey]);
 
   useEffect(() => {
-    const storageKey = activeThemeMode === "light" ? LAST_LIGHT_THEME_STORAGE_KEY : LAST_DARK_THEME_STORAGE_KEY;
+    const activeThemeSupportsMode = activeTheme.id === DEFAULT_INTERFACE_THEME_ID
+      || interfaceThemeMode(activeTheme) === resolvedInterfaceMode;
+    if (!activeThemeSupportsMode) return;
+    const storageKey = resolvedInterfaceMode === "light" ? LAST_LIGHT_THEME_STORAGE_KEY : LAST_DARK_THEME_STORAGE_KEY;
     localStorage.setItem(storageKey, activeTheme.id);
-  }, [activeTheme.id, activeThemeMode]);
+  }, [activeTheme, resolvedInterfaceMode]);
 
   useEffect(() => { boardRef.current = board; }, [board]);
   useEffect(() => { viewRef.current = view; }, [view]);
@@ -7026,24 +7101,28 @@ function App() {
   const confirmInterfaceTheme = useCallback((themeId) => {
     const theme = [...BUILT_IN_THEMES, ...customThemes].find((item) => item.id === themeId);
     if (!theme) return;
+    const themeMode = theme.id === DEFAULT_INTERFACE_THEME_ID ? resolvedInterfaceMode : interfaceThemeMode(theme);
+    if (theme.id !== DEFAULT_INTERFACE_THEME_ID && themeMode !== resolvedInterfaceMode) {
+      setInterfaceModePreference(themeMode);
+    }
     setPreviewTheme(null);
     setActiveThemeId(theme.id);
     setShowInterfaceThemes(false);
     announce(`已套用介面配色「${theme.name}」。`, "success");
-  }, [announce, customThemes]);
+  }, [announce, customThemes, resolvedInterfaceMode]);
 
-  const setInterfaceMode = useCallback((mode) => {
-    const storageKey = mode === "light" ? LAST_LIGHT_THEME_STORAGE_KEY : LAST_DARK_THEME_STORAGE_KEY;
-    const fallbackId = mode === "light" ? "petfashion-editorial" : DEFAULT_INTERFACE_THEME_ID;
-    const rememberedId = localStorage.getItem(storageKey);
-    const theme = availableThemes.find((item) => item.id === rememberedId && interfaceThemeMode(item) === mode)
-      || availableThemes.find((item) => item.id === fallbackId)
-      || availableThemes.find((item) => interfaceThemeMode(item) === mode);
+  const setInterfaceMode = useCallback((preference) => {
+    const nextPreference = normalizeInterfaceMode(preference);
+    const nextResolvedMode = resolveInterfaceMode(nextPreference, systemInterfaceMode === "dark");
+    const theme = themeForResolvedMode(nextResolvedMode);
     if (!theme) return;
     setPreviewTheme(null);
+    setInterfaceModePreference(nextPreference);
     setActiveThemeId(theme.id);
-    announce(`已切換為${mode === "light" ? "淺色" : "深色"}模式。`, "success");
-  }, [announce, availableThemes]);
+    announce(nextPreference === "system"
+      ? `已切換為自動跟隨裝置；目前使用${nextResolvedMode === "dark" ? "深色" : "淺色"}模式。`
+      : `已切換為${nextResolvedMode === "light" ? "淺色" : "深色"}模式。`, "success");
+  }, [announce, systemInterfaceMode, themeForResolvedMode]);
 
   const saveCustomInterfaceTheme = useCallback((draft) => {
     const theme = normalizeInterfaceTheme({
@@ -7054,11 +7133,13 @@ function App() {
       createdAt: new Date().toISOString(),
     });
     setCustomThemes((current) => [...current, theme]);
+    const themeMode = interfaceThemeMode(theme);
+    if (themeMode !== resolvedInterfaceMode) setInterfaceModePreference(themeMode);
     setPreviewTheme(null);
     setActiveThemeId(theme.id);
     setShowInterfaceThemes(false);
     announce(`已儲存介面配色「${theme.name}」。`, "success");
-  }, [announce]);
+  }, [announce, resolvedInterfaceMode]);
 
   const deleteCustomInterfaceTheme = useCallback((themeId) => {
     const theme = customThemes.find((item) => item.id === themeId);
@@ -10224,7 +10305,9 @@ function App() {
     <main
       ref={appRootRef}
       className={`moodboard-app ${isPanning ? "is-panning" : ""} ${isBooting ? "is-booting" : "is-boot-ready"} ${focusMode ? "is-focus-mode" : ""}`}
-      data-interface-theme={(previewTheme || activeTheme).id}
+      data-interface-theme={visualInterfaceTheme.id}
+      data-interface-mode={resolvedInterfaceMode}
+      data-interface-mode-preference={interfaceModePreference}
       style={interfaceThemeStyle}
       aria-busy={isBooting}
     >
@@ -10714,7 +10797,7 @@ function App() {
 
       {showSettings ? (
         <SettingsModal
-          activeTheme={activeTheme}
+          activeTheme={effectiveActiveTheme}
           accountLinkBusy={authBusy}
           accountLinkMessage={accountLinkMessage}
           accountReceipt={authReceipt}
@@ -10729,7 +10812,8 @@ function App() {
           enableProviderTesting={providerTestMode}
           initialSection={settingsInitialSection}
           locale={interfaceLocale}
-          mode={activeThemeMode}
+          mode={interfaceModePreference}
+          resolvedMode={resolvedInterfaceMode}
           typography={interfaceTypography}
           updateCheck={updateCheck}
           updateAction={updateAction}
@@ -10813,9 +10897,9 @@ function App() {
 
       {showInterfaceThemes ? (
         <InterfaceThemeModal
-          themes={availableThemes}
-          activeTheme={activeTheme}
-          previewTheme={previewTheme}
+          themes={displayedAvailableThemes}
+          activeTheme={effectiveActiveTheme}
+          previewTheme={effectivePreviewTheme}
           locale={interfaceLocale}
           onPreview={setPreviewTheme}
           onConfirm={confirmInterfaceTheme}

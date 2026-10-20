@@ -2,8 +2,28 @@ const COLOR_KEYS = ["background", "panel", "canvas", "text", "muted", "accent"];
 
 export const THEME_STORAGE_KEY = "infinite-moodboard-interface-themes-v1";
 export const ACTIVE_THEME_STORAGE_KEY = "infinite-moodboard-active-interface-theme-v1";
+export const INTERFACE_MODE_STORAGE_KEY = "infinite-moodboard-interface-mode-v1";
 export const INTERFACE_THEME_FILE_TYPE = "infinite-moodboard-interface-theme";
 export const DEFAULT_INTERFACE_THEME_ID = "fashion-monochrome";
+
+export const FASHION_MONOCHROME_COLORS = Object.freeze({
+  light: Object.freeze({
+    background: "#F4F4F4",
+    panel: "#FFFFFF",
+    canvas: "#F8F8F8",
+    text: "#151515",
+    muted: "#5F5F5F",
+    accent: "#262626",
+  }),
+  dark: Object.freeze({
+    background: "#080808",
+    panel: "#121212",
+    canvas: "#0D0D0D",
+    text: "#F5F5F5",
+    muted: "#A3A3A3",
+    accent: "#E7E7E7",
+  }),
+});
 
 export const BUILT_IN_THEMES = Object.freeze([
   {
@@ -12,14 +32,7 @@ export const BUILT_IN_THEMES = Object.freeze([
     builtin: true,
     category: "product",
     monochrome: true,
-    colors: {
-      background: "#080808",
-      panel: "#121212",
-      canvas: "#0D0D0D",
-      text: "#F5F5F5",
-      muted: "#A3A3A3",
-      accent: "#E7E7E7",
-    },
+    colors: FASHION_MONOCHROME_COLORS.dark,
   },
   {
     id: "deep-cyan",
@@ -283,6 +296,38 @@ export function normalizeInterfaceTheme(value, fallback = BUILT_IN_THEMES[0]) {
 export function interfaceThemeMode(theme) {
   const normalized = normalizeInterfaceTheme(theme);
   return relativeLuminance(normalized.colors.background) > 0.45 ? "light" : "dark";
+}
+
+export function normalizeInterfaceMode(value) {
+  return ["system", "light", "dark"].includes(value) ? value : "system";
+}
+
+export function resolveInterfaceMode(preference, prefersDark = false) {
+  const normalized = normalizeInterfaceMode(preference);
+  return normalized === "system" ? (prefersDark ? "dark" : "light") : normalized;
+}
+
+export function loadInterfaceModePreference(storage, legacyTheme = null) {
+  try {
+    const stored = storage?.getItem?.(INTERFACE_MODE_STORAGE_KEY);
+    if (["system", "light", "dark"].includes(stored)) return stored;
+    const legacyThemeId = storage?.getItem?.(ACTIVE_THEME_STORAGE_KEY);
+    if (legacyThemeId && legacyTheme) return interfaceThemeMode(legacyTheme);
+  } catch {
+    // Storage can be unavailable; system-follow remains the safe default.
+  }
+  return "system";
+}
+
+export function resolveInterfaceThemeForMode(theme, mode) {
+  const normalized = normalizeInterfaceTheme(theme);
+  if (normalized.id !== DEFAULT_INTERFACE_THEME_ID) return normalized;
+  const resolvedMode = mode === "dark" ? "dark" : "light";
+  return {
+    ...normalized,
+    monochrome: true,
+    colors: { ...FASHION_MONOCHROME_COLORS[resolvedMode] },
+  };
 }
 
 export function interfaceThemeCssVariables(theme) {

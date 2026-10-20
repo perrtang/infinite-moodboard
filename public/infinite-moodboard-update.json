@@ -1,8 +1,8 @@
 {
   "product": "Infinite Moodboard",
   "channel": "stable",
-  "version": "0.20.0",
+  "version": "0.21.0",
   "releasedAt": "2026-10-20",
-  "summary": "縮放百分比支援雙擊與雙點切換顯示全部物件及 100%，並移除重複的獨立按鈕。",
+  "summary": "介面模式新增自動跟隨裝置，時尚黑白會隨系統切換成全灰階的淺色或深色介面。",
   "url": "https://perrtang.github.io/infinite-moodboard/"
 }
