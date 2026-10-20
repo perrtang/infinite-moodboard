@@ -1,8 +1,8 @@
 {
   "product": "Infinite Moodboard",
   "channel": "stable",
-  "version": "0.28.0",
+  "version": "0.29.0",
   "releasedAt": "2026-10-21",
-  "summary": "將 Google 與 Email 驗證流程改用 PETFASHION 品牌登入網域 auth.petfashion.tw。",
+  "summary": "圖片匯入後保留原始像素尺寸，並讓寬高欄位穩定完成多位數輸入後再套用。",
   "url": "https://moodboard.petfashion.tw/"
 }

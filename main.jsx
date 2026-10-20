@@ -124,8 +124,10 @@ import {
   distributeObjectsByGap,
   ensureBoard,
   findCompositionsAffectedByObjectDeletion,
+  initialMediaDimensions,
   markerKey,
   matchesFilters,
+  minimumObjectDimension,
   movePivotPreservingPlacement,
   objectIntersectsWorldRect,
   objectLocalPointToWorld,
@@ -852,9 +854,7 @@ async function mediaFileToObject(file, point, index) {
   const media = isVideo ? await loadVideoElement(src) : await loadImageElement(src);
   const naturalWidth = (isVideo ? media.videoWidth : media.naturalWidth) || 320;
   const naturalHeight = (isVideo ? media.videoHeight : media.naturalHeight) || 240;
-  const scale = Math.min(1, 420 / Math.max(naturalWidth, naturalHeight));
-  const width = Math.max(48, Math.round(naturalWidth * scale));
-  const height = Math.max(48, Math.round(naturalHeight * scale));
+  const { width, height } = initialMediaDimensions(naturalWidth, naturalHeight, { isVideo });
   const baseName = file.name.replace(/\.[^.]+$/, "") || `${translateInterfaceText("素材")} ${index + 1}`;
   const now = new Date().toISOString();
 
@@ -3045,6 +3045,94 @@ function ObjectColorLibraryControl({
   );
 }
 
+function formatCommittedNumber(value, precision = 0) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "";
+  if (!Number.isInteger(precision) || precision < 0) return String(number);
+  const factor = 10 ** precision;
+  return String(Math.round(number * factor) / factor);
+}
+
+function CommittedNumberInput({ value, onCommit, min, max, step = 1, precision = 0, ...props }) {
+  const formattedValue = formatCommittedNumber(value, precision);
+  const [draft, setDraft] = useState(formattedValue);
+  const [editing, setEditing] = useState(false);
+  const cancelBlurRef = useRef(false);
+  const dirtyRef = useRef(false);
+
+  useEffect(() => {
+    if (!editing) setDraft(formattedValue);
+  }, [editing, formattedValue]);
+
+  const commitDraft = () => {
+    if (!dirtyRef.current) {
+      setDraft(formattedValue);
+      setEditing(false);
+      return;
+    }
+    const parsed = Number(draft);
+    if (!draft.trim() || !Number.isFinite(parsed)) {
+      setDraft(formattedValue);
+      setEditing(false);
+      dirtyRef.current = false;
+      return;
+    }
+    const next = Math.min(
+      Number.isFinite(Number(max)) ? Number(max) : Number.POSITIVE_INFINITY,
+      Math.max(Number.isFinite(Number(min)) ? Number(min) : Number.NEGATIVE_INFINITY, parsed),
+    );
+    setDraft(formatCommittedNumber(next, precision));
+    setEditing(false);
+    dirtyRef.current = false;
+    if (Math.abs(next - Number(value)) > 0.000001) onCommit(next);
+  };
+
+  return (
+    <input
+      {...props}
+      type="number"
+      min={min}
+      max={max}
+      step={step}
+      value={draft}
+      onFocus={() => {
+        cancelBlurRef.current = false;
+        dirtyRef.current = false;
+        setDraft(formattedValue);
+        setEditing(true);
+      }}
+      onChange={(event) => {
+        dirtyRef.current = true;
+        setDraft(event.target.value);
+      }}
+      onBlur={() => {
+        if (cancelBlurRef.current) {
+          cancelBlurRef.current = false;
+          dirtyRef.current = false;
+          setDraft(formattedValue);
+          setEditing(false);
+          return;
+        }
+        commitDraft();
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          event.currentTarget.blur();
+        } else if (event.key === "Escape") {
+          event.preventDefault();
+          event.stopPropagation();
+          cancelBlurRef.current = true;
+          dirtyRef.current = false;
+          setDraft(formattedValue);
+          setEditing(false);
+          event.currentTarget.blur();
+        }
+      }}
+    />
+  );
+}
+
 function Inspector({
   board,
   selectedIds,
@@ -3100,16 +3188,17 @@ function Inspector({
   const activeStarStyle = object?.shapeKind === "star"
     ? STAR_STYLE_PRESETS.find((preset) => preset.starPoints === object.starPoints && Math.abs(preset.starInnerRatio - object.starInnerRatio) < 0.001)
     : null;
+  const minimumDimension = object && ["image", "video"].includes(object.type) ? 1 : 24;
 
-  const updateDimension = (dimension, rawValue) => {
+  const updateDimension = (dimension, nextValue) => {
     if (!object) return;
-    const value = Math.max(24, Number(rawValue) || 24);
+    const value = Math.max(minimumDimension, Number(nextValue) || minimumDimension);
     const ratio = object.width / object.height || 1;
     const patch = object.aspectLocked === false
       ? { [dimension]: value }
       : dimension === "width"
-        ? { width: value, height: Math.max(24, value / ratio) }
-        : { height: value, width: Math.max(24, value * ratio) };
+        ? { width: value, height: Math.max(minimumDimension, value / ratio) }
+        : { height: value, width: Math.max(minimumDimension, value * ratio) };
     if (isTextObject(object) && patch.height) {
       patch.fontSize = Math.max(6, object.fontSize * (patch.height / object.height));
     }
@@ -3240,8 +3329,8 @@ function Inspector({
                 <div className="text-frame-fields">
                   <strong>文字框範圍</strong>
                   <div className="property-grid">
-                    <label><span>寬 W</span><input type="number" min="24" value={Math.round(object.width)} onChange={(event) => onResizeTextFrame(object.id, { width: Math.max(24, Number(event.target.value) || 24) })} /></label>
-                    <label><span>高 H</span><input type="number" min="24" value={Math.round(object.height)} onChange={(event) => onResizeTextFrame(object.id, { height: Math.max(24, Number(event.target.value) || 24) })} /></label>
+                    <label><span>寬 W</span><CommittedNumberInput key={`text-frame-width-${object.id}`} min={24} value={object.width} onCommit={(width) => onResizeTextFrame(object.id, { width })} /></label>
+                    <label><span>高 H</span><CommittedNumberInput key={`text-frame-height-${object.id}`} min={24} value={object.height} onCommit={(height) => onResizeTextFrame(object.id, { height })} /></label>
                   </div>
                   <p>只調整換行與排版範圍，不改變字級。右側與底部圓點分別調整寬、高；連按兩下可自動符合內容。右下角方框＋可把溢出文字續接到新的連結文字框。</p>
                 </div>
@@ -3392,7 +3481,7 @@ function Inspector({
             <section className="inspector-section">
               <h3>變形</h3>
               <div className="dimension-grid">
-                <label><span>寬 W</span><input type="number" min="24" value={Math.round(object.width)} onChange={(event) => updateDimension("width", event.target.value)} /></label>
+                <label><span>寬 W</span><CommittedNumberInput key={`object-width-${object.id}`} min={minimumDimension} value={object.width} onCommit={(value) => updateDimension("width", value)} /></label>
                 <button
                   className={`aspect-lock-button ${effectiveAspectLocked ? "is-locked" : "is-unlocked"}`}
                   type="button"
@@ -3403,7 +3492,7 @@ function Inspector({
                 >
                   {effectiveAspectLocked ? <Lock size={15} /> : <Unlock size={15} />}
                 </button>
-                <label><span>高 H</span><input type="number" min="24" value={Math.round(object.height)} onChange={(event) => updateDimension("height", event.target.value)} /></label>
+                <label><span>高 H</span><CommittedNumberInput key={`object-height-${object.id}`} min={minimumDimension} value={object.height} onCommit={(value) => updateDimension("height", value)} /></label>
               </div>
               <div className="property-grid">
                 <label className="property-wide"><span>旋轉角度</span><div className="input-with-suffix"><input type="number" value={Math.round(object.rotation * 10) / 10} onChange={(event) => onUpdateObject(object.id, { rotation: Number(event.target.value) || 0 })} /><b>°</b></div></label>
@@ -9668,8 +9757,8 @@ function App() {
     const bounds = selectionWorldBounds(targets);
     const startPoint = screenToWorld(event.clientX, event.clientY);
     const locked = selectionAspectLocked(base, selectedIdsRef.current);
-    const minimumScaleX = targets.reduce((minimum, object) => Math.max(minimum, 24 / object.width), 0.0001);
-    const minimumScaleY = targets.reduce((minimum, object) => Math.max(minimum, 24 / object.height), 0.0001);
+    const minimumScaleX = targets.reduce((minimum, object) => Math.max(minimum, minimumObjectDimension(object) / object.width), 0.0001);
+    const minimumScaleY = targets.reduce((minimum, object) => Math.max(minimum, minimumObjectDimension(object) / object.height), 0.0001);
     const initialTransform = resizeTransformFromHandle(bounds, handleKey, startPoint, startPoint, {
       fromCenter: event.altKey,
       preserveAspect: locked && !event.shiftKey,

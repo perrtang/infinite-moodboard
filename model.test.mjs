@@ -13,6 +13,7 @@ import {
   distributeObjectsByGap,
   ensureBoard,
   findCompositionsAffectedByObjectDeletion,
+  initialMediaDimensions,
   matchesFilters,
   movePivotPreservingPlacement,
   objectIntersectsWorldRect,
@@ -98,6 +99,89 @@ test("application version remains explicit and independent from board revisions"
   assert.match(APP_VERSION, /^\d+\.\d+\.\d+$/);
   assert.equal(APP_VERSION_LABEL, `App v${APP_VERSION}`);
   assert.equal(APP_RELEASE_DATE, "2026-10-21");
+});
+
+test("imported images keep their intrinsic pixel dimensions while videos retain a bounded preview", () => {
+  assert.deepEqual(initialMediaDimensions(2400, 1600), { width: 2400, height: 1600 });
+  assert.deepEqual(initialMediaDimensions(32, 24), { width: 32, height: 24 });
+  assert.deepEqual(initialMediaDimensions(16, 12), { width: 16, height: 12 });
+  assert.deepEqual(initialMediaDimensions(2400, 1600, { isVideo: true }), { width: 420, height: 280 });
+
+  const tinyImage = ensureBoard({
+    schemaVersion: BOARD_SCHEMA_VERSION,
+    objects: [{
+      type: "image",
+      mime: "image/png",
+      src: "data:image/png;base64,AA==",
+      width: 16,
+      height: 12,
+      originalWidth: 16,
+      originalHeight: 12,
+    }],
+  }).objects[0];
+  assert.deepEqual([tinyImage.width, tinyImage.height, tinyImage.originalWidth, tinyImage.originalHeight], [16, 12, 16, 12]);
+  const restoredTinyImage = restoreObjectSize({ ...tinyImage, width: 64, height: 48 });
+  assert.deepEqual([restoredTinyImage.width, restoredTinyImage.height], [16, 12]);
+});
+
+test("tiny media dimensions survive layout and composition paths while non-media objects keep a usable minimum", () => {
+  const board = ensureBoard({
+    schemaVersion: BOARD_SCHEMA_VERSION,
+    objects: [{
+      id: "tiny-image",
+      type: "image",
+      mime: "image/png",
+      src: "data:image/png;base64,AA==",
+      pivotX: 8,
+      pivotY: 6,
+      width: 16,
+      height: 12,
+      originalWidth: 16,
+      originalHeight: 12,
+      anchor: "mc",
+    }],
+  });
+  const tinyImage = board.objects[0];
+  const capture = createViewCapture(board, { x: 0, y: 0, zoom: 1 }, { width: 320, height: 240 });
+  assert.deepEqual([capture.objects[0].width, capture.objects[0].height], [16, 12]);
+
+  const restored = restoreViewCapture({
+    ...board,
+    objects: [{ ...tinyImage, width: 64, height: 48 }],
+  }, capture);
+  assert.deepEqual([restored.objects[0].width, restored.objects[0].height], [16, 12]);
+
+  const grid = arrangeObjectsInGrid([tinyImage], { columns: 1, startX: 0, startY: 0 });
+  assert.deepEqual([grid[0].width, grid[0].height, grid[0].pivotX, grid[0].pivotY], [16, 12, 8, 6]);
+
+  const handleResize = resizeObjectFromHandle(tinyImage, "se", { x: 16, y: 12 }, { x: 16, y: 12 });
+  assert.deepEqual([handleResize.width, handleResize.height], [16, 12]);
+  const groupScale = scaleObjectsAroundPoint([tinyImage], [tinyImage.id], { x: 0, y: 0 }, 1);
+  assert.deepEqual([groupScale[0].width, groupScale[0].height], [16, 12]);
+
+  assert.deepEqual([resizeObjectToDimensions(tinyImage, 4, 3).width, resizeObjectToDimensions(tinyImage, 4, 3).height], [4, 3]);
+  const tinyShape = ensureBoard({ schemaVersion: BOARD_SCHEMA_VERSION, objects: [{ type: "shape", width: 4, height: 3 }] }).objects[0];
+  assert.deepEqual([tinyShape.width, tinyShape.height], [24, 24]);
+
+  const svgShape = {
+    id: "svg-shape",
+    type: "shape",
+    mime: "image/svg+xml",
+    pivotX: 50,
+    pivotY: 50,
+    width: 100,
+    height: 100,
+    anchor: "mc",
+    rotation: 0,
+  };
+  const quickResizedShape = resizeObjectToDimensions(svgShape, 4, 3);
+  assert.deepEqual([quickResizedShape.width, quickResizedShape.height], [24, 24]);
+
+  const handleResizedShape = resizeObjectFromHandle(svgShape, "se", { x: 0, y: 0 }, { x: -90, y: -90 });
+  assert.deepEqual([handleResizedShape.width, handleResizedShape.height], [24, 24]);
+
+  const groupResizedShape = scaleObjectsAroundPoint([svgShape], [svgShape.id], { x: 0, y: 0 }, 0.1)[0];
+  assert.deepEqual([groupResizedShape.width, groupResizedShape.height], [24, 24]);
 });
 
 test("application update manifests compare stable semantic versions", () => {

@@ -86,6 +86,26 @@ function finiteNumber(value, fallback) {
   return Number.isFinite(number) ? number : fallback;
 }
 
+export function minimumObjectDimension(objectOrType) {
+  const type = typeof objectOrType === "string" ? objectOrType : objectOrType?.type;
+  if (["image", "video"].includes(type)) return 1;
+  if (["text", "shape", "artboard"].includes(type)) return 24;
+  const mime = typeof objectOrType === "object" && typeof objectOrType?.mime === "string" ? objectOrType.mime : "";
+  return mime.startsWith("image/") || mime.startsWith("video/") ? 1 : 24;
+}
+
+export function initialMediaDimensions(naturalWidth, naturalHeight, { isVideo = false } = {}) {
+  const sourceWidth = Math.max(1, Math.round(finiteNumber(naturalWidth, 320)));
+  const sourceHeight = Math.max(1, Math.round(finiteNumber(naturalHeight, 240)));
+  if (!isVideo) return { width: sourceWidth, height: sourceHeight };
+
+  const scale = Math.min(1, 420 / Math.max(sourceWidth, sourceHeight));
+  return {
+    width: Math.max(48, Math.round(sourceWidth * scale)),
+    height: Math.max(48, Math.round(sourceHeight * scale)),
+  };
+}
+
 function clampNumber(value, fallback, minimum, maximum) {
   return Math.min(maximum, Math.max(minimum, finiteNumber(value, fallback)));
 }
@@ -118,8 +138,9 @@ function normalizeObject(object, index) {
     : (mime.startsWith("video/") ? "video" : "image");
   const typeLabel = inferredType === "text" ? "文字" : inferredType === "shape" ? "形狀" : inferredType === "artboard" ? "紙張" : inferredType === "video" ? "影片" : "圖片";
   const fallbackName = `${typeLabel} ${String(index + 1).padStart(2, "0")}`;
-  const width = Math.max(24, finiteNumber(object?.width, 240));
-  const height = Math.max(24, finiteNumber(object?.height, 180));
+  const minimumDimension = minimumObjectDimension(inferredType);
+  const width = Math.max(minimumDimension, finiteNumber(object?.width, 240));
+  const height = Math.max(minimumDimension, finiteNumber(object?.height, 180));
   const fontSize = Math.max(6, finiteNumber(object?.fontSize, 32));
   const text = typeof object?.text === "string" ? object.text : "輸入文字";
   const textFlowId = inferredType === "text" && typeof object?.textFlowId === "string" && object.textFlowId.trim()
@@ -147,8 +168,8 @@ function normalizeObject(object, index) {
     pivotY: finiteNumber(object?.pivotY, 0),
     width,
     height,
-    originalWidth: Math.max(24, finiteNumber(object?.originalWidth, width)),
-    originalHeight: Math.max(24, finiteNumber(object?.originalHeight, height)),
+    originalWidth: Math.max(minimumDimension, finiteNumber(object?.originalWidth, width)),
+    originalHeight: Math.max(minimumDimension, finiteNumber(object?.originalHeight, height)),
     aspectLocked: object?.aspectLocked !== false,
     rotation: finiteNumber(object?.rotation, 0),
     tiltX: clampNumber(object?.tiltX, 0, -60, 60),
@@ -315,8 +336,9 @@ export function resizeArtboardToPreset(object, presetKey, orientation = "portrai
 
 export function resizeObjectToDimensions(object, nextWidth, nextHeight) {
   if (!object || typeof object !== "object") return object;
-  const width = Math.max(24, finiteNumber(nextWidth, object.width));
-  const height = Math.max(24, finiteNumber(nextHeight, object.height));
+  const minimumDimension = minimumObjectDimension(object);
+  const width = Math.max(minimumDimension, finiteNumber(nextWidth, object.width));
+  const height = Math.max(minimumDimension, finiteNumber(nextHeight, object.height));
   const originalAnchor = ANCHORS[object.anchor] ? object.anchor : "mc";
   const centered = originalAnchor === "mc" ? { ...object, anchor: "mc" } : movePivotPreservingPlacement(object, "mc");
   const resized = {
@@ -370,8 +392,8 @@ export function arrangeObjectsInGrid(objects, options = {}) {
   const columns = Math.max(1, Math.min(objects.length, Math.floor(finiteNumber(options.columns, Math.ceil(Math.sqrt(objects.length))))));
   const gapX = Math.max(0, finiteNumber(options.gapX, 24));
   const gapY = Math.max(0, finiteNumber(options.gapY, 24));
-  const cellWidth = Math.max(...objects.map((object) => Math.max(24, finiteNumber(object.width, 24))));
-  const cellHeight = Math.max(...objects.map((object) => Math.max(24, finiteNumber(object.height, 24))));
+  const cellWidth = Math.max(...objects.map((object) => Math.max(minimumObjectDimension(object), finiteNumber(object.width, 24))));
+  const cellHeight = Math.max(...objects.map((object) => Math.max(minimumObjectDimension(object), finiteNumber(object.height, 24))));
   const currentBounds = selectionWorldBounds(objects);
   const startX = finiteNumber(options.startX, currentBounds?.left || 0);
   const startY = finiteNumber(options.startY, currentBounds?.top || 0);
@@ -379,8 +401,9 @@ export function arrangeObjectsInGrid(objects, options = {}) {
     const column = index % columns;
     const row = Math.floor(index / columns);
     const anchor = ANCHORS[object.anchor] || ANCHORS.mc;
-    const width = Math.max(24, finiteNumber(object.width, 24));
-    const height = Math.max(24, finiteNumber(object.height, 24));
+    const minimumDimension = minimumObjectDimension(object);
+    const width = Math.max(minimumDimension, finiteNumber(object.width, 24));
+    const height = Math.max(minimumDimension, finiteNumber(object.height, 24));
     const left = startX + column * (cellWidth + gapX) + (cellWidth - width) / 2;
     const top = startY + row * (cellHeight + gapY) + (cellHeight - height) / 2;
     return {
@@ -479,8 +502,8 @@ function normalizeCapture(capture, index) {
             id: object.id,
             pivotX: finiteNumber(object.pivotX, 0),
             pivotY: finiteNumber(object.pivotY, 0),
-            width: Math.max(24, finiteNumber(object.width, 240)),
-            height: Math.max(24, finiteNumber(object.height, 180)),
+            width: Math.max(1, finiteNumber(object.width, 240)),
+            height: Math.max(1, finiteNumber(object.height, 180)),
             rotation: finiteNumber(object.rotation, 0),
             tiltX: clampNumber(object.tiltX, 0, -60, 60),
             tiltY: clampNumber(object.tiltY, 0, -60, 60),
@@ -680,13 +703,14 @@ export function restoreViewCapture(board, capture) {
   const restoredObjects = (capture?.objects || []).flatMap((state) => {
     const current = currentObjects.get(state.id);
     if (!current) return [];
+    const minimumDimension = minimumObjectDimension(current);
     return [
       {
         ...current,
         pivotX: finiteNumber(state.pivotX, current.pivotX),
         pivotY: finiteNumber(state.pivotY, current.pivotY),
-        width: Math.max(24, finiteNumber(state.width, current.width)),
-        height: Math.max(24, finiteNumber(state.height, current.height)),
+        width: Math.max(minimumDimension, finiteNumber(state.width, current.width)),
+        height: Math.max(minimumDimension, finiteNumber(state.height, current.height)),
         rotation: finiteNumber(state.rotation, current.rotation),
         tiltX: clampNumber(state.tiltX, current.tiltX, -60, 60),
         tiltY: clampNumber(state.tiltY, current.tiltY, -60, 60),
@@ -915,7 +939,12 @@ export function resizeObjectFromHandle(object, handleKey, startPoint, currentPoi
     y: finiteNumber(currentPoint?.y, 0) - finiteNumber(startPoint?.y, 0),
   };
   const localDelta = rotateVector(worldDelta.x, worldDelta.y, -rotation);
-  const transform = resizeScales(object.width, object.height, handleKey, localDelta, options);
+  const minimumDimension = minimumObjectDimension(object);
+  const transform = resizeScales(object.width, object.height, handleKey, localDelta, {
+    ...options,
+    minimumScaleX: finiteNumber(options.minimumScaleX, minimumDimension / object.width),
+    minimumScaleY: finiteNumber(options.minimumScaleY, minimumDimension / object.height),
+  });
   const objectAnchor = ANCHORS[object.anchor] || ANCHORS.mc;
   const fixedAnchor = ANCHORS[transform.pivotAnchor] || ANCHORS.mc;
   const originalFixedOffset = rotateVector(
@@ -983,8 +1012,8 @@ export function scaleObjectsAroundPoint(objects, selectedIds, point, requestedSc
   const selected = new Set(selectedIds);
   const targets = objects.filter((object) => selected.has(object.id));
   if (!targets.length) return [...objects];
-  const minimumScaleX = targets.reduce((minimum, object) => Math.max(minimum, 24 / object.width), 0.0001);
-  const minimumScaleY = targets.reduce((minimum, object) => Math.max(minimum, 24 / object.height), 0.0001);
+  const minimumScaleX = targets.reduce((minimum, object) => Math.max(minimum, minimumObjectDimension(object) / object.width), 0.0001);
+  const minimumScaleY = targets.reduce((minimum, object) => Math.max(minimum, minimumObjectDimension(object) / object.height), 0.0001);
   const scaleX = Math.max(minimumScaleX, finiteNumber(requestedScaleX, 1));
   const scaleY = Math.max(minimumScaleY, finiteNumber(requestedScaleY, 1));
   return objects.map((object) => {
@@ -1005,8 +1034,8 @@ export function resizeObjectsFromHandle(objects, selectedIds, bounds, handleKey,
   const selected = new Set(selectedIds);
   const targets = objects.filter((object) => selected.has(object.id));
   if (!targets.length || !bounds) return [...objects];
-  const minimumScaleX = targets.reduce((minimum, object) => Math.max(minimum, 24 / object.width), 0.0001);
-  const minimumScaleY = targets.reduce((minimum, object) => Math.max(minimum, 24 / object.height), 0.0001);
+  const minimumScaleX = targets.reduce((minimum, object) => Math.max(minimum, minimumObjectDimension(object) / object.width), 0.0001);
+  const minimumScaleY = targets.reduce((minimum, object) => Math.max(minimum, minimumObjectDimension(object) / object.height), 0.0001);
   const transform = resizeTransformFromHandle(bounds, handleKey, startPoint, currentPoint, {
     ...options,
     minimumScaleX,
@@ -1138,10 +1167,11 @@ export function viewObjectInViewport(object, viewport, options = {}) {
 }
 
 export function restoreObjectSize(object) {
+  const minimumDimension = minimumObjectDimension(object);
   const restored = {
     ...object,
-    width: Math.max(24, finiteNumber(object.originalWidth, object.width)),
-    height: Math.max(24, finiteNumber(object.originalHeight, object.height)),
+    width: Math.max(minimumDimension, finiteNumber(object.originalWidth, object.width)),
+    height: Math.max(minimumDimension, finiteNumber(object.originalHeight, object.height)),
     updatedAt: new Date().toISOString(),
   };
   if (object.type === "text") {
