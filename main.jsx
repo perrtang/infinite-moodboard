@@ -155,11 +155,14 @@ import {
   compositionOutputFormat,
   planCompositionSize,
 } from "./output.js";
+import { mergeMoodboardLibrary } from "./library.js";
 import {
   clearLocalMoodboardData,
   enqueueSync,
   getLocalLibrarySummary,
   getSyncJob,
+  listLocalBoards,
+  listSyncJobs,
   loadCurrentBoard,
   listVersions,
   removeSyncJob,
@@ -4481,14 +4484,35 @@ function driveStatusPresentation(driveSession) {
   return { icon: CloudOff, label: "Google Drive 尚未連結", tone: "muted" };
 }
 
+function libraryItemPresentation(item) {
+  const presentations = {
+    synced: { label: "本機與 Drive 已同步", tone: "success" },
+    linked: { label: "已連結 Drive", tone: "success" },
+    "local-only": { label: "僅保存在本機", tone: "local" },
+    "remote-only": { label: "僅保存在 Drive", tone: "remote" },
+    pending: { label: "等待同步", tone: "warning" },
+    syncing: { label: "正在同步", tone: "working" },
+    offline: { label: "離線等待同步", tone: "warning" },
+    quota: { label: "Drive 空間不足", tone: "error" },
+    "authorization-required": { label: "需要重新連結 Drive", tone: "warning" },
+    conflict: { label: "需要處理版本衝突", tone: "error" },
+    error: { label: "同步失敗", tone: "error" },
+  };
+  return presentations[item.status] || presentations["local-only"];
+}
+
 function DriveLibraryModal({
   board,
   currentContentBytes,
   currentLink,
   driveSession,
   driveSettings,
+  localBoards,
+  syncJobs,
   onConnect,
+  onCreateLocal,
   onDisconnect,
+  onOpenLocal,
   onOpenFile,
   onRefresh,
   onSave,
@@ -4500,10 +4524,13 @@ function DriveLibraryModal({
   const status = driveStatusPresentation(driveSession);
   const StatusIcon = status.icon;
   const files = driveSession.files || [];
-  const listedFiles = files.filter((file) => matchesListQuery([
-    file.name,
-    formatTime(file.modifiedTime || file.createdTime || Date.now()),
-    formatStorageSize(file.size),
+  const libraryItems = mergeMoodboardLibrary({ localBoards, remoteFiles: files, syncJobs, links: driveSettings.links });
+  const listedItems = libraryItems.filter((item) => matchesListQuery([
+    item.name,
+    libraryItemPresentation(item).label,
+    formatTime(item.updatedAt || Date.now()),
+    item.local ? "本機" : "",
+    item.remote ? "Drive" : "",
   ], search.query));
   const quota = driveSession.quota;
   const quotaAssessment = quota ? evaluateDriveQuota(quota, currentContentBytes) : null;
@@ -4527,12 +4554,6 @@ function DriveLibraryModal({
           {driveSession.connected ? (
             <button className="quiet-button" type="button" onClick={onRefresh} disabled={busy}><RefreshCw size={15} />重新整理</button>
           ) : null}
-        </section>
-
-        <section className="drive-local-draft" aria-label="目前本機畫布">
-          <span><HardDrive size={19} aria-hidden="true" /></span>
-          <div><strong data-l10n-ignore>{board.name}</strong><small>{`目前本機畫布 · 內容 r${board.revision} · ${formatStorageSize(currentContentBytes)}`}</small></div>
-          {currentLink ? <span className="drive-file-badge"><Cloud size={13} />已連結 Drive</span> : <span className="drive-file-badge is-local">尚未建立雲端檔案</span>}
         </section>
 
         {!driveSession.connected ? (
@@ -4571,34 +4592,46 @@ function DriveLibraryModal({
               </section>
             ) : null}
 
-            <div className="modal-list-toolbar">
-              <strong>{`${listedFiles.length} / ${files.length} 個 Drive 檔案`}</strong>
-              <ListSearchToggle search={search} resultCount={listedFiles.length} totalCount={files.length} label="搜尋 Google Drive Moodboard" />
-            </div>
-            <ListSearchField search={search} placeholder="搜尋 Moodboard 名稱或日期" />
-            {listedFiles.length ? (
-              <div className="drive-file-list">
-                {listedFiles.map((file) => (
-                  <article className={currentLink?.fileId === file.id ? "is-current" : ""} key={file.id}>
-                    <span className="drive-file-icon" aria-hidden="true"><FileArchive size={19} /></span>
-                    <div><strong data-l10n-ignore>{file.name}</strong><small>{`${formatTime(file.modifiedTime || file.createdTime)} · ${formatStorageSize(file.size)}`}</small></div>
-                    {currentLink?.fileId === file.id ? <span className="drive-file-badge"><Check size={13} />目前檔案</span> : null}
-                    <button className="quiet-button" type="button" onClick={() => onOpenFile(file)} disabled={busy}>開啟</button>
-                    {file.webViewLink ? <a className="icon-button" href={file.webViewLink} target="_blank" rel="noreferrer" aria-label="在 Google Drive 查看" title="在 Google Drive 查看"><ExternalLink size={15} /></a> : null}
-                  </article>
-                ))}
-              </div>
-            ) : files.length ? (
-              <div className="modal-empty"><Search size={24} /><strong>找不到符合的 Moodboard</strong><p>搜尋條件會保留，可以調整或清除。</p><button className="text-button" type="button" onClick={() => search.setQuery("")}>清除搜尋</button></div>
-            ) : (
-              <div className="modal-empty"><Cloud size={25} /><strong>Drive 裡還沒有 Moodboard</strong><p>按「儲存到 Drive」建立第一個雲端工作檔。</p></div>
-            )}
-
             <div className="drive-footer-actions">
               <span><ShieldCheck size={15} />只使用 drive.file 最小權限</span>
               <button className="quiet-button" type="button" onClick={onDisconnect} title="只中斷目前分頁，不影響 PETFASHION 登入"><CloudOff size={15} />中斷此分頁</button>
             </div>
           </>
+        )}
+
+        <div className="modal-list-toolbar moodboard-library-toolbar">
+          <strong>{`${listedItems.length} / ${libraryItems.length} 份 Moodboard`}</strong>
+          <div className="drive-library-list-actions">
+            <ListSearchToggle search={search} resultCount={listedItems.length} totalCount={libraryItems.length} label="搜尋我的 Moodboards" />
+            <button className="quiet-button" type="button" onClick={onCreateLocal}><Plus size={15} />新增 Moodboard</button>
+          </div>
+        </div>
+        <ListSearchField search={search} placeholder="搜尋 Moodboard 名稱、位置或同步狀態" />
+        {listedItems.length ? (
+          <div className="drive-file-list">
+            {listedItems.map((item) => {
+              const itemStatus = libraryItemPresentation(item);
+              const isCurrent = item.boardId === board.id;
+              const detail = [
+                item.local ? `本機內容 r${item.local.revision}` : null,
+                item.remote ? `Drive ${formatStorageSize(item.remote.size)}` : null,
+                item.updatedAt ? formatTime(item.updatedAt) : null,
+              ].filter(Boolean).join(" · ");
+              return (
+                <article className={isCurrent ? "is-current" : ""} key={item.key}>
+                  <span className="drive-file-icon" aria-hidden="true">{item.local ? <HardDrive size={19} /> : <FileArchive size={19} />}</span>
+                  <div><strong data-l10n-ignore>{item.name}</strong><small>{detail}</small></div>
+                  <span className={`drive-file-badge is-${itemStatus.tone}`}>{itemStatus.tone === "success" ? <Check size={13} /> : itemStatus.tone === "error" ? <AlertTriangle size={13} /> : item.remote ? <Cloud size={13} /> : <HardDrive size={13} />}{isCurrent ? "目前檔案" : itemStatus.label}</span>
+                  {!isCurrent ? <button className="quiet-button" type="button" onClick={() => item.local ? onOpenLocal(item.local) : onOpenFile(item.remote)} disabled={busy}>開啟</button> : null}
+                  {item.remote?.webViewLink ? <a className="icon-button" href={item.remote.webViewLink} target="_blank" rel="noreferrer" aria-label="在 Google Drive 查看" title="在 Google Drive 查看"><ExternalLink size={15} /></a> : null}
+                </article>
+              );
+            })}
+          </div>
+        ) : libraryItems.length ? (
+          <div className="modal-empty"><Search size={24} /><strong>找不到符合的 Moodboard</strong><p>搜尋條件會保留，可以調整或清除。</p><button className="text-button" type="button" onClick={() => search.setQuery("")}>清除搜尋</button></div>
+        ) : (
+          <div className="modal-empty"><HardDrive size={25} /><strong>還沒有 Moodboard</strong><p>建立第一份本機 Moodboard；需要跨裝置時再連結 Google Drive。</p><button className="primary-button" type="button" onClick={onCreateLocal}><Plus size={15} />新增 Moodboard</button></div>
         )}
       </div>
     </Modal>
@@ -5420,6 +5453,8 @@ function App() {
     estimatedBoardBytes: 0,
     storage: { usage: null, quota: null, persisted: null },
   });
+  const [localBoards, setLocalBoards] = useState([]);
+  const [syncJobs, setSyncJobs] = useState([]);
   const [customThemes, setCustomThemes] = useState(loadStoredInterfaceThemes);
   const [activeThemeId, setActiveThemeId] = useState(() => localStorage.getItem(ACTIVE_THEME_STORAGE_KEY) || BUILT_IN_THEMES[0].id);
   const [previewTheme, setPreviewTheme] = useState(null);
@@ -5871,8 +5906,14 @@ function App() {
 
   const refreshLocalLibrarySummary = useCallback(async () => {
     try {
-      const summary = await getLocalLibrarySummary();
+      const [summary, boards, jobs] = await Promise.all([
+        getLocalLibrarySummary(),
+        listLocalBoards(),
+        listSyncJobs(),
+      ]);
       setLocalLibrarySummary(summary);
+      setLocalBoards(boards);
+      setSyncJobs(jobs);
       return summary;
     } catch {
       return null;
@@ -5924,6 +5965,7 @@ function App() {
   const connectGoogleDrive = useCallback(async () => {
     if (!authReady) {
       setShowSettings(false);
+      setShowDriveLibrary(false);
       setPendingAdvancedFeature("drive");
       return null;
     }
@@ -6001,12 +6043,9 @@ function App() {
   }, [authReady, completeAdvancedFeature]);
 
   const openGoogleDriveLibrary = useCallback(() => {
-    if (!authReady) {
-      requestAdvancedFeature("drive");
-      return;
-    }
     setShowDriveLibrary(true);
-  }, [authReady, requestAdvancedFeature]);
+    refreshLocalLibrarySummary();
+  }, [refreshLocalLibrarySummary]);
 
   const closeAdvancedFeatureGate = useCallback(() => {
     if (authBusy) return;
@@ -6824,6 +6863,57 @@ function App() {
   }, [announce, importBoardFile]);
 
   const boardSnapshot = useCallback(() => ({ ...boardRef.current, view: viewRef.current }), []);
+
+  const activateLocalMoodboard = useCallback(async (nextBoard, message) => {
+    const current = boardSnapshot();
+    try {
+      await persistBoardLocally(current);
+      if (dirty || current.objects.length) {
+        await saveVersion(current, translateInterfaceText("切換 Moodboard 前"), "automatic");
+      }
+      cancelDriveOperations();
+      const next = ensureBoard(nextBoard);
+      initialBoardRef.current = next;
+      boardRef.current = next;
+      viewRef.current = next.view || { x: 0, y: 0, zoom: 1 };
+      selectedIdsRef.current = [];
+      fileHandleRef.current = null;
+      undoRef.current = [];
+      redoRef.current = [];
+      setBoard(next);
+      setView(viewRef.current);
+      setSelectedIds([]);
+      setKeyObjectId(null);
+      setVersions(await listVersions(next.id));
+      setDirty(false);
+      setSaveState("已從本機資料庫開啟");
+      await persistBoardLocally(next);
+      await refreshLocalLibrarySummary();
+      setShowDriveLibrary(false);
+      announce(message || `已開啟「${next.name}」。`, "success");
+      return next;
+    } catch (error) {
+      announce(error?.message || "無法切換 Moodboard；目前畫布未受影響。", "error");
+      return null;
+    }
+  }, [announce, boardSnapshot, cancelDriveOperations, dirty, persistBoardLocally, refreshLocalLibrarySummary]);
+
+  const openLocalMoodboard = useCallback((record) => {
+    if (!record?.board) {
+      announce("找不到這份本機 Moodboard 的內容。", "error");
+      return;
+    }
+    if (record.id === boardRef.current.id) {
+      setShowDriveLibrary(false);
+      return;
+    }
+    activateLocalMoodboard(record.board);
+  }, [activateLocalMoodboard, announce]);
+
+  const createLocalMoodboard = useCallback(() => {
+    const next = createBoard({ name: localizedDefaultBoardName(interfaceLocale) });
+    activateLocalMoodboard(next, "已建立新的本機 Moodboard；原本的 Moodboard 已安全保留。");
+  }, [activateLocalMoodboard, interfaceLocale]);
 
   const currentDriveContentBytes = useMemo(
     () => contentByteLength(serializeMoodboardSnapshot(board)),
@@ -9663,8 +9753,12 @@ function App() {
           currentLink={currentDriveLink}
           driveSession={driveSession}
           driveSettings={driveSettings}
+          localBoards={localBoards}
+          syncJobs={syncJobs}
           onConnect={connectGoogleDrive}
+          onCreateLocal={createLocalMoodboard}
           onDisconnect={disconnectGoogleDrive}
+          onOpenLocal={openLocalMoodboard}
           onOpenFile={openGoogleDriveFile}
           onRefresh={() => refreshGoogleDrive()}
           onSave={() => saveBoardToGoogleDrive()}

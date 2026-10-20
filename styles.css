@@ -6211,6 +6211,26 @@ html[lang="en"] .sidebar-tabs button svg {
   color: var(--text-muted);
 }
 
+.drive-file-badge.is-success,
+.drive-file-badge.is-remote {
+  color: var(--success);
+}
+
+.drive-file-badge.is-warning,
+.drive-file-badge.is-working {
+  color: var(--signal);
+}
+
+.drive-file-badge.is-error {
+  color: var(--danger);
+}
+
+.drive-library-list-actions {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+}
+
 .drive-permission-intro {
   background: var(--quiet-bg);
   border-radius: 8px;
@@ -7774,6 +7794,22 @@ button.status-label:hover {
   .drive-footer-actions {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .moodboard-library-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .drive-library-list-actions {
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .drive-library-list-actions .list-search-toggle {
+    min-height: 44px;
+    min-width: 44px;
   }
 
   .drive-toolbar-actions {

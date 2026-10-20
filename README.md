@@ -2,7 +2,13 @@
 
 Infinite Moodboard 是 PETFASHION 的免費、離線優先視覺工作台。圖片、影片、文字、SVG、版本與構圖運算都在瀏覽器中進行；使用者可下載可編輯的 `.moodboard` 工作檔，或輸出 PNG、WebP、AVIF、PDF 與唯讀 HTML。
 
-## v0.11.0 重點（本機待發布）
+## v0.12.0 重點（本機待發布）
+
+- 「我的 Moodboards」改為單一檔案庫：依 Moodboard ID 合併本機草稿、Drive 檔案及持久化同步狀態。
+- 訪客也能開啟本機檔案庫、新增與切換 Moodboard；只有連結 Drive 時才要求 PETFASHION 身份。
+- 清楚區分僅本機、僅 Drive、已同步、離線等待、授權、容量及衝突狀態，並支援統一搜尋。
+
+## v0.11.0 重點
 
 - IndexedDB 升級為多 Moodboard 本機資料庫；舊版目前畫布會自動移轉，並保留相容資料以支援版本回復。
 - 新增可持續保存、合併同一 Moodboard 最新變更的離線同步佇列；離線、授權、容量與衝突狀態可安全保留。

@@ -57,6 +57,8 @@ test("Google Drive storage and recovery copy is localized", () => {
   assert.equal(translateInterfaceText("Google Drive 已同步", "en"), "Google Drive synced");
   assert.equal(translateInterfaceText("本機安全暫存", "en"), "Local safety cache");
   assert.equal(translateInterfaceText("等待同步", "en"), "Waiting to sync");
+  assert.equal(translateInterfaceText("新增 Moodboard", "en"), "New Moodboard");
+  assert.equal(translateInterfaceText("2 / 5 份 Moodboard", "en"), "2 / 5 Moodboards");
   assert.equal(translateInterfaceText("2 / 5 個 Drive 檔案", "en"), "2 / 5 Drive files");
   assert.equal(translateInterfaceText("目前 Drive 帳號：person@example.com", "en"), "Current Drive account: person@example.com");
   assert.match(translateInterfaceText("Google Drive 空間不足；畫布仍安全保存在這台裝置。", "en"), /remains safely saved/);
