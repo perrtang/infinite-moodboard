@@ -78,6 +78,17 @@ test("workspace search, ruler, and shortcut copy is localized", () => {
   assert.equal(translateInterfaceText("搜尋構圖名稱", "zh-Hans"), "搜索构图名称");
 });
 
+test("source workspace controls and isolation feedback are localized", () => {
+  assert.equal(translateInterfaceText("素材工具", "en"), "Source tools");
+  assert.equal(translateInterfaceText("新增到 Moodboard", "en"), "Add to Moodboard");
+  assert.equal(translateInterfaceText("定位 3 個可見畫布實例", "en"), "Locate 3 visible canvas instances");
+  assert.equal(translateInterfaceText("2 個來源素材", "en"), "2 source assets");
+  assert.equal(translateInterfaceText("目前正在操作來源素材；畫布物件未被變更。", "en"), "You are working with a source asset. Canvas objects were not changed.");
+  assert.equal(translateInterfaceText("下載目前的原始素材", "zh-Hans"), "下载当前的原始素材");
+  assert.equal(translateInterfaceText("回到 Moodboard 後復原 ⌘Z", "en"), "Return to the Moodboard to undo ⌘Z");
+  assert.equal(translateInterfaceText("素材檢視中 · Moodboard 名稱唯讀", "en"), "Source view · Moodboard name is read-only");
+});
+
 test("Google Drive storage and recovery copy is localized", () => {
   assert.equal(translateInterfaceText("儲存與同步", "en"), "Storage & sync");
   assert.equal(translateInterfaceText("選擇主要儲存位置", "en"), "Choose the primary storage location");

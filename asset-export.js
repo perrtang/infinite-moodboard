@@ -134,3 +134,36 @@ export function objectExportArtifact(object) {
   }
   return { blob: objectToSvgBlob(object), extension: "svg" };
 }
+
+const SOURCE_EXTENSION_BY_MIME = {
+  "image/avif": "avif",
+  "image/gif": "gif",
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/svg+xml": "svg",
+  "image/webp": "webp",
+  "video/mp4": "mp4",
+  "video/quicktime": "mov",
+  "video/webm": "webm",
+};
+
+function sourceExtension(object, blob) {
+  return object?.originalFilename?.match(/\.([a-z0-9]+)$/i)?.[1]?.toLowerCase()
+    || SOURCE_EXTENSION_BY_MIME[object?.mime]
+    || SOURCE_EXTENSION_BY_MIME[blob?.type]
+    || (isVideoObject(object) ? "video" : "image");
+}
+
+export async function sourceExportArtifact(object) {
+  if (!object?.src || !["image", "video"].includes(object.type)) {
+    throw new Error("這個項目沒有可下載的原始素材。");
+  }
+  const response = await fetch(object.src);
+  if (!response.ok) throw new Error("無法讀取原始素材；畫布實例未受影響。");
+  const blob = await response.blob();
+  const mime = blob.type || object.mime;
+  return {
+    blob: mime ? blob.slice(0, blob.size, mime) : blob,
+    extension: sourceExtension(object, blob),
+  };
+}

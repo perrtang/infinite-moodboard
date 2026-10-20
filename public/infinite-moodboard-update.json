@@ -1,8 +1,8 @@
 {
   "product": "Infinite Moodboard",
   "channel": "stable",
-  "version": "0.31.0",
+  "version": "0.32.0",
   "releasedAt": "2026-10-21",
-  "summary": "新增連結優先的 Moodboard 分享流程：收件者登入後直接以僅檢視身分開啟，並可申請編輯；分享與 Google Drive 儲存權限各自獨立。",
+  "summary": "素材檢視成為獨立工作區：操作只會作用於來源素材，不再誤動背景物件；可下載原始檔、建立原始尺寸的新實例，並安全返回原本 Moodboard 選取狀態。",
   "url": "https://moodboard.petfashion.tw/"
 }

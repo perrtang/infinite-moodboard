@@ -251,6 +251,45 @@ export function createObjectDuplicate(object, options = {}) {
   };
 }
 
+export function createSourceInstance(object, point = { x: 0, y: 0 }, options = {}) {
+  const timestamp = options.timestamp || new Date().toISOString();
+  const baseName = String(object?.originalFilename || object?.name || "素材").replace(/\.[^.]+$/, "") || "素材";
+  const width = Math.max(1, finiteNumber(object?.originalWidth, object?.width || 1));
+  const height = Math.max(1, finiteNumber(object?.originalHeight, object?.height || 1));
+  return {
+    ...createObjectDuplicate(object, {
+      id: options.id,
+      offset: 0,
+      groupId: null,
+      timestamp,
+    }),
+    name: `${baseName} 實例`,
+    layerName: `${baseName} 實例`,
+    pivotX: finiteNumber(point?.x, 0),
+    pivotY: finiteNumber(point?.y, 0),
+    width,
+    height,
+    originalWidth: width,
+    originalHeight: height,
+    aspectLocked: true,
+    rotation: 0,
+    tiltX: 0,
+    tiltY: 0,
+    depth: 0,
+    perspective: 1000,
+    videoControlsVisible: true,
+    anchor: "mc",
+    groupId: null,
+    artboardId: null,
+    annotationTargetIds: [],
+    markers: [],
+    visible: true,
+    locked: false,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
 function normalizeGroup(group, index, validObjectIds) {
   const now = new Date().toISOString();
   const memberIds = [...new Set((Array.isArray(group?.memberIds) ? group.memberIds : [])

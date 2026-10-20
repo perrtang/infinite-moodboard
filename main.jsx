@@ -120,6 +120,7 @@ import {
   createGroup,
   createId,
   createObjectDuplicate,
+  createSourceInstance,
   createViewCapture,
   distributeObjectsByGap,
   ensureBoard,
@@ -4140,9 +4141,14 @@ function FilterStage({ objects, selectedIds, onSelect, onClear, filters }) {
   );
 }
 
-function SourceStage({ sourceAssets }) {
+function sourceTypeLabel(object) {
+  if (isVideoObject(object)) return "影片";
+  if (object?.mime === "image/svg+xml") return "SVG";
+  return "圖片";
+}
+
+function SourceStage({ sourceAssets, activeSourceId, onSelectSource }) {
   const [viewMode, setViewMode] = useState("grid");
-  const [slideIndex, setSlideIndex] = useState(0);
   const search = useListSearch("sources");
   const swipeStartRef = useRef(null);
   const thumbnailTapRef = useRef({ id: null, time: 0 });
@@ -4151,16 +4157,18 @@ function SourceStage({ sourceAssets }) {
     source.representative.name,
     source.representative.mime,
   ], search.query));
-  const activeIndex = listedSources.length ? Math.min(slideIndex, listedSources.length - 1) : 0;
+  const selectedIndex = listedSources.findIndex((source) => source.sourceId === activeSourceId);
+  const activeIndex = listedSources.length ? Math.max(0, selectedIndex) : 0;
   const activeSource = listedSources[activeIndex];
   const goToSlide = useCallback((nextIndex) => {
     if (!listedSources.length) return;
-    setSlideIndex((nextIndex + listedSources.length) % listedSources.length);
-  }, [listedSources.length]);
+    const source = listedSources[(nextIndex + listedSources.length) % listedSources.length];
+    onSelectSource(source.sourceId);
+  }, [listedSources, onSelectSource]);
 
   useEffect(() => {
-    setSlideIndex((current) => listedSources.length ? Math.min(current, listedSources.length - 1) : 0);
-  }, [listedSources.length]);
+    if (listedSources.length && selectedIndex < 0) onSelectSource(listedSources[0].sourceId);
+  }, [listedSources, onSelectSource, selectedIndex]);
 
   useEffect(() => {
     if (viewMode !== "original") return undefined;
@@ -4180,9 +4188,10 @@ function SourceStage({ sourceAssets }) {
   }, [activeIndex, goToSlide, viewMode]);
 
   const openOriginal = useCallback((index) => {
-    setSlideIndex(index);
+    const source = listedSources[index];
+    if (source) onSelectSource(source.sourceId);
     setViewMode("original");
-  }, []);
+  }, [listedSources, onSelectSource]);
 
   return (
     <div className={`filter-stage source-stage ${search.open ? "has-list-search" : ""}`} aria-label="來源素材檢視">
@@ -4205,13 +4214,13 @@ function SourceStage({ sourceAssets }) {
         <div className="filter-stage-grid source-stage-grid">
           {listedSources.map((source, index) => {
             const object = source.representative;
-            const typeLabel = isVideoObject(object) ? "影片" : object.mime === "image/svg+xml" ? "SVG" : "圖片";
+            const typeLabel = sourceTypeLabel(object);
             return (
               <button
                 type="button"
-                className={activeIndex === index ? "is-active" : ""}
+                className={activeSource?.sourceId === source.sourceId ? "is-active" : ""}
                 key={source.sourceId}
-                onClick={() => setSlideIndex(index)}
+                onClick={() => onSelectSource(source.sourceId)}
                 onDoubleClick={() => openOriginal(index)}
                 onPointerUp={(event) => {
                   if (event.pointerType === "mouse") return;
@@ -4275,6 +4284,56 @@ function SourceStage({ sourceAssets }) {
         </div> : null
       )}
     </div>
+  );
+}
+
+function SourceInspector({ source, visibleInstanceCount = 0, readOnly = false, busy = false, onAddInstance, onShowInstances, onExportSource, mobilePanel, setMobilePanel }) {
+  const object = source?.representative;
+  const sourceName = object?.originalFilename || object?.name || "尚未選取";
+  return (
+    <aside className={`inspector source-inspector ${mobilePanel === "right" ? "is-mobile-open" : ""}`} aria-label="素材資訊">
+      <div className="inspector-heading">
+        <div>
+          <span>Source</span>
+          <strong>{source ? "1 個素材已選取" : "尚未選取"}</strong>
+        </div>
+        <IconButton className="mobile-close" label="關閉素材資訊" onClick={() => setMobilePanel(null)}><X size={18} /></IconButton>
+      </div>
+      <div className="panel-scroll source-inspector-content">
+        {source ? (
+          <>
+            <div className="source-inspector-preview"><MediaElement object={object} decorative /></div>
+            <section className="inspector-section">
+              <h3>來源素材</h3>
+              <strong className="source-inspector-name" data-l10n-ignore>{sourceName}</strong>
+              <dl className="source-inspector-meta">
+                <div><dt>類型</dt><dd>{sourceTypeLabel(object)}</dd></div>
+                <div><dt>原始尺寸</dt><dd>{`${Math.round(object.originalWidth || object.width)} × ${Math.round(object.originalHeight || object.height)} px`}</dd></div>
+                <div><dt>畫布實例</dt><dd>{source.instanceIds.length}</dd></div>
+              </dl>
+            </section>
+            <section className="inspector-section source-inspector-actions" aria-label="素材操作">
+              <button className="primary-button full-width" type="button" onClick={() => onAddInstance(source.sourceId)} disabled={readOnly || busy}>
+                <ImagePlus size={16} /> 新增到 Moodboard
+              </button>
+              <button className="secondary-button full-width" type="button" onClick={() => onShowInstances(source.sourceId)}>
+                <LocateFixed size={16} /> {`定位 ${visibleInstanceCount} 個可見畫布實例`}
+              </button>
+              <button className="secondary-button full-width" type="button" onClick={() => onExportSource(source.sourceId)} disabled={busy}>
+                <Download size={16} /> {busy ? "準備下載…" : "下載原始素材"}
+              </button>
+            </section>
+            <p className="source-inspector-note">尺寸、旋轉、標記與圖層屬於各自的畫布實例；在這裡操作不會改到背景中看不見的物件。</p>
+          </>
+        ) : (
+          <div className="inspector-empty source-inspector-empty">
+            <ImageIcon size={27} />
+            <strong>還沒有可操作的來源素材</strong>
+            <p>回到 Moodboard 加入圖片、影片或 SVG 後，就能在這裡檢視與下載原始素材。</p>
+          </div>
+        )}
+      </div>
+    </aside>
   );
 }
 
@@ -6059,6 +6118,7 @@ function App() {
   const [dragActive, setDragActive] = useState(false);
   const [shapeMenuOpen, setShapeMenuOpen] = useState(false);
   const [leftTab, setLeftTab] = useState("layers");
+  const [activeSourceId, setActiveSourceId] = useState(null);
   const [selectedCaptureId, setSelectedCaptureId] = useState(null);
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [layerTypeFilter, setLayerTypeFilter] = useState("all");
@@ -6306,6 +6366,13 @@ function App() {
 
   const finishStartup = useCallback(() => setIsBooting(false), []);
   const changeLeftTab = useCallback((nextTab) => {
+    if (nextTab === "sources") {
+      setShapeMenuOpen(false);
+      setDragActive(false);
+      setSpaceDown(false);
+      setLoadedTextFlow(null);
+      setEditingText(null);
+    }
     setLeftTab(nextTab);
     if (nextTab !== "filters") setFilters(DEFAULT_FILTERS);
   }, []);
@@ -10409,12 +10476,16 @@ function App() {
       const files = [...(event.clipboardData?.files || [])].filter((file) => file.type.startsWith("image/") || file.type.startsWith("video/") || isSvgFile(file));
       if (files.length) {
         event.preventDefault();
+        if (leftTab === "sources") {
+          announce("素材檢視不會新增或改動畫布物件；請先回到 Moodboard。", "warning");
+          return;
+        }
         addMediaFiles(files, canvasCenterWorld());
       }
     };
     window.addEventListener("paste", paste);
     return () => window.removeEventListener("paste", paste);
-  }, [addMediaFiles, canvasCenterWorld]);
+  }, [addMediaFiles, announce, canvasCenterWorld, leftTab]);
 
   useEffect(() => {
     const selectAllVisibleObjects = () => {
@@ -10530,10 +10601,22 @@ function App() {
         setShowShortcuts(false);
         return;
       }
-      if (event.code === "Space" && !typing) { event.preventDefault(); setSpaceDown(true); }
+      if (leftTab === "sources" && event.key === "Escape") return;
       if (typing) return;
       const modifier = event.metaKey || event.ctrlKey;
       const key = event.key.toLowerCase();
+      const shiftOnly = event.shiftKey && !modifier && !event.altKey;
+      if (leftTab === "sources") {
+        const blockedModifier = modifier && !event.altKey && ["a", "c", "x", "v", "z"].includes(key);
+        const blockedShift = shiftOnly && ["KeyV", "KeyH", "Digit3", "KeyR", "Semicolon", "Quote", "KeyD", "KeyG"].includes(event.code);
+        const blockedDirect = event.code === "Space" || ["Backspace", "Delete"].includes(event.key);
+        if (blockedModifier || blockedShift || blockedDirect) {
+          event.preventDefault();
+          if (!event.repeat) announce("目前正在操作來源素材；畫布物件未被變更。", "info");
+          return;
+        }
+      }
+      if (event.code === "Space") { event.preventDefault(); setSpaceDown(true); }
       if (modifier && !event.altKey) {
         if (key === "s") { event.preventDefault(); savePreferredBoard(); return; }
         if (key === "o") { event.preventDefault(); openBoardFile(); return; }
@@ -10545,7 +10628,6 @@ function App() {
         if (key === "z" && event.shiftKey) { event.preventDefault(); redo(); return; }
         if (key === "z") { event.preventDefault(); undo(); return; }
       }
-      const shiftOnly = event.shiftKey && !modifier && !event.altKey;
       if (shiftOnly) {
         if (event.code === "Slash") { event.preventDefault(); setShowShortcuts((current) => !current); return; }
         if (event.code === "KeyV") { event.preventDefault(); setTool("select"); return; }
@@ -10753,10 +10835,24 @@ function App() {
     else addMediaFiles(files, screenToWorld(event.clientX, event.clientY));
   }, [addMediaFiles, announce, cloudReadOnly, importLocalBoardFile, screenToWorld]);
 
+  const onSourceModeDrop = useCallback((event) => {
+    event.preventDefault();
+    setDragActive(false);
+    announce("素材檢視不會新增或改動畫布物件；請先回到 Moodboard。", "warning");
+  }, [announce]);
+
   const filteredObjects = useMemo(() => board.objects.filter((object) => object.visible && matchesFilters(object, filters)), [board.objects, filters]);
   const sourceAssets = useMemo(() => sourceAssetsFromObjects(board.objects), [board.objects]);
+  const sourceModeActive = leftTab === "sources";
+  const resolvedActiveSourceId = sourceAssets.some((source) => source.sourceId === activeSourceId)
+    ? activeSourceId
+    : sourceAssets[0]?.sourceId || null;
+  const activeSourceAsset = sourceAssets.find((source) => source.sourceId === resolvedActiveSourceId) || null;
+  const activeSourceVisibleInstanceCount = activeSourceAsset
+    ? activeSourceAsset.instanceIds.filter((id) => board.objects.some((object) => object.id === id && object.visible)).length
+    : 0;
   const filtersActive = filters.symbols.length + filters.colors.length > 0;
-  const inspectionActive = filtersActive || leftTab === "sources";
+  const inspectionActive = filtersActive || sourceModeActive;
   const exportCount = objectsForExport(board.objects.filter((object) => object.visible), selectedIds, exportScope).length;
   const soleSelectedId = selectedIds.length === 1 ? selectedIds[0] : null;
   const selectedObjects = useMemo(
@@ -10790,6 +10886,86 @@ function App() {
     && !textFrameGesture
     && !micro3DGesture,
   );
+
+  const addSourceInstanceToBoard = useCallback((sourceId) => {
+    if (cloudReadOnly) {
+      announce("目前為僅檢視；請先申請編輯權限。", "warning");
+      return;
+    }
+    const source = sourceAssetsFromObjects(boardRef.current.objects).find((item) => item.sourceId === sourceId);
+    if (!source) {
+      announce("找不到這份來源素材。", "warning");
+      return;
+    }
+    const instance = createSourceInstance(source.representative, canvasCenterWorld());
+    applyBoard((current) => ({ ...current, objects: [...current.objects, instance] }));
+    selectedIdsRef.current = [instance.id];
+    setSelectedIds([instance.id]);
+    setKeyObjectId(instance.id);
+    setTool("select");
+    setMobilePanel(null);
+    changeLeftTab("layers");
+    announce(`已從「${source.representative.originalFilename || source.representative.name}」新增一個畫布實例`, "success");
+  }, [announce, applyBoard, canvasCenterWorld, changeLeftTab, cloudReadOnly]);
+
+  const showSourceInstances = useCallback((sourceId) => {
+    const source = sourceAssetsFromObjects(boardRef.current.objects).find((item) => item.sourceId === sourceId);
+    const targets = source
+      ? boardRef.current.objects.filter((object) => source.instanceIds.includes(object.id) && object.visible)
+      : [];
+    if (!targets.length) {
+      announce(source ? "這份素材的畫布實例目前都已隱藏。" : "找不到這份來源素材。", "warning");
+      return;
+    }
+    const ids = targets.map((object) => object.id);
+    selectedIdsRef.current = ids;
+    setSelectedIds(ids);
+    setKeyObjectId(ids[0]);
+    setTool("select");
+    setMobilePanel(null);
+    changeLeftTab("layers");
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (rect) {
+      const points = targets.flatMap(objectWorldCorners);
+      const minX = Math.min(...points.map((point) => point.x));
+      const maxX = Math.max(...points.map((point) => point.x));
+      const minY = Math.min(...points.map((point) => point.y));
+      const maxY = Math.max(...points.map((point) => point.y));
+      const width = Math.max(1, maxX - minX);
+      const height = Math.max(1, maxY - minY);
+      const zoom = clamp(Math.min((rect.width - 96) / width, (rect.height - 96) / height), MIN_ZOOM, 1.8);
+      const nextView = {
+        zoom,
+        x: rect.width / 2 - ((minX + maxX) / 2) * zoom,
+        y: rect.height / 2 - ((minY + maxY) / 2) * zoom,
+      };
+      viewRef.current = nextView;
+      setView(nextView);
+    }
+    announce(`已在 Moodboard 顯示並選取 ${targets.length} 個畫布實例`, "success");
+  }, [announce, changeLeftTab]);
+
+  const exportSourceAsset = useCallback(async (sourceId) => {
+    const source = sourceAssetsFromObjects(boardRef.current.objects).find((item) => item.sourceId === sourceId);
+    if (!source) {
+      announce("找不到這份來源素材。", "warning");
+      return;
+    }
+    setIsExporting(true);
+    try {
+      const { sourceExportArtifact } = await loadAssetExportRuntime();
+      const artifact = await sourceExportArtifact(source.representative);
+      const sourceName = source.representative.originalFilename || source.representative.name || "source";
+      const baseName = sourceName.replace(/\.[^.]+$/, "");
+      downloadBlob(artifact.blob, `${safeFilename(baseName, "source")}.${artifact.extension}`);
+      announce(`已下載原始素材「${sourceName}」`, "success");
+    } catch (error) {
+      announce(error?.message || "原始素材下載失敗；畫布實例未受影響。", "error");
+    } finally {
+      setIsExporting(false);
+    }
+  }, [announce]);
+
   const resolvedKeyObjectId = selectedIds.includes(keyObjectId) ? keyObjectId : (selectedIds[0] || null);
   const effectiveLeftPanelVisible = !focusMode && leftPanelVisible;
   const effectiveRightPanelVisible = !focusMode && rightPanelVisible;
@@ -10849,14 +11025,27 @@ function App() {
         </div>
 
         <label className="board-title-field">
-          <span className="sr-only">Infinite Moodboard 名稱</span>
-          <input value={board.name} onChange={(event) => applyBoard((current) => ({ ...current, name: event.target.value }))} disabled={cloudReadOnly} />
-          <small aria-live="polite">{topbarSaveState}</small>
+          <span className="sr-only">{sourceModeActive ? "回到 Moodboard 後修改名稱" : "Infinite Moodboard 名稱"}</span>
+          <input
+            value={board.name}
+            onChange={(event) => applyBoard((current) => ({ ...current, name: event.target.value }))}
+            disabled={cloudReadOnly || sourceModeActive}
+            title={sourceModeActive ? "素材檢視中；回到 Moodboard 後才能修改名稱" : undefined}
+          />
+          <small aria-live="polite">{sourceModeActive ? "素材檢視中 · Moodboard 名稱唯讀" : topbarSaveState}</small>
         </label>
 
         <div className="topbar-secondary">
-          <IconButton label="復原 ⌘Z" onClick={undo} disabled={cloudReadOnly || !undoRef.current.length}><Undo2 size={18} /></IconButton>
-          <IconButton label="重做 ⇧⌘Z" onClick={redo} disabled={cloudReadOnly || !redoRef.current.length}><Redo2 size={18} /></IconButton>
+          <IconButton
+            label={sourceModeActive ? "回到 Moodboard 後復原 ⌘Z" : "復原 ⌘Z"}
+            onClick={undo}
+            disabled={cloudReadOnly || sourceModeActive || !undoRef.current.length}
+          ><Undo2 size={18} /></IconButton>
+          <IconButton
+            label={sourceModeActive ? "回到 Moodboard 後重做 ⇧⌘Z" : "重做 ⇧⌘Z"}
+            onClick={redo}
+            disabled={cloudReadOnly || sourceModeActive || !redoRef.current.length}
+          ><Redo2 size={18} /></IconButton>
           <button className="topbar-button" type="button" onClick={openVersionModal}><History size={17} /><span>版本</span></button>
           <button
             className="topbar-button collaboration-button"
@@ -10982,17 +11171,17 @@ function App() {
         <section className="canvas-column">
           <div
             ref={canvasToolbarRef}
-            className={`canvas-toolbar ${canvasToolbarPosition ? "has-custom-position" : ""} ${canvasToolbarDragging ? "is-dragging" : ""}`}
+            className={`canvas-toolbar ${sourceModeActive ? "is-source-toolbar" : ""} ${canvasToolbarPosition ? "has-custom-position" : ""} ${canvasToolbarDragging ? "is-dragging" : ""}`}
             style={canvasToolbarPosition ? {
               "--canvas-toolbar-x": `${canvasToolbarPosition.x}px`,
               "--canvas-toolbar-y": `${canvasToolbarPosition.y}px`,
             } : undefined}
-            aria-label="畫布工具"
+            aria-label={sourceModeActive ? "素材工具" : "畫布工具"}
           >
             <button
               className="canvas-toolbar-drag-handle"
               type="button"
-              aria-label="移動畫布工具列"
+              aria-label={sourceModeActive ? "移動素材工具列" : "移動畫布工具列"}
               title="拖曳移動；方向鍵微調；連按兩下或 Home 回到預設位置"
               onPointerDown={onCanvasToolbarDragStart}
               onDoubleClick={(event) => {
@@ -11004,58 +11193,83 @@ function App() {
             >
               <GripVertical size={15} aria-hidden="true" />
             </button>
-            <div className="tool-group">
-              <IconButton label="選取工具 Shift+V；連按兩下顯示全部物件" active={tool === "select"} aria-pressed={tool === "select"} onClick={(event) => onPrimaryCanvasToolClick(event, "select")}><MousePointer2 size={18} /></IconButton>
-              <IconButton label="平移工具 Shift+H（按住 Shift 可暫時選取）；連按兩下回到 100%" active={tool === "hand"} aria-pressed={tool === "hand"} onClick={(event) => onPrimaryCanvasToolClick(event, "hand")}><Hand size={18} /></IconButton>
-              <IconButton
-                label={authReady ? "進階 3D 旋轉工具 Shift+3（拖曳選取物件旋轉）" : "進階 3D 旋轉工具 Shift+3（需要登入）"}
-                active={tool === "3d"}
-                aria-pressed={tool === "3d"}
-                disabled={cloudReadOnly || !selectedIds.length}
-                onClick={() => tool === "3d" ? setTool("select") : requestAdvancedFeature("3d")}
-              >
-                <Box size={18} />
-              </IconButton>
-            </div>
-            <div className="tool-divider" />
-            <InsertToolbar
-              open={shapeMenuOpen}
-              disabled={cloudReadOnly}
-              onToggle={() => setShapeMenuOpen((current) => !current)}
-              onAddText={addTextObject}
-              onAddShape={addShapeObject}
-              onChooseImage={() => { setShapeMenuOpen(false); imageInputRef.current?.click(); }}
-              onChooseVideo={() => { setShapeMenuOpen(false); videoInputRef.current?.click(); }}
-              onChooseSvg={() => { setShapeMenuOpen(false); svgInputRef.current?.click(); }}
-            />
-            <IconButton label="建立 Grid" onClick={() => setShowGridBuilder(true)} disabled={cloudReadOnly}><LayoutGrid size={18} /></IconButton>
-            <div className="tool-divider" />
-            <div className="zoom-group">
-              <IconButton label="縮小" onClick={() => { const rect = canvasRef.current.getBoundingClientRect(); zoomAround(rect.left + rect.width / 2, rect.top + rect.height / 2, view.zoom / 1.2); }}><ZoomOut size={17} /></IconButton>
-              <button
-                className="zoom-value"
-                type="button"
-                aria-label={`縮放 ${Math.round(view.zoom * 100)}%；連按兩下切換顯示全部與 100%`}
-                title="連按兩下切換顯示全部與 100%"
-                onClick={onZoomValueClick}
-                onKeyDown={onZoomValueKeyDown}
-              >
-                {Math.round(view.zoom * 100)}%
-              </button>
-              <IconButton label="放大" onClick={() => { const rect = canvasRef.current.getBoundingClientRect(); zoomAround(rect.left + rect.width / 2, rect.top + rect.height / 2, view.zoom * 1.2); }}><ZoomIn size={17} /></IconButton>
-            </div>
+            {sourceModeActive ? (
+              <div className="source-toolbar-context">
+                <button className="source-toolbar-action source-toolbar-back" type="button" onClick={() => changeLeftTab("layers")} aria-label="回到 Moodboard" title="回到 Moodboard">
+                  <ArrowLeft size={17} /><span>回到 Moodboard</span>
+                </button>
+                <div className="tool-divider" />
+                <div className="source-toolbar-target" title={activeSourceAsset?.representative.originalFilename || activeSourceAsset?.representative.name || "尚無來源素材"}>
+                  <ImageIcon size={16} />
+                  <span data-l10n-ignore>{activeSourceAsset?.representative.originalFilename || activeSourceAsset?.representative.name || "尚無來源素材"}</span>
+                  {activeSourceAsset ? <small>{`${activeSourceAsset.instanceIds.length} 個實例`}</small> : null}
+                </div>
+                <button className="source-toolbar-action" type="button" onClick={() => addSourceInstanceToBoard(resolvedActiveSourceId)} disabled={!activeSourceAsset || cloudReadOnly} aria-label="從目前素材新增畫布實例" title="從目前素材新增畫布實例">
+                  <ImagePlus size={17} /><span>新增實例</span>
+                </button>
+                <button className="source-toolbar-action" type="button" onClick={() => showSourceInstances(resolvedActiveSourceId)} disabled={!activeSourceAsset} aria-label="在 Moodboard 定位目前素材的可見畫布實例" title="在 Moodboard 定位目前素材的可見畫布實例">
+                  <LocateFixed size={17} /><span>定位實例</span>
+                </button>
+                <button className="source-toolbar-action" type="button" onClick={() => exportSourceAsset(resolvedActiveSourceId)} disabled={!activeSourceAsset || isExporting} aria-label="下載目前的原始素材" title="下載目前的原始素材">
+                  <Download size={17} /><span>{isExporting ? "準備中…" : "下載原檔"}</span>
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="tool-group">
+                  <IconButton label="選取工具 Shift+V；連按兩下顯示全部物件" active={tool === "select"} aria-pressed={tool === "select"} onClick={(event) => onPrimaryCanvasToolClick(event, "select")}><MousePointer2 size={18} /></IconButton>
+                  <IconButton label="平移工具 Shift+H（按住 Shift 可暫時選取）；連按兩下回到 100%" active={tool === "hand"} aria-pressed={tool === "hand"} onClick={(event) => onPrimaryCanvasToolClick(event, "hand")}><Hand size={18} /></IconButton>
+                  <IconButton
+                    label={authReady ? "進階 3D 旋轉工具 Shift+3（拖曳選取物件旋轉）" : "進階 3D 旋轉工具 Shift+3（需要登入）"}
+                    active={tool === "3d"}
+                    aria-pressed={tool === "3d"}
+                    disabled={cloudReadOnly || !selectedIds.length}
+                    onClick={() => tool === "3d" ? setTool("select") : requestAdvancedFeature("3d")}
+                  >
+                    <Box size={18} />
+                  </IconButton>
+                </div>
+                <div className="tool-divider" />
+                <InsertToolbar
+                  open={shapeMenuOpen}
+                  disabled={cloudReadOnly}
+                  onToggle={() => setShapeMenuOpen((current) => !current)}
+                  onAddText={addTextObject}
+                  onAddShape={addShapeObject}
+                  onChooseImage={() => { setShapeMenuOpen(false); imageInputRef.current?.click(); }}
+                  onChooseVideo={() => { setShapeMenuOpen(false); videoInputRef.current?.click(); }}
+                  onChooseSvg={() => { setShapeMenuOpen(false); svgInputRef.current?.click(); }}
+                />
+                <IconButton label="建立 Grid" onClick={() => setShowGridBuilder(true)} disabled={cloudReadOnly}><LayoutGrid size={18} /></IconButton>
+                <div className="tool-divider" />
+                <div className="zoom-group">
+                  <IconButton label="縮小" onClick={() => { const rect = canvasRef.current.getBoundingClientRect(); zoomAround(rect.left + rect.width / 2, rect.top + rect.height / 2, view.zoom / 1.2); }}><ZoomOut size={17} /></IconButton>
+                  <button
+                    className="zoom-value"
+                    type="button"
+                    aria-label={`縮放 ${Math.round(view.zoom * 100)}%；連按兩下切換顯示全部與 100%`}
+                    title="連按兩下切換顯示全部與 100%"
+                    onClick={onZoomValueClick}
+                    onKeyDown={onZoomValueKeyDown}
+                  >
+                    {Math.round(view.zoom * 100)}%
+                  </button>
+                  <IconButton label="放大" onClick={() => { const rect = canvasRef.current.getBoundingClientRect(); zoomAround(rect.left + rect.width / 2, rect.top + rect.height / 2, view.zoom * 1.2); }}><ZoomIn size={17} /></IconButton>
+                </div>
+              </>
+            )}
           </div>
 
           <div
             ref={canvasRef}
-            className={`canvas-viewport canvas-background-${canvasBackground.mode} ${dragActive ? "is-drag-active" : ""} ${tool === "hand" || spaceDown ? "uses-hand" : ""} ${tool === "3d" ? "uses-3d" : ""} ${rotationGesture ? "is-rotating" : ""} ${micro3DGesture ? "is-3d-rotating" : ""} ${modifierDown ? "can-temporary-select" : ""} ${loadedTextFlow ? "is-text-flow-loaded" : ""}`}
-            onPointerDown={onCanvasPointerDown}
-            onDoubleClick={onCanvasDoubleClick}
-            onWheel={onWheel}
-            onDragEnter={(event) => { event.preventDefault(); if (!cloudReadOnly) setDragActive(true); }}
+            className={`canvas-viewport canvas-background-${canvasBackground.mode} ${dragActive ? "is-drag-active" : ""} ${sourceModeActive ? "is-source-mode" : ""} ${tool === "hand" || spaceDown ? "uses-hand" : ""} ${tool === "3d" ? "uses-3d" : ""} ${rotationGesture ? "is-rotating" : ""} ${micro3DGesture ? "is-3d-rotating" : ""} ${modifierDown ? "can-temporary-select" : ""} ${loadedTextFlow ? "is-text-flow-loaded" : ""}`}
+            onPointerDown={sourceModeActive ? undefined : onCanvasPointerDown}
+            onDoubleClick={sourceModeActive ? undefined : onCanvasDoubleClick}
+            onWheel={sourceModeActive ? undefined : onWheel}
+            onDragEnter={(event) => { event.preventDefault(); if (!cloudReadOnly && !sourceModeActive) setDragActive(true); }}
             onDragOver={(event) => event.preventDefault()}
             onDragLeave={(event) => { if (event.target === event.currentTarget) setDragActive(false); }}
-            onDrop={onDrop}
+            onDrop={sourceModeActive ? onSourceModeDrop : onDrop}
           >
             {!inspectionActive ? (
               <WorkspaceRulers
@@ -11075,6 +11289,7 @@ function App() {
               className={`world-layer ${inspectionActive ? "is-filter-muted" : ""}`}
               style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})` }}
               aria-hidden={inspectionActive}
+              inert={inspectionActive ? true : undefined}
             >
               <div className="world-origin" />
               {board.objects.filter((object) => object.visible).map((object) => (
@@ -11145,7 +11360,7 @@ function App() {
               />
             ) : null}
 
-            {marquee ? <div className="selection-marquee" style={marquee} aria-hidden="true" /> : null}
+            {marquee && !inspectionActive ? <div className="selection-marquee" style={marquee} aria-hidden="true" /> : null}
 
             {cloudReadOnly ? (
               <button className="cloud-read-only-banner" type="button" onClick={() => setShowCollaboration(true)}>
@@ -11153,7 +11368,7 @@ function App() {
               </button>
             ) : null}
 
-            {loadedTextFlow ? (
+            {loadedTextFlow && !inspectionActive ? (
               <div className="text-flow-placement-status" role="status">
                 <span className="text-flow-cursor-symbol" aria-hidden="true"><Type size={13} /><Plus size={9} /></span>
                 <span><strong>已載入溢出文字</strong><small>在空白畫布點一下建立連結文字框 · Esc 取消</small></span>
@@ -11170,22 +11385,29 @@ function App() {
               </div>
             ) : null}
 
-            {leftTab === "sources" ? <SourceStage sourceAssets={sourceAssets} /> : null}
+            {sourceModeActive ? (
+              <SourceStage
+                sourceAssets={sourceAssets}
+                activeSourceId={resolvedActiveSourceId}
+                onSelectSource={setActiveSourceId}
+              />
+            ) : null}
 
             {filtersActive && leftTab !== "sources" ? (
               <FilterStage objects={filteredObjects} selectedIds={selectedIds} onSelect={selectObject} onClear={() => setFilters(DEFAULT_FILTERS)} filters={filters} />
             ) : null}
 
-            {dragActive ? <div className="drop-overlay"><ImagePlus size={34} /><strong>放開以加入圖片、影片或 SVG</strong><span>原始檔不會上傳到伺服器</span></div> : null}
+            {dragActive && !sourceModeActive ? <div className="drop-overlay"><ImagePlus size={34} /><strong>放開以加入圖片、影片或 SVG</strong><span>原始檔不會上傳到伺服器</span></div> : null}
 
             <div className="canvas-status">
-              <span>{`${board.objects.length} 個物件`}</span>
+              <span>{sourceModeActive ? `${sourceAssets.length} 個來源素材` : `${board.objects.length} 個物件`}</span>
+              {sourceModeActive && activeSourceAsset ? <span data-l10n-ignore>{activeSourceAsset.representative.originalFilename || activeSourceAsset.representative.name}</span> : null}
               <span title="目前 Moodboard 內容版本">內容 r{board.revision}</span>
               <span>{saveState}</span>
               <span className="app-version" aria-label={`Infinite Moodboard 應用程式版本 ${APP_VERSION}`} title={`Infinite Moodboard ${APP_VERSION_LABEL}`}>{APP_VERSION_LABEL}</span>
             </div>
 
-            <div className="export-dock" role="toolbar" aria-label="匯出與合成輸出">
+            {!sourceModeActive ? <div className="export-dock" role="toolbar" aria-label="匯出與合成輸出">
               <div className="export-dock-group" role="group" aria-label="匯出個別素材">
                 <label>
                   <span className="sr-only">匯出範圍</span>
@@ -11227,11 +11449,23 @@ function App() {
                   <ImageDown size={16} /> {isRenderingComposition ? "輸出中…" : `輸出合成圖 ${compositionCount ? `(${compositionCount})` : ""}`}
                 </button>
               </div>
-            </div>
+            </div> : null}
           </div>
         </section>
 
-        <Inspector
+        {sourceModeActive ? (
+          <SourceInspector
+            source={activeSourceAsset}
+            visibleInstanceCount={activeSourceVisibleInstanceCount}
+            readOnly={cloudReadOnly}
+            busy={isExporting}
+            onAddInstance={addSourceInstanceToBoard}
+            onShowInstances={showSourceInstances}
+            onExportSource={exportSourceAsset}
+            mobilePanel={mobilePanel}
+            setMobilePanel={setMobilePanel}
+          />
+        ) : <Inspector
           board={board}
           selectedIds={selectedIds}
           onUpdateObject={updateObject}
@@ -11272,7 +11506,7 @@ function App() {
           readOnly={cloudReadOnly}
           mobilePanel={mobilePanel}
           setMobilePanel={setMobilePanel}
-        />
+        />}
       </div>
 
       {mobilePanel ? <button className="mobile-scrim" type="button" aria-label="關閉面板" onClick={() => setMobilePanel(null)} /> : null}

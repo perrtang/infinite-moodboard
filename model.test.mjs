@@ -9,6 +9,7 @@ import {
   createArtboardFromObjects,
   createGroup,
   createObjectDuplicate,
+  createSourceInstance,
   createViewCapture,
   distributeObjectsByGap,
   ensureBoard,
@@ -538,6 +539,47 @@ test("duplicated objects keep their source and marker values without sharing mar
   duplicate.markers[0].color = "cyan";
   assert.equal(original.markers[0].color, "pink");
   assert.deepEqual([duplicate.pivotX, duplicate.pivotY], [128, 108]);
+});
+
+test("a source material creates a clean independent canvas instance at its original size", () => {
+  const source = {
+    id: "object-transformed",
+    sourceId: "source-one",
+    type: "image",
+    name: "參考圖",
+    layerName: "參考圖",
+    originalFilename: "reference.png",
+    src: "data:image/png;base64,AA==",
+    mime: "image/png",
+    pivotX: 900,
+    pivotY: 700,
+    width: 240,
+    height: 160,
+    originalWidth: 1200,
+    originalHeight: 800,
+    rotation: 27,
+    tiltX: 12,
+    tiltY: -8,
+    depth: 40,
+    markers: [{ symbol: "star", color: "pink" }],
+    groupId: "group-one",
+    locked: true,
+    visible: false,
+  };
+  const instance = createSourceInstance(source, { x: 320, y: 240 }, {
+    id: "object-clean-instance",
+    timestamp: "2026-10-21T00:00:00.000Z",
+  });
+
+  assert.equal(instance.id, "object-clean-instance");
+  assert.equal(instance.sourceId, source.sourceId);
+  assert.deepEqual([instance.pivotX, instance.pivotY], [320, 240]);
+  assert.deepEqual([instance.width, instance.height], [1200, 800]);
+  assert.deepEqual([instance.rotation, instance.tiltX, instance.tiltY, instance.depth], [0, 0, 0, 0]);
+  assert.deepEqual(instance.markers, []);
+  assert.equal(instance.groupId, null);
+  assert.equal(instance.locked, false);
+  assert.equal(instance.visible, true);
 });
 
 test("artboards wrap the selected visual bounds with predictable padding and paper presets", () => {

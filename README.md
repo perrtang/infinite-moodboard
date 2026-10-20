@@ -26,6 +26,13 @@ Infinite Moodboard runs the canvas, imported media, transforms, exports, and ver
 - Optional Google Drive file storage and opt-in realtime collaboration with view/edit permission requests.
 - 3D, Drive, collaboration, and export runtimes are loaded only when used, keeping the opening bundle smaller.
 
+## v0.32.0 — source workspace isolation release
+
+- Turns Sources into an independent workspace with source-specific tools, details, original-file download, and visible-instance locating.
+- Prevents pointer, keyboard, paste, drop, Inspector, export, history, and title edits from changing hidden Moodboard objects while inspecting sources.
+- Creates clean independent canvas instances at their original dimensions and restores the previous Moodboard selection when returning.
+- Adds Traditional Chinese, Simplified Chinese, and English copy for the complete source workflow.
+
 ## v0.31.0 — link-first sharing release
 
 - Adds one clear Share action that creates a link for the current Moodboard.
