@@ -16,4 +16,4 @@
 - 只有擁有者與編輯者能寫入共編更新；只有擁有者能管理成員、房間與邀請。
 - 邀請連結是具期限的 bearer token。不要把連結放在公開 Issue、紀錄或螢幕截圖中。
 - 共編更新採分段上傳，單次更新限制 48 MiB；完成發布後不可覆寫內容，避免已同步歷史遭竄改。
-- `firestore.rules` 必須和應用版本一起審查及部署。GitHub Pages 發布成功不代表 Firestore 規則已部署。
+- `firestore.rules` 只是 Infinite Moodboard 規則片段，不能從本倉庫單獨部署；必須合併到 PETFASHION 中央規則、確認其它產品規則完整，再由中央基礎設施來源部署。GitHub Pages 發布成功不代表 Firestore 規則已部署。

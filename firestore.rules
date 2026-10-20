@@ -1,5 +1,9 @@
 rules_version = '2';
 
+// REVIEW FRAGMENT ONLY — DO NOT DEPLOY THIS FILE BY ITSELF.
+// PETFASHION's production project contains unrelated rules that must remain in
+// the authoritative central ruleset. Merge this fragment there before deploy.
+
 service cloud.firestore {
   match /databases/{database}/documents {
     function verified() {

@@ -1,0 +1,38 @@
+name: Test and publish release assets
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run tests
+        run: npm test
+      - name: Package self-hosted build
+        run: ./scripts/package-release.sh "${GITHUB_REF_NAME#v}"
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            release/Infinite-Moodboard-"$GITHUB_REF_NAME"-self-hosted.zip \
+            release/SHA256SUMS.txt \
+            --verify-tag \
+            --generate-notes \
+            --title "Infinite Moodboard $GITHUB_REF_NAME" \
+            --notes "Recommended: use the hosted app at https://perrtang.github.io/infinite-moodboard/. The attached ZIP is a self-hosted static web build, not a native desktop installer."

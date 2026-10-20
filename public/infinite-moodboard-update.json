@@ -1,8 +1,8 @@
 {
   "product": "Infinite Moodboard",
   "channel": "stable",
-  "version": "0.25.0",
+  "version": "0.26.0",
   "releasedAt": "2026-10-20",
-  "summary": "3D、Google Drive、即時協作與匯出改為使用時才載入，縮短開場程式載入時間。",
+  "summary": "完成 GitHub 正式下載與自架封裝、更新公開說明，並加強中央 Firestore 規則的部署防護。",
   "url": "https://perrtang.github.io/infinite-moodboard/"
 }

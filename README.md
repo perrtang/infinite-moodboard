@@ -1,162 +1,100 @@
 # Infinite Moodboard
 
-Infinite Moodboard 是 PETFASHION 的免費、離線優先視覺工作台。圖片、影片、文字、SVG、版本與構圖運算都在瀏覽器中進行；使用者可下載可編輯的 `.moodboard` 工作檔，或輸出 PNG、WebP、AVIF、PDF 與唯讀 HTML。
+> A free, local-first infinite canvas for visual research, references, layouts, and moodboards — built by PETFASHION.
 
-## v0.25.0 重點（本機待發布）
+[![Open the app](https://img.shields.io/badge/Open-Infinite_Moodboard-111111?style=for-the-badge)](https://perrtang.github.io/infinite-moodboard/)
+[![Latest release](https://img.shields.io/github/v/release/perrtang/infinite-moodboard?display_name=tag&style=for-the-badge)](https://github.com/perrtang/infinite-moodboard/releases/latest)
+[![Test and deploy](https://github.com/perrtang/infinite-moodboard/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/perrtang/infinite-moodboard/actions/workflows/deploy-pages.yml)
 
-- 3D 控制器、Google Drive、即時協作、物件匯出、合成輸出與瀏覽器版改為第一次使用時才載入。
-- 開場不再預載 Firestore、Yjs 與進階輸出程式；功能載入失敗時保留當前畫布，並提供明確的重載回復動作。
-- 生產建置的主程式由 518.46 KB 降至 468.31 KB，gzip 由 162.45 KB 降至 145.78 KB。
+**English** · [繁體中文](#繁體中文) · [简体中文](#简体中文)
 
-## v0.24.0 重點（本機待發布）
+Infinite Moodboard runs the canvas, imported media, transforms, exports, and version history in your browser. No account is required for local editing, saving, opening, or exporting. Sign-in is requested only when you choose Google Drive, realtime collaboration, or other connected features.
 
-- 文字與形狀的 Inspector 共用一組物件色彩庫，可一鍵套用或把目前色彩加入色票。
-- 色彩庫儲存在目前裝置，支援 `.moodcolors`／JSON 載入與匯出；匯入時會去除重複與無效色碼。
-- 色票選取不只依賴顏色：目前色彩另有清楚的選取圈與勾選圖示，並支援鍵盤焦點。
+## Start here
 
-## v0.23.0 重點（本機待發布）
+- **Recommended:** [open the web app](https://perrtang.github.io/infinite-moodboard/). Your work is saved locally in the current browser until you explicitly download, export, connect Drive, or start collaboration.
+- **Editable files:** download a `.moodboard` file from the app and reopen it in the online app at any time.
+- **Self-hosting:** download the latest `self-hosted.zip` from [GitHub Releases](https://github.com/perrtang/infinite-moodboard/releases/latest). It is a static web build, not a native desktop installer; follow the included `SELF_HOSTING.md` instead of double-clicking `index.html`.
 
-- 在選取物件後方加入的紙張改為完全獨立物件；選取、移動、縮放或輸出紙張都不會自動影響其他物件。
-- 舊工作檔中的紙張綁定會在載入時安全解除；只有用戶主動建立的群組才會共同變形。
-- 群組擁有獨立的等比鎖定狀態，新群組預設維持等比例；拖曳時按住 Shift 可暫時解鎖。
-- 圖層清單只會對真正群組成員顯示群組名稱，避免把視覺上放在紙上誤解為隸屬關係。
+## Highlights
 
-## v0.22.0 重點（本機待發布）
+- Infinite canvas with drag-and-drop or paste for images, video, and SVG.
+- Text, common shapes, custom SVG, groups, grids, papers, rulers, guides, and print/social presets.
+- Multi-selection, nine-point transform pivots, proportional group scaling, alignment, distribution, layers, markers, and filtering.
+- Composition snapshots, local version history, `.moodboard` working files, and PNG, WebP, AVIF, PDF, asset, and read-only HTML output.
+- Traditional Chinese, Simplified Chinese, and English interfaces.
+- Optional Google Drive file storage and opt-in realtime collaboration with view/edit permission requests.
+- 3D, Drive, collaboration, and export runtimes are loaded only when used, keeping the opening bundle smaller.
 
-- 分享連結預設以「僅檢視」身分加入，不再直接取得編輯權。
-- 檢視者可在協作面板申請編輯；擁有者可核准、拒絕，並在「僅檢視／可編輯」間調整非擁有者成員。
-- 僅檢視模式保留選取、檢查與輸出，但停用畫布編輯、變形、新增、刪除與屬性修改。
-- Firestore 規則新增編輯權申請與決定邊界，並防止擁有者被降級或產生第二位擁有者。
+## v0.26.0 — GitHub distribution release
 
-## v0.17.0 重點（本機待發布）
+- Publishes the current app through tested GitHub Pages and a versioned GitHub Release.
+- Adds a reproducible self-hosted ZIP and SHA-256 checksum for every release tag.
+- Reworks this README around a direct online-app path, clear privacy boundaries, searchable product language, and multilingual orientation.
+- Prevents this standalone repository from deploying a partial Firestore rule file over PETFASHION's central production rules.
 
-- 浮動畫布工具列預設移到尺規下方，不再遮住頂部刻度。
-- 桌機可用左側握把拖曳工具列，方向鍵可微調；位置會限制在可視畫布並儲存於當前裝置。
-- 拖曳中按 `Escape` 回到拖曳前的位置；連按握把兩下或按 `Home` 回到安全預設位置。窄螢幕則維持安全置中，不套用桌機座標。
+## Privacy and connected features
 
-## v0.16.0 重點（本機待發布）
+- Imported content, local autosaves, and local versions live in the current browser's IndexedDB by default.
+- Signing in does **not** upload a Moodboard.
+- Google Drive requires a separate `drive.file` consent and only creates a remote file after the user actively saves.
+- Realtime collaboration uploads only the Moodboard whose owner explicitly creates or joins a room.
+- Drive tokens remain in the current tab memory and are not written to IndexedDB or `localStorage`.
+- Marketing consent is separate from account creation.
 
-- `時尚黑白` 成為全新或尚未設定裝置的預設介面主題；既有裝置已主動選擇的其他主題仍會保留。
-- 啟動動畫、狀態色、焦點與選取、文字續接與旋轉游標、三軸 3D 控制都會跟隨灰階語意，不漏出其他主題的彩色。
-- Moodboard 內容、匯入媒體、形狀填色與用戶標記色屬於作品內容，不會被介面黑白主題改寫。
+Read the complete [public beta data notice](PRIVACY.md) and [security policy](SECURITY.md) before enabling connected features on a fork.
 
-## v0.15.0 重點（本機待發布）
+## Development
 
-- 形狀 Inspector 新增 A3、A4、A5、B5、Letter 直式／橫式快速尺寸，並提供常見正方形貼文、直式貼文、限時動態／短影音、橫式分享圖與 16:9 影片封面尺寸。
-- 多邊形可調整 3–24 邊；星形可調整 3–24 芒及 15–85% 內縮比例，並提供經典、銳利、飽滿與放射四種快捷樣式。
-- 套用快速尺寸時維持物件可見中心與原始尺寸復原資料；畫布、縮圖、合成輸出與可攜式 HTML 都保留相同幾何外觀。
-
-## v0.14.0 重點（本機待發布）
-
-- 新增跨裝置即時共編：必須使用已完成 Email 驗證的 PETFASHION 帳號，且只會在使用者主動建立或加入共編空間後上傳目前 Moodboard。
-- 以 Yjs 進行物件層級合併；圖片與影片來源和物件變形資料分離，移動或縮放時不會重送整份大型素材。
-- 共編邀請為 30 天有效；自 v0.22 起，分享連結預設僅檢視，需由擁有者核准才可編輯。介面會顯示成員角色、在線狀態、同步中與離線等待數量。
-- 斷線變更先寫入獨立 IndexedDB 佇列，恢復連線後續傳；每位使用者的畫布視窗位置仍保留在自己的裝置。
-- 新增 Firestore 安全規則與設定檔，限制已驗證身份、房間成員、擁有者／編輯者權限、邀請有效期與更新大小。
-- 建立標準封版流程：每版都有 Git `backup/vX.Y.Z` 標籤、可驗證的 `.bundle` 儲存庫備份與 `.zip` 原始碼快照。
-
-## v0.13.0 重點
-
-- 同步既有 Drive 檔案前，先將目前雲端修訂標記為可保留版本；最多保留最近 24 份。
-- 版本視窗整合本機與 Drive 版本；Drive 版本一律開成新的本機 Moodboard，不覆蓋目前工作。
-- 衝突畫面分開顯示本機與 Drive 狀態，並提供「Drive 版本開成新副本」與「本機內容另存 Drive」兩個保守處理方式。
-
-## v0.12.0 重點
-
-- 「我的 Moodboards」改為單一檔案庫：依 Moodboard ID 合併本機草稿、Drive 檔案及持久化同步狀態。
-- 訪客也能開啟本機檔案庫、新增與切換 Moodboard；只有連結 Drive 時才要求 PETFASHION 身份。
-- 清楚區分僅本機、僅 Drive、已同步、離線等待、授權、容量及衝突狀態，並支援統一搜尋。
-
-## v0.11.0 重點
-
-- IndexedDB 升級為多 Moodboard 本機資料庫；舊版目前畫布會自動移轉，並保留相容資料以支援版本回復。
-- 新增可持續保存、合併同一 Moodboard 最新變更的離線同步佇列；離線、授權、容量與衝突狀態可安全保留。
-- 設定內顯示本機 Moodboard 數量、等待同步數量及瀏覽器提供的容量資訊。
-
-## v0.10.0 重點
-
-- 完成 Google Drive 授權、開啟與儲存流程；授權結果必須包含精確的 `drive.file` 權限，過期權杖會安全要求重新連結。
-- 保留首次連結不建立資料夾、不上傳檔案的明確邊界；第一次主動儲存後才建立雲端工作檔。
-- Drive 檔案更新維持版本、HTTP ETag 與寫後讀回三重檢查，無法安全判斷時停止覆寫。
-
-## v0.9.0 重點
-
-- 新增 Google Drive 優先保存：PETFASHION 身份登入與 Drive 檔案授權分開，使用 `drive.file` 最小權限，只存取 Infinite Moodboard 建立的工作檔。
-- 每次編輯仍先寫入 IndexedDB；離線、Drive 額滿、授權失效或版本衝突都不會中斷本機工作。
-- 儲存前檢查 Drive 可用空間；同一檔案在其他裝置更新時停止覆寫，提供開啟雲端版本或另存複本的復原路徑。
-- Settings > 儲存與同步可管理 Drive、容量狀態與自動同步；「我的 Moodboards」可搜尋、開啟與檢查既有雲端工作檔。
-
-## v0.8.0 重點
-
-- 所有內容列表的搜尋／篩選預設收合，按圖示或 `⌘/Ctrl + F` 才展開，並保留查詢與結果數。
-- 新增 px、mm、cm、inch 尺規與可拖曳導引線；拖曳時按住 Shift 會吸附整數刻度。
-- 工作區快速鍵統一使用 Shift；新增左右側欄、雙側欄、專注模式與可搜尋的快速鍵清單。`Esc` 依最上層暫時狀態取消，若會放棄已產生的物件調整則先詢問是否保留。
-- Hand 模式按住 Shift 可暫時選取；標準儲存、開啟、復原、複製、貼上與尋找仍沿用 `⌘/Ctrl` 語意。
-- 依選取範圍建立具有 40px 預設邊距的紙張，支援 A3、A4、A5、B5、Letter、自訂尺寸、方向與色彩。
-- 可在選取範圍八個方位加入可獨立編輯的標題或說明。
-- Grid 可複製選取物件至指定數量；無選取時會建立可編輯的矩形預留位置。
-- 支援群組／解散群組、`Shift + G`，以及按住 `⌘/Ctrl` 點擊穿透選取群組成員。
-- 圖層可依類型篩選，並對多選物件批次顯示、隱藏、匯出、合成輸出與刪除。
-
-線上公開 Beta：<https://perrtang.github.io/infinite-moodboard/>
-
-## 目前邊界
-
-- 不登入也能使用本機編輯、儲存、開啟與輸出。
-- Google 與免密碼 Email 登入只用於識別 PETFASHION 帳號及解鎖進階功能。
-- 登入本身不會上傳 Moodboard、素材或版本；必須另外連結 Google Drive，第一次仍需主動儲存。
-- 同裝置多分頁同步與 Google Drive 工作檔保存已完成。跨裝置即時共編已完成本機實作，但公開站仍須先部署本版 Firestore 安全規則；PETFASHION 會員後台同步尚未啟用。
-- Facebook 登入仍為非公開測試，不出現在正常入口。
-- 產品 Email 偏好目前只保存在瀏覽器，不會加入寄送名單。
-
-完整資料邊界請見 [PRIVACY.md](PRIVACY.md)。
-
-## 本機開發
-
-需要 Node.js 22 或相容版本：
+Requirements: Node.js 22 or a compatible runtime.
 
 ```bash
 npm install
 npm run dev
 ```
 
-執行驗證：
+Verification:
 
 ```bash
 npm test
 npm run build
 ```
 
-Google Drive 使用公開的 OAuth Web Client ID。正式部署可在 `.env` 覆寫：
+Create the self-hosted release asset:
+
+```bash
+npm run release:package -- 0.26.0
+```
+
+Google Drive uses the least-privilege `drive.file` scope. A fork must supply its own OAuth client and approved origins:
 
 ```bash
 VITE_GOOGLE_DRIVE_CLIENT_ID=your-web-client-id.apps.googleusercontent.com
 ```
 
-對應 Google Cloud 專案必須啟用 Google Drive API，且 OAuth 用戶端需允許本機與正式站來源。Drive 存取權杖只存在當前分頁記憶體，不會寫入瀏覽器儲存空間。
+### Firestore rule integration — important
 
-跨裝置即時共編使用同一個 Firebase 專案的 Cloud Firestore。程式庫內附 `firestore.rules` 與 `firebase.json`；正式啟用前，必須由專案管理者審查並部署規則：
+`firestore.rules` in this repository is a **Moodboard-only fragment for review and tests**. PETFASHION's production Firestore serves other products from the same project, so this fragment must never be deployed by itself. Merge and review it in the authoritative central ruleset, verify unrelated rules remain intact, then deploy from that central repository. GitHub Pages deployment intentionally cannot deploy Firestore rules.
 
-```bash
-npx firebase-tools deploy --only firestore:rules
-```
+## Release and recovery
 
-規則部署是外部系統變更，不會在一般建置或 GitHub Pages 發布時自動執行。
+- A push to `main` runs tests and a production build before GitHub Pages deployment.
+- A `vX.Y.Z` tag runs tests again and creates a GitHub Release with a self-hosted ZIP and checksum.
+- Every accepted milestone also has a `backup/vX.Y.Z` Git tag plus an external Git bundle and source snapshot.
+- See [SELF_HOSTING.md](SELF_HOSTING.md) for the downloaded web build and [RELEASING.md](RELEASING.md) for the maintainer checklist.
 
-## 版本與備份
+## License status
 
-完成一個可驗收里程碑後，先通過測試與建置、提交所有變更，再執行：
+No open-source license has been selected. Public source visibility does not grant permission to reproduce, redistribute, or create derivative software. Using the public web app is not restricted by this repository-source notice.
 
-```bash
-./scripts/checkpoint-version.sh 0.17.0
-```
+## 繁體中文
 
-腳本會確認工作目錄乾淨且 `package.json` 版號一致，建立或驗證 `backup/v0.17.0` 標籤，並把 Git bundle 與原始碼 zip 寫入專案外的 `backups/infinite-moodboard/`。可用 `git switch --detach backup/v0.17.0` 檢查舊版；需要正式回復時，再從該標籤建立修復分支，避免直接覆蓋目前工作。
+Infinite Moodboard 是 PETFASHION 的免費、本機優先無限畫布。圖片、影片、文字、SVG、版本與輸出主要在瀏覽器內處理；不登入也能編輯、儲存、開啟與輸出。建議直接使用[線上版](https://perrtang.github.io/infinite-moodboard/)，並定期下載可再次編輯的 `.moodboard` 工作檔。只有主動使用 Google Drive、即時共編等連線功能時才需要登入與另外授權。
 
-## 發布
+下載的 `self-hosted.zip` 是供自行架站的靜態網頁版本，不是桌面安裝程式。資料與權限界線請讀 [PRIVACY.md](PRIVACY.md)。
 
-`main` 分支的每次推送都會先執行測試與建置；兩者通過後才部署至 GitHub Pages。公開站使用 `/infinite-moodboard/` 基底路徑，Firebase Authentication 必須另外允許 `perrtang.github.io` 網域。
+## 简体中文
 
-## 授權狀態
+Infinite Moodboard 是 PETFASHION 的免费、本地优先无限画布。图片、视频、文字、SVG、版本与输出主要在浏览器内处理；无需登录也能编辑、保存、打开与导出。建议直接使用[在线版](https://perrtang.github.io/infinite-moodboard/)，并定期下载可再次编辑的 `.moodboard` 工作文件。只有主动使用 Google Drive、实时协作等联网功能时才需要登录与另外授权。
 
-此儲存庫目前尚未選定開源授權。公開原始碼不代表自動授予重製、散布或衍生作品的權利；使用線上公開 Beta 不受此段影響。
+下载的 `self-hosted.zip` 是供自行部署的静态网页版本，不是桌面安装程序。数据与权限边界请阅读 [PRIVACY.md](PRIVACY.md)。
