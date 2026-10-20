@@ -6896,6 +6896,183 @@ button.status-label:hover {
   justify-content: flex-start;
 }
 
+.collaboration-permission-section {
+  background: var(--surface-soft);
+  border-radius: 7px;
+  display: grid;
+  gap: 10px;
+  padding: 11px;
+}
+
+.collaboration-permission-heading,
+.collaboration-request-action,
+.collaboration-request-list article,
+.collaboration-member-list article,
+.collaboration-member-list article > span,
+.collaboration-request-list article > span,
+.collaboration-request-list article > div {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.collaboration-permission-heading > div {
+  display: grid;
+  gap: 2px;
+}
+
+.collaboration-permission-heading strong,
+.collaboration-member-management summary {
+  font-size: calc(11px + var(--ui-font-offset, 0px));
+}
+
+.collaboration-permission-heading small,
+.collaboration-request-action small,
+.collaboration-member-list small {
+  color: var(--text-muted);
+  font-size: calc(9px + var(--ui-font-offset, 0px));
+  line-height: 1.45;
+}
+
+.collaboration-permission-icon {
+  color: var(--accent);
+  display: inline-flex;
+  flex: none;
+}
+
+.collaboration-request-state {
+  align-items: center;
+  color: var(--text-muted);
+  display: flex;
+  font-size: calc(10px + var(--ui-font-offset, 0px));
+  gap: 7px;
+  margin: 0;
+}
+
+.collaboration-request-action {
+  justify-content: space-between;
+}
+
+.collaboration-request-list,
+.collaboration-member-list {
+  display: grid;
+  gap: 5px;
+}
+
+.collaboration-request-list article,
+.collaboration-member-list article {
+  justify-content: space-between;
+  min-height: 38px;
+}
+
+.collaboration-request-list article + article,
+.collaboration-member-list article + article {
+  border-top: 1px solid var(--border);
+  padding-top: 5px;
+}
+
+.collaboration-request-list b,
+.collaboration-member-list b {
+  font-size: calc(10px + var(--ui-font-offset, 0px));
+  font-weight: 650;
+}
+
+.collaboration-member-management {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.collaboration-member-management summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 7px;
+  list-style: none;
+}
+
+.collaboration-member-management summary::-webkit-details-marker {
+  display: none;
+}
+
+.collaboration-member-management summary small {
+  color: var(--text-muted);
+  font-size: calc(9px + var(--ui-font-offset, 0px));
+}
+
+.collaboration-member-list {
+  margin-top: 8px;
+}
+
+.inspector-content-fieldset {
+  border: 0;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.inspector-read-only-note {
+  align-items: center;
+  background: var(--quiet-bg);
+  border: 0;
+  border-radius: 6px;
+  color: var(--text);
+  display: flex;
+  font-family: inherit;
+  gap: 9px;
+  margin-bottom: 10px;
+  padding: 9px 10px;
+  text-align: left;
+  width: 100%;
+}
+
+.inspector-read-only-note > span {
+  display: grid;
+  gap: 2px;
+}
+
+.inspector-read-only-note small {
+  color: var(--text-muted);
+  font-size: calc(9px + var(--ui-font-offset, 0px));
+}
+
+.inspector-content.is-read-only .inspector-content-fieldset {
+  opacity: 0.72;
+}
+
+.cloud-read-only-banner {
+  align-items: center;
+  backdrop-filter: blur(12px);
+  background: var(--floating-bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  color: var(--text);
+  display: flex;
+  font-family: inherit;
+  gap: 9px;
+  left: 50%;
+  min-height: 38px;
+  padding: 6px 10px;
+  position: absolute;
+  top: 68px;
+  transform: translateX(-50%);
+  z-index: 17;
+}
+
+.cloud-read-only-banner > span {
+  display: grid;
+  gap: 1px;
+  text-align: left;
+}
+
+.cloud-read-only-banner strong {
+  font-size: calc(10px + var(--ui-font-offset, 0px));
+}
+
+.cloud-read-only-banner small {
+  color: var(--text-muted);
+  font-size: calc(8px + var(--ui-font-offset, 0px));
+}
+
 .cloud-collaboration-divider {
   align-items: center;
   color: var(--text-muted);
@@ -8442,9 +8619,35 @@ button.status-label:hover {
     justify-content: center;
     width: 100%;
   }
+
+  .collaboration-request-action,
+  .collaboration-request-list article,
+  .collaboration-member-list article {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .collaboration-request-action button,
+  .collaboration-request-list article button,
+  .collaboration-member-list article button {
+    justify-content: center;
+    min-height: 44px;
+    width: 100%;
+  }
+
+  .collaboration-request-list article > div {
+    align-items: stretch;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 900px) {
+  .cloud-read-only-banner {
+    min-height: 44px;
+    top: 64px;
+  }
+
   .app-update-notice {
     bottom: 116px;
     max-height: calc(100vh - 180px);

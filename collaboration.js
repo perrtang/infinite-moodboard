@@ -5,6 +5,7 @@ export const COLLABORATION_CHUNK_BYTES = 320 * 1024;
 export const COLLABORATION_MAX_UPDATE_BYTES = 48 * 1024 * 1024;
 export const COLLABORATION_INVITE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 export const COLLABORATION_RESUME_STORAGE_KEY = "infinite-moodboard-collaboration-v1";
+export const COLLABORATION_DEFAULT_INVITE_ROLE = "viewer";
 
 export const LOCAL_COLLABORATION_ORIGIN = Object.freeze({ source: "local" });
 export const REMOTE_COLLABORATION_ORIGIN = Object.freeze({ source: "remote" });
@@ -50,6 +51,19 @@ export function normalizeCollaborationRole(value) {
 
 export function collaborationRoleLabel(value) {
   return { owner: "擁有者", editor: "可編輯", viewer: "僅檢視" }[normalizeCollaborationRole(value)];
+}
+
+export function normalizeCollaborationAccessRequestStatus(value) {
+  return ["pending", "approved", "denied"].includes(value) ? value : "none";
+}
+
+export function collaborationAccessRequestStatusLabel(value) {
+  return {
+    pending: "等待擁有者回覆",
+    approved: "已核准編輯",
+    denied: "擁有者未核准",
+    none: "尚未提出申請",
+  }[normalizeCollaborationAccessRequestStatus(value)];
 }
 
 export function encodeCollaborationBytes(value) {

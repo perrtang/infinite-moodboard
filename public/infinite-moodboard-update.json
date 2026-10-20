@@ -1,8 +1,8 @@
 {
   "product": "Infinite Moodboard",
   "channel": "stable",
-  "version": "0.21.0",
+  "version": "0.22.0",
   "releasedAt": "2026-10-20",
-  "summary": "介面模式新增自動跟隨裝置，時尚黑白會隨系統切換成全灰階的淺色或深色介面。",
+  "summary": "分享連結改為僅檢視加入，檢視者可申請編輯，擁有者可核准、拒絕或調整成員權限。",
   "url": "https://perrtang.github.io/infinite-moodboard/"
 }

@@ -17,6 +17,7 @@ import {
   writeBatch,
 } from "@firebase/firestore";
 import {
+  COLLABORATION_DEFAULT_INVITE_ROLE,
   COLLABORATION_INVITE_TTL_MS,
   LOCAL_COLLABORATION_ORIGIN,
   REMOTE_COLLABORATION_ORIGIN,
@@ -28,6 +29,7 @@ import {
   createCollaborationInviteUrl,
   encodeCollaborationDocument,
   listenToCollaborationUpdates,
+  normalizeCollaborationAccessRequestStatus,
   normalizeCollaborationInvite,
   normalizeCollaborationRole,
   readBoardFromCollaborationDocument,
@@ -78,6 +80,8 @@ export function collaborationErrorMessage(error) {
   if (error?.code === "not-found" || error?.code === "collaboration/invite-not-found") return "找不到這個共編邀請；它可能已失效或被停用。";
   if (error?.code === "collaboration/invite-expired") return "這個共編邀請已過期，請擁有者重新產生邀請。";
   if (error?.code === "collaboration/not-initialized") return "共編空間仍在準備初始內容，請稍後再試。";
+  if (error?.code === "collaboration/request-not-allowed") return error.message;
+  if (error?.code === "collaboration/request-not-found") return "這筆編輯權限申請已處理；成員狀態會自動更新。";
   if (error?.code === "collaboration/update-too-large") return error.message;
   return error?.message || "即時共編暫時無法使用；本機 Moodboard 未受影響。";
 }
@@ -87,9 +91,94 @@ function roomReferences(database, roomId) {
   return {
     room,
     members: collection(room, "members"),
+    accessRequests: collection(room, "accessRequests"),
     updates: collection(room, "updates"),
     presence: collection(room, "presence"),
   };
+}
+
+function timestampMillis(value) {
+  return value?.toMillis?.() || Number(value || 0) || 0;
+}
+
+function normalizeMemberSnapshot(entry) {
+  const data = entry.data();
+  return {
+    uid: String(data.uid || entry.id),
+    name: String(data.name || "協作者"),
+    role: normalizeCollaborationRole(data.role),
+    joinedAt: timestampMillis(data.joinedAt),
+  };
+}
+
+function normalizeAccessRequestSnapshot(entry) {
+  if (!entry?.exists?.()) return null;
+  const data = entry.data();
+  return {
+    uid: String(data.uid || entry.id),
+    name: String(data.name || "協作者"),
+    requestedRole: "editor",
+    status: normalizeCollaborationAccessRequestStatus(data.status),
+    requestedAt: timestampMillis(data.requestedAt),
+    decidedAt: timestampMillis(data.decidedAt),
+    decidedBy: String(data.decidedBy || ""),
+  };
+}
+
+export async function requestMoodboardCollaborationEditAccess({ roomId, user }) {
+  assertVerifiedCollaborationUser(user);
+  requireOnline();
+  const database = getMoodboardCollaborationDatabase();
+  const refs = roomReferences(database, roomId);
+  const memberSnapshot = await getDoc(doc(refs.members, user.uid));
+  if (!memberSnapshot.exists() || normalizeCollaborationRole(memberSnapshot.data().role) !== "viewer") {
+    const error = new Error("只有僅檢視成員需要申請編輯權限。");
+    error.code = "collaboration/request-not-allowed";
+    throw error;
+  }
+  const requestRef = doc(refs.accessRequests, user.uid);
+  const current = await getDoc(requestRef);
+  if (current.exists() && normalizeCollaborationAccessRequestStatus(current.data().status) === "pending") {
+    return normalizeAccessRequestSnapshot(current);
+  }
+  const name = String(user.displayName || "協作者").slice(0, 80);
+  await setDoc(requestRef, {
+    uid: user.uid,
+    name,
+    requestedRole: "editor",
+    status: "pending",
+    requestedAt: serverTimestamp(),
+  });
+  return { uid: user.uid, name, requestedRole: "editor", status: "pending" };
+}
+
+export async function resolveMoodboardCollaborationAccessRequest({ roomId, requesterUid, decision, user }) {
+  assertVerifiedCollaborationUser(user);
+  requireOnline();
+  if (!["approved", "denied"].includes(decision)) throw new Error("編輯權限決定不正確。");
+  const database = getMoodboardCollaborationDatabase();
+  const refs = roomReferences(database, roomId);
+  const requestRef = doc(refs.accessRequests, requesterUid);
+  const requestSnapshot = await getDoc(requestRef);
+  if (!requestSnapshot.exists() || normalizeCollaborationAccessRequestStatus(requestSnapshot.data().status) !== "pending") {
+    const error = new Error("這筆編輯權限申請已不存在或已處理。");
+    error.code = "collaboration/request-not-found";
+    throw error;
+  }
+  const batch = writeBatch(database);
+  if (decision === "approved") batch.update(doc(refs.members, requesterUid), { role: "editor" });
+  batch.update(requestRef, { status: decision, decidedAt: serverTimestamp(), decidedBy: user.uid });
+  await batch.commit();
+}
+
+export async function setMoodboardCollaborationMemberRole({ roomId, memberUid, role, user }) {
+  assertVerifiedCollaborationUser(user);
+  requireOnline();
+  const nextRole = normalizeCollaborationRole(role);
+  if (!["editor", "viewer"].includes(nextRole)) throw new Error("只能設定為可編輯或僅檢視。");
+  const database = getMoodboardCollaborationDatabase();
+  const refs = roomReferences(database, roomId);
+  await updateDoc(doc(refs.members, memberUid), { role: nextRole });
 }
 
 function updateReference(database, roomId, updateId) {
@@ -251,14 +340,17 @@ async function openCollaborationSession({
     throw error;
   }
 
-  const role = normalizeCollaborationRole(memberSnapshot.data().role);
-  const canEdit = ["owner", "editor"].includes(role);
+  let role = normalizeCollaborationRole(memberSnapshot.data().role);
+  let canEdit = ["owner", "editor"].includes(role);
   const document = createCollaborationDocument();
   const processedUpdates = new Set();
   const cleanup = [];
   let destroyed = false;
   let ready = false;
   let peers = [];
+  let members = [];
+  let accessRequests = [];
+  let accessRequest = null;
   let pendingCount = 0;
   let status = "connecting";
   let message = "正在取得共編內容…";
@@ -280,6 +372,9 @@ async function openCollaborationSession({
       role,
       canEdit,
       peers,
+      members,
+      accessRequests,
+      accessRequest,
       pendingCount,
     });
   };
@@ -353,6 +448,42 @@ async function openCollaborationSession({
   });
   cleanup.push(unsubscribeUpdates);
 
+  const ownMemberRef = doc(refs.members, user.uid);
+  cleanup.push(onSnapshot(ownMemberRef, (snapshot) => {
+    if (!snapshot.exists()) return;
+    const previouslyEditable = canEdit;
+    role = normalizeCollaborationRole(snapshot.data().role);
+    canEdit = ["owner", "editor"].includes(role);
+    if (!previouslyEditable && canEdit) emitState({ message: "擁有者已核准編輯權限。" });
+    else if (previouslyEditable && !canEdit) emitState({ message: "目前已改為僅檢視；未同步的本機變更仍保留在這台裝置。" });
+    else emitState();
+  }, (error) => emitState({ status: "degraded", message: collaborationErrorMessage(error) })));
+
+  cleanup.push(onSnapshot(refs.members, (snapshot) => {
+    members = snapshot.docs.map(normalizeMemberSnapshot).sort((a, b) => {
+      if (a.role === "owner") return -1;
+      if (b.role === "owner") return 1;
+      return a.name.localeCompare(b.name, "zh-Hant");
+    });
+    emitState();
+  }, (error) => emitState({ status: "degraded", message: collaborationErrorMessage(error) })));
+
+  const ownRequestRef = doc(refs.accessRequests, user.uid);
+  cleanup.push(onSnapshot(ownRequestRef, (snapshot) => {
+    accessRequest = normalizeAccessRequestSnapshot(snapshot);
+    emitState();
+  }, (error) => emitState({ status: "degraded", message: collaborationErrorMessage(error) })));
+
+  if (role === "owner") {
+    cleanup.push(onSnapshot(refs.accessRequests, (snapshot) => {
+      accessRequests = snapshot.docs
+        .map(normalizeAccessRequestSnapshot)
+        .filter(Boolean)
+        .sort((a, b) => b.requestedAt - a.requestedAt);
+      emitState();
+    }, (error) => emitState({ status: "degraded", message: collaborationErrorMessage(error) })));
+  }
+
   await initialUpdates;
   const queued = (await listQueuedCollaborationUpdates(roomId)).filter((entry) => entry.senderUid === user.uid);
   queued.forEach((record) => {
@@ -404,12 +535,21 @@ async function openCollaborationSession({
   return {
     roomId,
     inviteId,
-    role,
-    canEdit,
+    get role() { return role; },
+    get canEdit() { return canEdit; },
     updateBoard(nextBoard) {
       if (!canEdit) return false;
       writeBoardToCollaborationDocument(document, nextBoard, LOCAL_COLLABORATION_ORIGIN);
       return true;
+    },
+    requestEditAccess() {
+      return requestMoodboardCollaborationEditAccess({ roomId, user });
+    },
+    resolveAccessRequest(requesterUid, decision) {
+      return resolveMoodboardCollaborationAccessRequest({ roomId, requesterUid, decision, user });
+    },
+    setMemberRole(memberUid, nextRole) {
+      return setMoodboardCollaborationMemberRole({ roomId, memberUid, role: nextRole, user });
     },
     setDisplayName(name) { writePresence(name); },
     async destroy() {
@@ -452,7 +592,7 @@ export async function createMoodboardCollaborationRoom(options) {
   });
   batch.set(inviteRef, {
     roomId,
-    role: "editor",
+    role: COLLABORATION_DEFAULT_INVITE_ROLE,
     active: true,
     createdBy: user.uid,
     createdAt: serverTimestamp(),

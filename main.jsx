@@ -213,6 +213,7 @@ import {
 } from "./auth.js";
 import {
   clearCollaborationResume,
+  collaborationAccessRequestStatusLabel,
   collaborationRoleLabel,
   loadCollaborationResume,
   normalizeCollaborationInvite,
@@ -361,6 +362,9 @@ const EMPTY_CLOUD_COLLABORATION = Object.freeze({
   role: "",
   canEdit: false,
   peers: [],
+  members: [],
+  accessRequests: [],
+  accessRequest: null,
   pendingCount: 0,
 });
 const MIN_ZOOM = 0.08;
@@ -2154,7 +2158,7 @@ function CanvasVideoPlayer({ object, onControlsVisibilityChange }) {
   );
 }
 
-function InsertToolbar({ open, onToggle, onAddText, onAddShape, onChooseImage, onChooseVideo, onChooseSvg }) {
+function InsertToolbar({ open, disabled = false, onToggle, onAddText, onAddShape, onChooseImage, onChooseVideo, onChooseSvg }) {
   const shapeActions = [
     ["square", "正方形", Square],
     ["rectangle", "矩形", RectangleHorizontal],
@@ -2164,13 +2168,13 @@ function InsertToolbar({ open, onToggle, onAddText, onAddShape, onChooseImage, o
   ];
   return (
     <div className="insert-tools" role="group" aria-label="加入物件">
-      <button className="toolbar-action insert-tool" type="button" aria-label="加入文字" title="加入文字" onClick={onAddText}>
+      <button className="toolbar-action insert-tool" type="button" aria-label="加入文字" title="加入文字" onClick={onAddText} disabled={disabled}>
         <Type size={17} /><span className="insert-tool-label">文字</span>
       </button>
-      <button className="toolbar-action insert-tool" type="button" aria-label="加入圖片" title="從本機加入圖片" onClick={onChooseImage}>
+      <button className="toolbar-action insert-tool" type="button" aria-label="加入圖片" title="從本機加入圖片" onClick={onChooseImage} disabled={disabled}>
         <ImagePlus size={17} /><span className="insert-tool-label">圖片</span>
       </button>
-      <button className="toolbar-action insert-tool" type="button" aria-label="加入影片" title="從本機加入影片" onClick={onChooseVideo}>
+      <button className="toolbar-action insert-tool" type="button" aria-label="加入影片" title="從本機加入影片" onClick={onChooseVideo} disabled={disabled}>
         <Video size={17} /><span className="insert-tool-label">影片</span>
       </button>
       <div className="insert-menu-wrap">
@@ -2182,6 +2186,7 @@ function InsertToolbar({ open, onToggle, onAddText, onAddShape, onChooseImage, o
           aria-haspopup="menu"
           aria-expanded={open}
           onClick={onToggle}
+          disabled={disabled}
         >
           <Shapes size={17} /><span className="insert-tool-label">形狀</span><ChevronDown className="insert-tool-chevron" size={13} />
         </button>
@@ -3128,6 +3133,7 @@ function Inspector({
   onResizeArtboardPreset,
   selectionGrouped,
   onToggleGroup,
+  readOnly = false,
   mobilePanel,
   setMobilePanel,
 }) {
@@ -3176,7 +3182,9 @@ function Inspector({
         <IconButton className="mobile-close" label="關閉屬性" onClick={() => setMobilePanel(null)}><X size={18} /></IconButton>
       </div>
 
-      <div className="panel-scroll inspector-content">
+      <div className={`panel-scroll inspector-content${readOnly ? " is-read-only" : ""}`}>
+        {readOnly ? <button className="inspector-read-only-note" type="button" onClick={() => setMobilePanel(null)}><Eye size={15} /><span><strong>僅檢視模式</strong><small>可查看屬性，但目前不能修改。</small></span></button> : null}
+        <fieldset className="inspector-content-fieldset" disabled={readOnly}>
         {!selected.length ? (
           <div className="inspector-empty">
             <SlidersHorizontal size={27} />
@@ -3563,6 +3571,7 @@ function Inspector({
             </section>
           </>
         ) : null}
+        </fieldset>
       </div>
 
     </aside>
@@ -3689,6 +3698,7 @@ function CanvasObject({
   multiSelected,
   keyObject,
   selectionEnabled,
+  editable = true,
   inverseZoom,
   onPointerDown,
   onPointerUp,
@@ -3764,7 +3774,7 @@ function CanvasObject({
 
   return (
     <div
-      className={`board-object ${selected ? "is-selected" : ""} ${multiSelected && keyObject ? "is-key-object" : ""} ${object.locked ? "is-locked" : ""} ${hasMicro3D ? "has-micro-3d" : ""} ${isEditingText ? "is-text-editing" : ""} ${isArtboardObject(object) ? "is-artboard" : ""} ${object.annotationKind ? "is-annotation" : ""} ${object.groupId ? "is-group-member" : ""}`}
+      className={`board-object ${selected ? "is-selected" : ""} ${multiSelected && keyObject ? "is-key-object" : ""} ${object.locked ? "is-locked" : ""} ${!editable ? "is-read-only" : ""} ${hasMicro3D ? "has-micro-3d" : ""} ${isEditingText ? "is-text-editing" : ""} ${isArtboardObject(object) ? "is-artboard" : ""} ${object.annotationKind ? "is-annotation" : ""} ${object.groupId ? "is-group-member" : ""}`}
       data-object-id={object.id}
       style={{
         left: object.pivotX,
@@ -3776,7 +3786,7 @@ function CanvasObject({
       tabIndex={object.visible ? 0 : -1}
       aria-label={`${object.name}，${selected ? "已選取" : "未選取"}${multiSelected && keyObject ? "，對齊與排列基準物件" : ""}`}
       onPointerDown={(event) => {
-        if (micro3DMode && selected && !object.locked) {
+        if (editable && micro3DMode && selected && !object.locked) {
           onMicro3DRotateStart(event, "free", () => onSelect(object.id, event.shiftKey));
           return;
         }
@@ -3784,14 +3794,14 @@ function CanvasObject({
       }}
       onPointerUp={(event) => onPointerUp(event, object.id)}
       onDoubleClick={(event) => {
-        if (isTextObject(object) && selectionEnabled && !micro3DMode && !object.locked) {
+        if (editable && isTextObject(object) && selectionEnabled && !micro3DMode && !object.locked) {
           onStartTextEdit(event, object.id);
           return;
         }
         onDoubleClick(event, object.id);
       }}
       onKeyDown={(event) => {
-        if (event.key === "Enter" && isTextObject(object) && selectionEnabled && !micro3DMode && !object.locked) {
+        if (editable && event.key === "Enter" && isTextObject(object) && selectionEnabled && !micro3DMode && !object.locked) {
           event.preventDefault();
           onStartTextEdit(event, object.id);
         } else if (event.key === "Enter" || event.key === " ") {
@@ -3825,7 +3835,7 @@ function CanvasObject({
           </div>
         ) : null}
         {multiSelected && keyObject ? <span className="key-object-badge">基準</span> : null}
-        {soleSelected && hasTextOverflow && !isEditingText ? (
+        {editable && soleSelected && hasTextOverflow && !isEditingText ? (
           <button
             type="button"
             className={`text-overflow-port ${textFlowLoaded ? "is-loaded" : ""}`}
@@ -3846,7 +3856,7 @@ function CanvasObject({
             <Plus size={13} strokeWidth={2.8} aria-hidden="true" />
           </button>
         ) : null}
-        {soleSelected && !micro3DMode && !isEditingText ? (
+        {editable && soleSelected && !micro3DMode && !isEditingText ? (
           <>
             <button
               type="button"
@@ -3881,7 +3891,7 @@ function CanvasObject({
             ) : null}
           </>
         ) : null}
-        {soleSelected && isEditingText ? (
+        {editable && soleSelected && isEditingText ? (
           <>
             <span className="text-frame-label" aria-hidden="true">文字框</span>
             <TextFrameHandles
@@ -3892,7 +3902,7 @@ function CanvasObject({
           </>
         ) : null}
       </div>
-      {soleSelected && micro3DMode ? (
+      {editable && soleSelected && micro3DMode ? (
         <Rotation3DGizmo
           inverseZoom={inverseZoom}
           left={(0.5 - anchor.x) * object.width}
@@ -5004,14 +5014,29 @@ function CollaborationModal({
   onJoinRoom,
   onResumeRoom,
   onCopyInvite,
+  onRequestEditAccess,
+  onResolveAccessRequest,
+  onSetMemberRole,
   onLeaveRoom,
   onOpenDrive,
   onClose,
 }) {
   const [inviteDraft, setInviteDraft] = useState(initialInvite || "");
+  const [permissionAction, setPermissionAction] = useState("");
   const cloudConnected = ["connected", "syncing", "offline", "degraded"].includes(cloud.status) && Boolean(cloud.roomId);
   const cloudBusy = ["creating", "joining", "connecting"].includes(cloud.status);
   const cloudReady = cloud.status === "connected" || cloud.status === "syncing";
+  const pendingAccessRequests = (cloud.accessRequests || []).filter((request) => request.status === "pending");
+
+  const runPermissionAction = async (key, action) => {
+    if (permissionAction) return;
+    setPermissionAction(key);
+    try {
+      await action();
+    } finally {
+      setPermissionAction("");
+    }
+  };
 
   useEffect(() => {
     if (initialInvite) setInviteDraft(initialInvite);
@@ -5055,8 +5080,75 @@ function CollaborationModal({
               {!cloud.peers?.length ? <span><Users size={14} /><b>等待其他協作者</b></span> : null}
             </div>
             {cloud.pendingCount ? <p className="cloud-pending-note"><RefreshCw size={14} className={cloud.status === "syncing" ? "is-spinning" : ""} />{`${cloud.pendingCount} 個變更等待同步`}</p> : null}
+            {cloud.role === "viewer" ? (
+              <section className="collaboration-permission-section" aria-labelledby="collaboration-edit-access-title">
+                <div className="collaboration-permission-heading">
+                  <span className="collaboration-permission-icon"><Eye size={17} /></span>
+                  <div>
+                    <strong id="collaboration-edit-access-title">目前只能檢視</strong>
+                    <small>可以瀏覽、選取與輸出；移動、刪除或修改內容前需取得擁有者核准。</small>
+                  </div>
+                </div>
+                {cloud.accessRequest?.status === "pending" ? (
+                  <p className="collaboration-request-state"><History size={14} />等待擁有者核准；權限變更後會自動切換為可編輯。</p>
+                ) : (
+                  <div className="collaboration-request-action">
+                    {cloud.accessRequest ? <small>{collaborationAccessRequestStatusLabel(cloud.accessRequest.status)}，可再次提出申請。</small> : null}
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={() => runPermissionAction("request", onRequestEditAccess)}
+                      disabled={Boolean(permissionAction) || cloud.status === "offline"}
+                    >
+                      <Lock size={15} />{permissionAction === "request" ? "正在送出…" : "請求編輯權限"}
+                    </button>
+                  </div>
+                )}
+              </section>
+            ) : null}
+            {cloud.role === "owner" && pendingAccessRequests.length ? (
+              <section className="collaboration-permission-section" aria-labelledby="collaboration-pending-title">
+                <div className="collaboration-permission-heading">
+                  <span className="collaboration-permission-icon"><Users size={17} /></span>
+                  <div><strong id="collaboration-pending-title">編輯權限申請</strong><small>{`${pendingAccessRequests.length} 位檢視者等待你的決定。`}</small></div>
+                </div>
+                <div className="collaboration-request-list">
+                  {pendingAccessRequests.map((request) => (
+                    <article key={request.uid}>
+                      <span><UserRound size={15} /><b data-l10n-ignore>{request.name}</b></span>
+                      <div>
+                        <button className="secondary-button" type="button" onClick={() => runPermissionAction(`approve:${request.uid}`, () => onResolveAccessRequest(request.uid, "approved"))} disabled={Boolean(permissionAction)}><Check size={14} />核准</button>
+                        <button className="text-button" type="button" onClick={() => runPermissionAction(`deny:${request.uid}`, () => onResolveAccessRequest(request.uid, "denied"))} disabled={Boolean(permissionAction)}><X size={14} />拒絕</button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+            {cloud.role === "owner" && cloud.members?.length ? (
+              <details className="collaboration-member-management">
+                <summary><Users size={15} />管理成員權限 <small>{cloud.members.length}</small></summary>
+                <div className="collaboration-member-list">
+                  {cloud.members.map((member) => (
+                    <article key={member.uid}>
+                      <span><UserRound size={15} /><b data-l10n-ignore>{member.name}</b><small>{collaborationRoleLabel(member.role)}</small></span>
+                      {member.role !== "owner" ? (
+                        <button
+                          className="text-button"
+                          type="button"
+                          onClick={() => runPermissionAction(`role:${member.uid}`, () => onSetMemberRole(member.uid, member.role === "editor" ? "viewer" : "editor"))}
+                          disabled={Boolean(permissionAction)}
+                        >
+                          {member.role === "editor" ? <Eye size={14} /> : <Unlock size={14} />}{member.role === "editor" ? "改為僅檢視" : "允許編輯"}
+                        </button>
+                      ) : null}
+                    </article>
+                  ))}
+                </div>
+              </details>
+            ) : null}
             <div className="cloud-collaboration-actions">
-              <button className="primary-button" type="button" onClick={onCopyInvite} disabled={!cloud.inviteUrl}><Copy size={16} />複製邀請連結</button>
+              <button className="primary-button" type="button" onClick={onCopyInvite} disabled={!cloud.inviteUrl}><Copy size={16} />複製檢視邀請連結</button>
               <button className="quiet-button" type="button" onClick={onLeaveRoom}><X size={15} />離開共編</button>
             </div>
           </>
@@ -5069,7 +5161,7 @@ function CollaborationModal({
             <div className="cloud-collaboration-divider"><span>或加入別人的空間</span></div>
             <label className="collaboration-invite-field">
               <span>邀請連結或代碼</span>
-              <div><input value={inviteDraft} onChange={(event) => setInviteDraft(event.target.value)} placeholder="貼上 ?collab=… 連結" /><button className="secondary-button" type="button" onClick={() => onJoinRoom(inviteDraft)} disabled={cloudBusy || !inviteDraft.trim()}><Share2 size={15} />加入</button></div>
+              <div><input value={inviteDraft} onChange={(event) => setInviteDraft(event.target.value)} placeholder="貼上 ?collab=… 連結" /><button className="secondary-button" type="button" onClick={() => onJoinRoom(inviteDraft)} disabled={cloudBusy || !inviteDraft.trim()}><Share2 size={15} />加入檢視</button></div>
             </label>
             {resumeAvailable ? <button className="text-button collaboration-resume-button" type="button" onClick={onResumeRoom} disabled={cloudBusy}><RefreshCw size={14} />繼續上次的共編空間</button> : null}
             {cloud.message ? <p className={`cloud-collaboration-message${cloud.status === "error" ? " is-error" : ""}`}>{cloud.message}</p> : null}
@@ -5975,6 +6067,17 @@ function App() {
   const [sessionName, setSessionNameState] = useState(() => localStorage.getItem("moodboard-session-name") || createSessionName());
   const [peers, setPeers] = useState([]);
   const [cloudCollaboration, setCloudCollaboration] = useState(EMPTY_CLOUD_COLLABORATION);
+  const cloudReadOnly = Boolean(cloudCollaboration.roomId && !cloudCollaboration.canEdit);
+
+  useEffect(() => {
+    if (!cloudReadOnly) return;
+    setEditingText(null);
+    setLoadedTextFlow(null);
+    setShapeMenuOpen(false);
+    setShowGridBuilder(false);
+    setShowAnnotationBuilder(false);
+    setTool((current) => current === "3d" ? "select" : current);
+  }, [cloudReadOnly]);
   const [collaborationResume, setCollaborationResume] = useState(() => loadCollaborationResume());
   const [historySignal, setHistorySignal] = useState(0);
   const canUseDirectoryPicker = typeof window.showDirectoryPicker === "function" && navigator.webdriver !== true;
@@ -7235,6 +7338,7 @@ function App() {
 
   const applyBoard = useCallback((nextOrUpdater, options = {}) => {
     const current = boardRef.current;
+    if (cloudReadOnly && !options.allowReadOnly) return current;
     const {
       record = true,
       transient = false,
@@ -7249,7 +7353,7 @@ function App() {
     if (markDirty) setDirty(true);
     if (broadcast) publishBoard(next);
     return next;
-  }, [publishBoard, pushUndo]);
+  }, [cloudReadOnly, publishBoard, pushUndo]);
 
   useLayoutEffect(() => {
     if (textFrameGesture || resizeGesture || groupGesture) return;
@@ -7260,9 +7364,11 @@ function App() {
   }, [applyBoard, board.objects, groupGesture, resizeGesture, textFrameGesture]);
 
   const previewBoard = useCallback((next) => {
+    if (cloudReadOnly) return boardRef.current;
     boardRef.current = next;
     setBoard(next);
-  }, []);
+    return next;
+  }, [cloudReadOnly]);
 
   const finalizeGesture = useCallback(() => {
     applyBoard(boardRef.current, { record: false });
@@ -7407,6 +7513,7 @@ function App() {
   }, [announce, applyBoard]);
 
   const startGuideDrag = useCallback((event, axis, guideId = null) => {
+    if (cloudReadOnly) return;
     if (event.button !== 0) return;
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
@@ -7478,7 +7585,7 @@ function App() {
     window.addEventListener("pointermove", update);
     window.addEventListener("pointerup", finish, { once: true });
     window.addEventListener("pointercancel", cancel, { once: true });
-  }, [announce, applyBoard, deleteGuide, registerPointerGesture, rulerUnit, rulersVisible]);
+  }, [announce, applyBoard, cloudReadOnly, deleteGuide, registerPointerGesture, rulerUnit, rulersVisible]);
 
   const selectObject = useCallback((id, additive = false, penetrate = false) => {
     if (loadedTextFlow) {
@@ -7505,6 +7612,10 @@ function App() {
   }, [announce, loadedTextFlow]);
 
   const addMediaFiles = useCallback(async (fileList, point) => {
+    if (cloudReadOnly) {
+      announce("目前為僅檢視；請先申請編輯權限。", "warning");
+      return false;
+    }
     const files = [...fileList].filter((file) => file.type.startsWith("image/") || file.type.startsWith("video/") || isSvgFile(file));
     if (!files.length) {
       announce("沒有找到可加入的圖片、影片或 SVG。", "warning");
@@ -7523,7 +7634,7 @@ function App() {
     } catch (error) {
       announce(error.message || "素材加入失敗。", "error");
     }
-  }, [announce, applyBoard]);
+  }, [announce, applyBoard, cloudReadOnly]);
 
   const canvasCenterWorld = useCallback(() => {
     const rect = canvasRef.current?.getBoundingClientRect();
@@ -7532,6 +7643,10 @@ function App() {
   }, [screenToWorld]);
 
   const addGeneratedObject = useCallback((object, message) => {
+    if (cloudReadOnly) {
+      announce("目前為僅檢視；請先申請編輯權限。", "warning");
+      return false;
+    }
     applyBoard((current) => ({ ...current, objects: [...current.objects, object] }));
     selectedIdsRef.current = [object.id];
     setSelectedIds([object.id]);
@@ -7539,11 +7654,12 @@ function App() {
     setTool("select");
     setShapeMenuOpen(false);
     announce(message, "success");
-  }, [announce, applyBoard]);
+    return true;
+  }, [announce, applyBoard, cloudReadOnly]);
 
   const addTextObject = useCallback(() => {
     const object = createTextObject(canvasCenterWorld());
-    addGeneratedObject(object, "已加入文字物件，可直接輸入文字");
+    if (!addGeneratedObject(object, "已加入文字物件，可直接輸入文字")) return;
     textEditUndoRef.current = false;
     setEditingText({ id: object.id, selectAll: true });
   }, [addGeneratedObject, canvasCenterWorld]);
@@ -7744,7 +7860,7 @@ function App() {
       setCollaborationResume(resume);
       initialCollaborationInviteRef.current = "";
       scrubCollaborationInviteFromUrl();
-      announce("共編空間已建立；可複製邀請連結給協作者。", "success");
+      announce("共編空間已建立；分享連結會先讓對方以僅檢視身分加入。", "success");
     } catch (error) {
       const message = collaborationErrorMessage(error);
       setCloudCollaboration({ ...EMPTY_CLOUD_COLLABORATION, status: "error", message });
@@ -7777,7 +7893,7 @@ function App() {
       setCollaborationResume(resume);
       initialCollaborationInviteRef.current = "";
       scrubCollaborationInviteFromUrl();
-      announce("已加入即時共編空間。", "success");
+      announce(session.canEdit ? "已加入即時共編空間。" : "已加入共編空間，目前為僅檢視。", "success");
     } catch (error) {
       const message = collaborationErrorMessage(error);
       setCloudCollaboration({ ...EMPTY_CLOUD_COLLABORATION, status: "error", message });
@@ -7809,11 +7925,38 @@ function App() {
     if (!cloudCollaboration.inviteUrl) return;
     try {
       await navigator.clipboard.writeText(cloudCollaboration.inviteUrl);
-      announce("共編邀請連結已複製。", "success");
+      announce("檢視邀請連結已複製；對方可加入並申請編輯權限。", "success");
     } catch {
       announce("無法自動複製；請從網址列手動複製邀請連結。", "warning");
     }
   }, [announce, cloudCollaboration.inviteUrl]);
+
+  const requestCloudCollaborationEditAccess = useCallback(async () => {
+    try {
+      await cloudCollaborationSessionRef.current?.requestEditAccess();
+      announce("已送出編輯權限申請。", "success");
+    } catch (error) {
+      announce(collaborationErrorMessage(error), "error");
+    }
+  }, [announce]);
+
+  const resolveCloudCollaborationAccessRequest = useCallback(async (requesterUid, decision) => {
+    try {
+      await cloudCollaborationSessionRef.current?.resolveAccessRequest(requesterUid, decision);
+      announce(decision === "approved" ? "已核准編輯權限。" : "已拒絕編輯權限申請。", "success");
+    } catch (error) {
+      announce(collaborationErrorMessage(error), "error");
+    }
+  }, [announce]);
+
+  const setCloudCollaborationMemberRole = useCallback(async (memberUid, role) => {
+    try {
+      await cloudCollaborationSessionRef.current?.setMemberRole(memberUid, role);
+      announce(role === "editor" ? "已允許成員編輯。" : "已將成員改為僅檢視。", "success");
+    } catch (error) {
+      announce(collaborationErrorMessage(error), "error");
+    }
+  }, [announce]);
 
   const leaveCloudCollaboration = useCallback(async () => {
     await stopCloudCollaboration({ forget: true });
@@ -8552,6 +8695,7 @@ function App() {
   }, [announce, applyBoard, canvasCenterWorld]);
 
   const undo = useCallback(() => {
+    if (cloudReadOnly) return;
     const previous = undoRef.current.pop();
     if (!previous) return;
     redoRef.current.push({ ...boardRef.current, view: { ...viewRef.current } });
@@ -8565,9 +8709,10 @@ function App() {
     publishBoard(next);
     setDirty(true);
     setHistorySignal((value) => value + 1);
-  }, [publishBoard]);
+  }, [cloudReadOnly, publishBoard]);
 
   const redo = useCallback(() => {
+    if (cloudReadOnly) return;
     const nextSnapshot = redoRef.current.pop();
     if (!nextSnapshot) return;
     undoRef.current.push({ ...boardRef.current, view: { ...viewRef.current } });
@@ -8580,7 +8725,7 @@ function App() {
     publishBoard(next);
     setDirty(true);
     setHistorySignal((value) => value + 1);
-  }, [publishBoard]);
+  }, [cloudReadOnly, publishBoard]);
 
   const updateObject = useCallback((id, patch) => {
     if (loadedTextFlow?.sourceId === id) setLoadedTextFlow(null);
@@ -8604,6 +8749,10 @@ function App() {
   const startTextEdit = useCallback((event, id, selectAll = false) => {
     event?.preventDefault?.();
     event?.stopPropagation?.();
+    if (cloudReadOnly) {
+      announce("目前為僅檢視；請先申請編輯權限。", "warning");
+      return;
+    }
     if (loadedTextFlow) {
       setLoadedTextFlow(null);
       announce("已取消放置溢出文字；如要編輯，請再操作一次文字框。", "warning");
@@ -8639,7 +8788,7 @@ function App() {
       rangeLength: displayText.length,
     };
     setEditingText({ id, selectAll });
-  }, [announce, loadedTextFlow]);
+  }, [announce, cloudReadOnly, loadedTextFlow]);
 
   const finishTextEdit = useCallback(() => {
     textEditUndoRef.current = false;
@@ -9218,7 +9367,7 @@ function App() {
       setSelectedIds(movingIds);
       setKeyObjectId(id);
     }
-    if (tool === "3d") return;
+    if (cloudReadOnly || tool === "3d") return;
     if (targetObject.locked) return;
     event.preventDefault();
     const base = boardRef.current;
@@ -9276,7 +9425,7 @@ function App() {
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up, { once: true });
     window.addEventListener("pointercancel", cancel, { once: true });
-  }, [announce, captureGestureHistory, filters.colors.length, filters.symbols.length, finalizeGesture, loadedTextFlow, previewBoard, pushUndo, registerPointerGesture, restoreGestureHistory, spaceDown, startCanvasPan, tool]);
+  }, [announce, captureGestureHistory, cloudReadOnly, filters.colors.length, filters.symbols.length, finalizeGesture, loadedTextFlow, previewBoard, pushUndo, registerPointerGesture, restoreGestureHistory, spaceDown, startCanvasPan, tool]);
 
   const onObjectPointerUp = useCallback((event, id) => {
     if (event.button !== 0 || tool === "hand" || tool === "3d" || spaceDown || filters.symbols.length || filters.colors.length) return;
@@ -10245,11 +10394,15 @@ function App() {
   const onDrop = useCallback((event) => {
     event.preventDefault();
     setDragActive(false);
+    if (cloudReadOnly) {
+      announce("目前為僅檢視；請先申請編輯權限。", "warning");
+      return;
+    }
     const files = [...event.dataTransfer.files];
     const boardFile = files.find((file) => /\.(moodboard|json)$/i.test(file.name));
     if (boardFile && files.length === 1) importBoardFile(boardFile);
     else addMediaFiles(files, screenToWorld(event.clientX, event.clientY));
-  }, [addMediaFiles, importBoardFile, screenToWorld]);
+  }, [addMediaFiles, announce, cloudReadOnly, importBoardFile, screenToWorld]);
 
   const filteredObjects = useMemo(() => board.objects.filter((object) => object.visible && matchesFilters(object, filters)), [board.objects, filters]);
   const sourceAssets = useMemo(() => sourceAssetsFromObjects(board.objects), [board.objects]);
@@ -10346,13 +10499,13 @@ function App() {
 
         <label className="board-title-field">
           <span className="sr-only">Infinite Moodboard 名稱</span>
-          <input value={board.name} onChange={(event) => applyBoard((current) => ({ ...current, name: event.target.value }))} />
+          <input value={board.name} onChange={(event) => applyBoard((current) => ({ ...current, name: event.target.value }))} disabled={cloudReadOnly} />
           <small>{topbarSaveState}</small>
         </label>
 
         <div className="topbar-secondary">
-          <IconButton label="復原 ⌘Z" onClick={undo} disabled={!undoRef.current.length}><Undo2 size={18} /></IconButton>
-          <IconButton label="重做 ⇧⌘Z" onClick={redo} disabled={!redoRef.current.length}><Redo2 size={18} /></IconButton>
+          <IconButton label="復原 ⌘Z" onClick={undo} disabled={cloudReadOnly || !undoRef.current.length}><Undo2 size={18} /></IconButton>
+          <IconButton label="重做 ⇧⌘Z" onClick={redo} disabled={cloudReadOnly || !redoRef.current.length}><Redo2 size={18} /></IconButton>
           <button className="topbar-button" type="button" onClick={openVersionModal}><History size={17} /><span>版本</span></button>
           <button
             className="topbar-button collaboration-button"
@@ -10507,7 +10660,7 @@ function App() {
                 label={authReady ? "進階 3D 旋轉工具 Shift+3（拖曳選取物件旋轉）" : "進階 3D 旋轉工具 Shift+3（需要登入）"}
                 active={tool === "3d"}
                 aria-pressed={tool === "3d"}
-                disabled={!selectedIds.length}
+                disabled={cloudReadOnly || !selectedIds.length}
                 onClick={() => tool === "3d" ? setTool("select") : requestAdvancedFeature("3d")}
               >
                 <Box size={18} />
@@ -10516,6 +10669,7 @@ function App() {
             <div className="tool-divider" />
             <InsertToolbar
               open={shapeMenuOpen}
+              disabled={cloudReadOnly}
               onToggle={() => setShapeMenuOpen((current) => !current)}
               onAddText={addTextObject}
               onAddShape={addShapeObject}
@@ -10523,7 +10677,7 @@ function App() {
               onChooseVideo={() => { setShapeMenuOpen(false); videoInputRef.current?.click(); }}
               onChooseSvg={() => { setShapeMenuOpen(false); svgInputRef.current?.click(); }}
             />
-            <IconButton label="建立 Grid" onClick={() => setShowGridBuilder(true)}><LayoutGrid size={18} /></IconButton>
+            <IconButton label="建立 Grid" onClick={() => setShowGridBuilder(true)} disabled={cloudReadOnly}><LayoutGrid size={18} /></IconButton>
             <div className="tool-divider" />
             <div className="zoom-group">
               <IconButton label="縮小" onClick={() => { const rect = canvasRef.current.getBoundingClientRect(); zoomAround(rect.left + rect.width / 2, rect.top + rect.height / 2, view.zoom / 1.2); }}><ZoomOut size={17} /></IconButton>
@@ -10547,7 +10701,7 @@ function App() {
             onPointerDown={onCanvasPointerDown}
             onDoubleClick={onCanvasDoubleClick}
             onWheel={onWheel}
-            onDragEnter={(event) => { event.preventDefault(); setDragActive(true); }}
+            onDragEnter={(event) => { event.preventDefault(); if (!cloudReadOnly) setDragActive(true); }}
             onDragOver={(event) => event.preventDefault()}
             onDragLeave={(event) => { if (event.target === event.currentTarget) setDragActive(false); }}
             onDrop={onDrop}
@@ -10581,6 +10735,7 @@ function App() {
                   multiSelected={selectedIds.length > 1 && selectedIds.includes(object.id)}
                   keyObject={selectedIds.length > 1 && resolvedKeyObjectId === object.id}
                   selectionEnabled={tool !== "hand" || modifierDown}
+                  editable={!cloudReadOnly}
                   inverseZoom={1 / view.zoom}
                   onPointerDown={onObjectPointerDown}
                   onPointerUp={onObjectPointerUp}
@@ -10607,7 +10762,7 @@ function App() {
                   textFlowLoaded={loadedTextFlow?.sourceId === object.id}
                 />
               ))}
-              {multiSelectionBounds ? (
+              {multiSelectionBounds && !cloudReadOnly ? (
                 <SelectionGroupOverlay
                   bounds={multiSelectionBounds}
                   anchorKey={selectionAnchor}
@@ -10624,7 +10779,7 @@ function App() {
               ) : null}
             </div>
 
-            {showSelectionActions ? (
+            {showSelectionActions && !cloudReadOnly ? (
               <SelectionActionBar
                 count={selectedObjects.length}
                 hasArtboard={selectionHasArtboard}
@@ -10640,6 +10795,12 @@ function App() {
             ) : null}
 
             {marquee ? <div className="selection-marquee" style={marquee} aria-hidden="true" /> : null}
+
+            {cloudReadOnly ? (
+              <button className="cloud-read-only-banner" type="button" onClick={() => setShowCollaboration(true)}>
+                <Eye size={15} /><span><strong>僅檢視</strong><small>開啟協作面板以申請編輯權限</small></span>
+              </button>
+            ) : null}
 
             {loadedTextFlow ? (
               <div className="text-flow-placement-status" role="status">
@@ -10753,6 +10914,7 @@ function App() {
           onResizeArtboardPreset={resizeArtboardPreset}
           selectionGrouped={selectionGrouped}
           onToggleGroup={toggleSelectionGroup}
+          readOnly={cloudReadOnly}
           mobilePanel={mobilePanel}
           setMobilePanel={setMobilePanel}
         />
@@ -10964,6 +11126,9 @@ function App() {
           onJoinRoom={joinCloudCollaboration}
           onResumeRoom={resumeCloudCollaboration}
           onCopyInvite={copyCloudCollaborationInvite}
+          onRequestEditAccess={requestCloudCollaborationEditAccess}
+          onResolveAccessRequest={resolveCloudCollaborationAccessRequest}
+          onSetMemberRole={setCloudCollaborationMemberRole}
           onLeaveRoom={leaveCloudCollaboration}
           onOpenDrive={() => {
             setShowCollaboration(false);

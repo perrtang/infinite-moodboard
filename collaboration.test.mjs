@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  COLLABORATION_DEFAULT_INVITE_ROLE,
   LOCAL_COLLABORATION_ORIGIN,
   REMOTE_COLLABORATION_ORIGIN,
   applyCollaborationUpdate,
   assertVerifiedCollaborationUser,
   collaborationId,
+  collaborationAccessRequestStatusLabel,
   combineCollaborationChunks,
   createCollaborationDocument,
   createCollaborationInviteUrl,
@@ -13,6 +15,7 @@ import {
   listenToCollaborationUpdates,
   loadCollaborationResume,
   normalizeCollaborationInvite,
+  normalizeCollaborationAccessRequestStatus,
   readBoardFromCollaborationDocument,
   saveCollaborationResume,
   splitCollaborationUpdate,
@@ -83,6 +86,13 @@ test("collaboration updates split and combine without changing bytes", () => {
 test("verified identity is required for cloud collaboration", () => {
   assert.throws(() => assertVerifiedCollaborationUser({ uid: "u1", emailVerified: false }), /Email 驗證/);
   assert.equal(assertVerifiedCollaborationUser({ uid: "u1", emailVerified: true }).uid, "u1");
+});
+
+test("shared collaboration links start as view only and access request states are normalized", () => {
+  assert.equal(COLLABORATION_DEFAULT_INVITE_ROLE, "viewer");
+  assert.equal(normalizeCollaborationAccessRequestStatus("pending"), "pending");
+  assert.equal(normalizeCollaborationAccessRequestStatus("unexpected"), "none");
+  assert.equal(collaborationAccessRequestStatusLabel("approved"), "已核准編輯");
 });
 
 test("collaboration document keeps assets while preserving each device viewport", () => {
