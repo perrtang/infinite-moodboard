@@ -18,6 +18,17 @@ test("release version stays aligned across runtime and update metadata", async (
   assert.match(versionSource, new RegExp(`APP_VERSION = ["']${packageJson.version.replaceAll(".", "\\.")}["']`));
 });
 
+test("production authentication uses the PETFASHION branded handler domain", async () => {
+  const [authSource, envExample] = await Promise.all([
+    read("./auth.js"),
+    read("./.env.example"),
+  ]);
+
+  assert.match(authSource, /authDomain:\s*["']auth\.petfashion\.tw["']/);
+  assert.doesNotMatch(authSource, /authDomain:\s*["'][^"']+\.firebaseapp\.com["']/);
+  assert.match(envExample, /VITE_FIREBASE_AUTH_DOMAIN=auth\.petfashion\.tw/);
+});
+
 test("GitHub release assets are built from a verified tag without cloud rule deployment", async () => {
   const [releaseWorkflow, pagesWorkflow, packageScript] = await Promise.all([
     read("./.github/workflows/release.yml"),

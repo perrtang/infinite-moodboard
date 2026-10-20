@@ -1,8 +1,8 @@
 {
   "product": "Infinite Moodboard",
   "channel": "stable",
-  "version": "0.27.0",
-  "releasedAt": "2026-10-20",
-  "summary": "啟用 moodboard.petfashion.tw 免安裝正式網址，並保留 GitHub Pages、自架封裝與版本備份。",
+  "version": "0.28.0",
+  "releasedAt": "2026-10-21",
+  "summary": "將 Google 與 Email 驗證流程改用 PETFASHION 品牌登入網域 auth.petfashion.tw。",
   "url": "https://moodboard.petfashion.tw/"
 }

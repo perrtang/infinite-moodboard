@@ -36,7 +36,7 @@ const runtimeEnv = import.meta.env || {};
 // a separate Firebase project.
 const publicFirebaseConfig = {
   apiKey: "AIzaSyCKNbO1yOmB3LhWtQ71gW1Pek0vmD-AWQs",
-  authDomain: "pet-fashion-tw.firebaseapp.com",
+  authDomain: "auth.petfashion.tw",
   projectId: "pet-fashion-tw",
   storageBucket: "pet-fashion-tw.firebasestorage.app",
   messagingSenderId: "1068479226042",

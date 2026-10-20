@@ -97,7 +97,7 @@ import {
 test("application version remains explicit and independent from board revisions", () => {
   assert.match(APP_VERSION, /^\d+\.\d+\.\d+$/);
   assert.equal(APP_VERSION_LABEL, `App v${APP_VERSION}`);
-  assert.equal(APP_RELEASE_DATE, "2026-10-20");
+  assert.equal(APP_RELEASE_DATE, "2026-10-21");
 });
 
 test("application update manifests compare stable semantic versions", () => {

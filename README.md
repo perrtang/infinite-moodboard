@@ -26,6 +26,12 @@ Infinite Moodboard runs the canvas, imported media, transforms, exports, and ver
 - Optional Google Drive file storage and opt-in realtime collaboration with view/edit permission requests.
 - 3D, Drive, collaboration, and export runtimes are loaded only when used, keeping the opening bundle smaller.
 
+## v0.28.0 — branded authentication release
+
+- Moves Google and Email verification handlers to `auth.petfashion.tw` so the sign-in flow stays visibly within PETFASHION.
+- Keeps the previous Firebase callback available for existing PETFASHION services while adding the branded OAuth callback.
+- Verifies the branded authentication domain as part of the release test suite.
+
 ## v0.27.0 — PETFASHION custom-domain release
 
 - Publishes the install-free GitHub Pages app at `moodboard.petfashion.tw`.
@@ -69,7 +75,7 @@ npm run build
 Create the self-hosted release asset:
 
 ```bash
-npm run release:package -- 0.27.0
+npm run release:package -- 0.28.0
 ```
 
 Google Drive uses the least-privilege `drive.file` scope. A fork must supply its own OAuth client and approved origins:
