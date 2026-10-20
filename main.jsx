@@ -157,10 +157,15 @@ import {
 } from "./output.js";
 import {
   clearLocalMoodboardData,
+  enqueueSync,
+  getLocalLibrarySummary,
+  getSyncJob,
   loadCurrentBoard,
   listVersions,
+  removeSyncJob,
   saveCurrentBoard,
   saveVersion,
+  updateSyncJob,
 } from "./storage.js";
 import {
   DriveApiError,
@@ -4649,6 +4654,7 @@ function SettingsModal({
   driveCurrentContentBytes,
   driveSession,
   driveSettings,
+  localLibrarySummary,
   enableProviderTesting = false,
   initialSection = "general",
   locale,
@@ -4824,6 +4830,14 @@ function SettingsModal({
             <section className="settings-section" aria-labelledby="settings-storage-title">
               <div className="settings-section-heading">
                 <div><h3 id="settings-storage-title">儲存與同步</h3><p>優先把工作檔保存到 Google Drive，同時保留本機安全暫存。</p></div>
+              </div>
+              <div className="settings-drive-quota">
+                <HardDrive size={18} />
+                <div>
+                  <strong>本機安全暫存</strong>
+                  <small><span>本機 Moodboards</span>{`: ${localLibrarySummary.boardCount} · `}<span>等待同步</span>{`: ${localLibrarySummary.pendingSyncCount}`}{localLibrarySummary.storage.persisted === false ? <><span aria-hidden="true"> · </span><span>瀏覽器可能自動清理</span></> : null}</small>
+                </div>
+                <span>{localLibrarySummary.storage.usage !== null ? formatStorageSize(localLibrarySummary.storage.usage) : formatStorageSize(localLibrarySummary.estimatedBoardBytes)}</span>
               </div>
               {(() => {
                 const status = driveStatusPresentation(driveSession);
@@ -5400,6 +5414,12 @@ function App() {
     conflict: null,
     lastSyncedAt: "",
   }));
+  const [localLibrarySummary, setLocalLibrarySummary] = useState({
+    boardCount: 0,
+    pendingSyncCount: 0,
+    estimatedBoardBytes: 0,
+    storage: { usage: null, quota: null, persisted: null },
+  });
   const [customThemes, setCustomThemes] = useState(loadStoredInterfaceThemes);
   const [activeThemeId, setActiveThemeId] = useState(() => localStorage.getItem(ACTIVE_THEME_STORAGE_KEY) || BUILT_IN_THEMES[0].id);
   const [previewTheme, setPreviewTheme] = useState(null);
@@ -5849,6 +5869,16 @@ function App() {
     return write;
   }, []);
 
+  const refreshLocalLibrarySummary = useCallback(async () => {
+    try {
+      const summary = await getLocalLibrarySummary();
+      setLocalLibrarySummary(summary);
+      return summary;
+    } catch {
+      return null;
+    }
+  }, []);
+
   const refreshGoogleDrive = useCallback(async (providedToken = "", providedFolderId = "") => {
     const operationEpoch = driveOperationEpochRef.current;
     const accessToken = providedToken || currentDriveAccessToken();
@@ -6249,6 +6279,7 @@ function App() {
       setVersions([]);
       setDirty(false);
       setSaveState("已建立空白本機 Moodboard");
+      await refreshLocalLibrarySummary();
       setShowDeleteLocalData(false);
       announce("這台裝置上的 Moodboard、版本與 Drive 連結資料已清除；雲端檔案未刪除。", "success");
     } catch {
@@ -6256,7 +6287,7 @@ function App() {
     } finally {
       setIsClearingLocalData(false);
     }
-  }, [announce, cancelDriveOperations, interfaceLocale]);
+  }, [announce, cancelDriveOperations, interfaceLocale, refreshLocalLibrarySummary]);
 
   const setCanvasBackgroundMode = useCallback((mode) => {
     setCanvasBackground((current) => changeCanvasBackgroundMode(current, mode));
@@ -6496,9 +6527,13 @@ function App() {
         }
       })
       .catch(() => setSaveState("自動儲存不可用"))
-      .finally(() => !cancelled && setHydrated(true));
+      .finally(() => {
+        if (cancelled) return;
+        setHydrated(true);
+        refreshLocalLibrarySummary();
+      });
     return () => { cancelled = true; };
-  }, []);
+  }, [refreshLocalLibrarySummary]);
 
   useEffect(() => {
     if (!hydrated) return undefined;
@@ -6507,13 +6542,20 @@ function App() {
     const snapshot = { ...board, view };
     saveTimerRef.current = window.setTimeout(() => {
       persistBoardLocally(snapshot)
-        .then(() => setSaveState(`本機已儲存 ${new Date().toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" })}`))
+        .then(async () => {
+          const link = driveSettings.links[snapshot.id];
+          if (driveSettings.enabled && driveSettings.autoSync && link) {
+            await enqueueSync(snapshot, { fileId: link.fileId, expectedVersion: link.version });
+          }
+          await refreshLocalLibrarySummary();
+          setSaveState(`本機已儲存 ${new Date().toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" })}`);
+        })
         .catch((error) => {
           if (error?.name !== "AbortError") setSaveState("自動儲存失敗");
         });
     }, 550);
     return () => window.clearTimeout(saveTimerRef.current);
-  }, [board, hydrated, persistBoardLocally, view]);
+  }, [board, driveSettings.autoSync, driveSettings.enabled, driveSettings.links, hydrated, persistBoardLocally, refreshLocalLibrarySummary, view]);
 
   useEffect(() => {
     if (!authReady || !hydrated || !("BroadcastChannel" in window)) return undefined;
@@ -6838,6 +6880,14 @@ function App() {
           if (error?.name === "AbortError") throw error;
           throw new DriveApiError("本機安全副本寫入失敗，因此未開始雲端同步。", { code: "drive/local-save", details: error });
         }
+        const queuedJob = await getSyncJob(snapshot.id);
+        if (queuedJob) {
+          await updateSyncJob(snapshot.id, {
+            state: "syncing",
+            attemptCount: Number(queuedJob.attemptCount || 0) + 1,
+            lastError: "",
+          });
+        }
         assertCurrentOperation();
         const about = await getGoogleDriveAbout(accessToken);
         assertCurrentOperation();
@@ -6876,6 +6926,8 @@ function App() {
           conflict: null,
           lastSyncedAt: new Date().toISOString(),
         }));
+        await removeSyncJob(snapshot.id);
+        await refreshLocalLibrarySummary();
         if (boardRef.current.revision === snapshot.revision && boardRef.current.updatedAt === snapshot.updatedAt) setDirty(false);
         if (!silent) announce(asCopy ? "已另存 Google Drive 複本。" : "Google Drive 已同步。", "success");
         return true;
@@ -6893,6 +6945,15 @@ function App() {
                 ? "authorization-required"
                 : "error";
         if (authorizationRequired) driveTokenRef.current = null;
+        if (linkedFile && driveSettings.autoSync) {
+          await enqueueSync(snapshot, { fileId: linkedFile.fileId, expectedVersion: linkedFile.version });
+          await updateSyncJob(snapshot.id, {
+            state: status,
+            lastError: driveErrorMessage(error),
+            nextAttemptAt: new Date(Date.now() + (status === "offline" ? 15_000 : 60_000)).toISOString(),
+          });
+          await refreshLocalLibrarySummary();
+        }
         setDriveSession((current) => ({
           ...current,
           status,
@@ -6915,7 +6976,7 @@ function App() {
     })();
     driveSavePromiseRef.current = operation;
     return operation;
-  }, [announce, authReady, boardSnapshot, currentDriveAccessToken, driveSettings.folderId, driveSettings.links, persistBoardLocally, requestAdvancedFeature, updateDriveSettings]);
+  }, [announce, authReady, boardSnapshot, currentDriveAccessToken, driveSettings.autoSync, driveSettings.folderId, driveSettings.links, persistBoardLocally, refreshLocalLibrarySummary, requestAdvancedFeature, updateDriveSettings]);
 
   const openGoogleDriveFile = useCallback(async (file) => {
     const operationEpoch = driveOperationEpochRef.current;
@@ -9485,6 +9546,7 @@ function App() {
           driveCurrentContentBytes={currentDriveContentBytes}
           driveSession={driveSession}
           driveSettings={driveSettings}
+          localLibrarySummary={localLibrarySummary}
           enableProviderTesting={providerTestMode}
           initialSection={settingsInitialSection}
           locale={interfaceLocale}

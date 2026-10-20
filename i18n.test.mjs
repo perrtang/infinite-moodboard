@@ -55,6 +55,8 @@ test("Google Drive storage and recovery copy is localized", () => {
   assert.equal(translateInterfaceText("只要求 drive.file 最小權限", "en"), "Requests only the minimum drive.file permission");
   assert.match(translateInterfaceText("Google Drive 是主要保存位置；每次編輯仍會先安全保存在這台裝置。", "en"), /saved on this device first/);
   assert.equal(translateInterfaceText("Google Drive 已同步", "en"), "Google Drive synced");
+  assert.equal(translateInterfaceText("本機安全暫存", "en"), "Local safety cache");
+  assert.equal(translateInterfaceText("等待同步", "en"), "Waiting to sync");
   assert.equal(translateInterfaceText("2 / 5 個 Drive 檔案", "en"), "2 / 5 Drive files");
   assert.equal(translateInterfaceText("目前 Drive 帳號：person@example.com", "en"), "Current Drive account: person@example.com");
   assert.match(translateInterfaceText("Google Drive 空間不足；畫布仍安全保存在這台裝置。", "en"), /remains safely saved/);
