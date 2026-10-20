@@ -80,6 +80,15 @@ test("workspace search, ruler, and shortcut copy is localized", () => {
 
 test("Google Drive storage and recovery copy is localized", () => {
   assert.equal(translateInterfaceText("儲存與同步", "en"), "Storage & sync");
+  assert.equal(translateInterfaceText("選擇主要儲存位置", "en"), "Choose the primary storage location");
+  assert.equal(translateInterfaceText("這台裝置", "en"), "This device");
+  assert.equal(translateInterfaceText("我的 Moodboards", "en"), "My Moodboards");
+  assert.equal(translateInterfaceText("下載 `.moodboard` 備份", "en"), "Download `.moodboard` backup");
+  assert.equal(translateInterfaceText("已儲存在這台裝置 · 上午10:42", "en"), "Saved on this device · 10:42");
+  assert.equal(translateInterfaceText("本機安全副本已更新 · 下午02:42", "en"), "Local safety copy updated · 14:42");
+  assert.equal(translateInterfaceText("本機復原副本已更新 · 下午02:42；主要位置等待手動儲存", "en"), "Local recovery copy updated · 14:42; primary location awaiting manual save");
+  assert.equal(translateInterfaceText("主要位置：Google Drive", "en"), "Primary location: Google Drive");
+  assert.equal(translateInterfaceText("儲存失敗；變更仍留在目前分頁", "en"), "Save failed. Changes remain in this tab.");
   assert.equal(translateInterfaceText("只要求 drive.file 最小權限", "en"), "Requests only the minimum drive.file permission");
   assert.match(translateInterfaceText("Google Drive 是主要保存位置；每次編輯仍會先安全保存在這台裝置。", "en"), /saved on this device first/);
   assert.equal(translateInterfaceText("Google Drive 已同步", "en"), "Google Drive synced");
@@ -96,6 +105,8 @@ test("Google Drive storage and recovery copy is localized", () => {
   assert.match(translateInterfaceText("正在先保存本機版本，再確認 Drive 空間與遠端版本…", "en"), /Saving the local version first/);
   assert.match(translateInterfaceText("已中斷這個分頁的 Google Drive；雲端檔案、本機畫布與 PETFASHION 登入都未受影響。", "en"), /disconnected from this tab/);
   assert.equal(translateInterfaceText("儲存與同步", "zh-Hans"), "保存与同步");
+  assert.equal(translateInterfaceText("選擇主要儲存位置", "zh-Hans"), "选择主要保存位置");
+  assert.equal(translateInterfaceText("這台裝置", "zh-Hans"), "这台设备");
   assert.equal(translateInterfaceText("中斷 Drive 連結", "zh-Hans"), "中断 Drive 连接");
 });
 

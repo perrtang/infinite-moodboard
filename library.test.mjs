@@ -38,3 +38,28 @@ test("legacy Drive links merge files that predate boardId app properties", () =>
   assert.equal(item.boardId, "board-legacy");
   assert.equal(item.status, "synced");
 });
+
+test("a Drive version newer than the last linked version needs review", () => {
+  const [item] = mergeMoodboardLibrary({
+    localBoards: [{ id: "board-1", name: "Research" }],
+    remoteFiles: [{ id: "drive-1", boardId: "board-1", name: "Research.moodboard", version: "12" }],
+    links: { "board-1": { fileId: "drive-1", version: "11" } },
+  });
+  assert.equal(item.status, "needs-review");
+});
+
+test("local edits after the last Drive sync are never reported as synced", () => {
+  const [item] = mergeMoodboardLibrary({
+    localBoards: [{ id: "board-1", name: "Research", revision: 9, updatedAt: "2026-10-21T02:00:00.000Z" }],
+    remoteFiles: [{ id: "drive-1", boardId: "board-1", name: "Research.moodboard", version: "12" }],
+    links: {
+      "board-1": {
+        fileId: "drive-1",
+        version: "12",
+        syncedRevision: 8,
+        syncedUpdatedAt: "2026-10-21T01:00:00.000Z",
+      },
+    },
+  });
+  assert.equal(item.status, "local-changed");
+});

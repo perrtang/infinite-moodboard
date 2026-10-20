@@ -12,7 +12,7 @@ Infinite Moodboard runs the canvas, imported media, transforms, exports, and ver
 
 ## Start here
 
-- **Recommended:** [open the web app](https://moodboard.petfashion.tw/). Your work is saved locally in the current browser until you explicitly download, export, connect Drive, or start collaboration.
+- **Recommended:** [open the web app](https://moodboard.petfashion.tw/). On first use, choose this device or Google Drive as that Moodboard's one primary storage location; a local recovery copy remains available in either mode.
 - **Editable files:** download a `.moodboard` file from the app and reopen it in the online app at any time.
 - **Self-hosting:** download the latest `self-hosted.zip` from [GitHub Releases](https://github.com/perrtang/infinite-moodboard/releases/latest). It is a static web build, not a native desktop installer; follow the included `SELF_HOSTING.md` instead of double-clicking `index.html`.
 
@@ -25,6 +25,13 @@ Infinite Moodboard runs the canvas, imported media, transforms, exports, and ver
 - Traditional Chinese, Simplified Chinese, and English interfaces.
 - Optional Google Drive file storage and opt-in realtime collaboration with view/edit permission requests.
 - 3D, Drive, collaboration, and export runtimes are loaded only when used, keeping the opening bundle smaller.
+
+## v0.30.0 — storage destination release
+
+- Gives every Moodboard one clear primary storage location: this device or Google Drive.
+- Keeps IndexedDB as a local recovery copy even when primary autosave is disabled or Drive is selected.
+- Combines local records and app-accessible Drive files in My Moodboards, with local-change, sync, conflict, quota, offline, and authorization states.
+- Consolidates the top bar to My Moodboards and one destination-aware Save action; portable files are explicitly downloaded as `.moodboard` backups.
 
 ## v0.29.0 — intrinsic image sizing release
 
@@ -81,7 +88,7 @@ npm run build
 Create the self-hosted release asset:
 
 ```bash
-npm run release:package -- 0.29.0
+npm run release:package -- 0.30.0
 ```
 
 Google Drive uses the least-privilege `drive.file` scope. A fork must supply its own OAuth client and approved origins:

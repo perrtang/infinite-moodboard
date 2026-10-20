@@ -176,6 +176,13 @@ import {
   updateSyncJob,
 } from "./storage.js";
 import {
+  isCurrentStorageTargetOperation,
+  loadStoragePreferences,
+  saveStoragePreferences,
+  setBoardStorageTarget,
+  storageTargetForBoard,
+} from "./storage-preferences.js";
+import {
   DriveApiError,
   DriveConflictError,
   contentByteLength,
@@ -4837,6 +4844,8 @@ function driveStatusPresentation(driveSession) {
 function libraryItemPresentation(item) {
   const presentations = {
     synced: { label: "本機與 Drive 已同步", tone: "success" },
+    "needs-review": { label: "Drive 有較新版本", tone: "warning" },
+    "local-changed": { label: "本機有尚未同步的變更", tone: "warning" },
     linked: { label: "已連結 Drive", tone: "success" },
     "local-only": { label: "僅保存在本機", tone: "local" },
     "remote-only": { label: "僅保存在 Drive", tone: "remote" },
@@ -4851,17 +4860,56 @@ function libraryItemPresentation(item) {
   return presentations[item.status] || presentations["local-only"];
 }
 
+function StorageLocationModal({ currentTarget, onChoose, onClose }) {
+  return (
+    <Modal
+      title="選擇主要儲存位置"
+      description="每份 Moodboard 只有一個主要位置，之後可在設定中更改。"
+      onClose={onClose}
+    >
+      <div className="storage-location-options" role="radiogroup" aria-label="主要儲存位置">
+        <button
+          className={`storage-location-option ${currentTarget === "local" ? "is-selected" : ""}`}
+          type="button"
+          role="radio"
+          aria-checked={currentTarget === "local"}
+          onClick={() => onChoose("local")}
+        >
+          <span className="storage-location-option-icon"><HardDrive size={22} /></span>
+          <span><strong>這台裝置</strong><small>自動儲存在這個瀏覽器；適合離線使用，不需要登入。</small></span>
+          {currentTarget === "local" ? <Check size={17} /> : <ChevronRight size={17} />}
+        </button>
+        <button
+          className={`storage-location-option ${currentTarget === "drive" ? "is-selected" : ""}`}
+          type="button"
+          role="radio"
+          aria-checked={currentTarget === "drive"}
+          onClick={() => onChoose("drive")}
+        >
+          <span className="storage-location-option-icon"><Cloud size={22} /></span>
+          <span><strong>Google Drive</strong><small>適合跨裝置開啟；會另外詢問 Drive 權限，並保留本機安全副本。</small></span>
+          {currentTarget === "drive" ? <Check size={17} /> : <ChevronRight size={17} />}
+        </button>
+      </div>
+      <p className="storage-location-note"><ShieldCheck size={16} />切換位置不會刪除另一端的檔案；未同步變更會先留在這台裝置。</p>
+    </Modal>
+  );
+}
+
 function DriveLibraryModal({
   board,
   currentContentBytes,
   currentLink,
   driveSession,
   driveSettings,
+  primaryStorageTarget,
   localBoards,
   syncJobs,
   onConnect,
   onCreateLocal,
   onDisconnect,
+  onDownloadBackup,
+  onOpenDeviceFile,
   onOpenLocal,
   onOpenFile,
   onRecoverRemote,
@@ -4895,8 +4943,15 @@ function DriveLibraryModal({
       : "連結後會在儲存前檢查可用空間。";
 
   return (
-    <Modal title="我的 Moodboards" description="Google Drive 是主要保存位置；每次編輯仍會先安全保存在這台裝置。" onClose={onClose} wide>
+    <Modal title="我的 Moodboards" description="在同一個檔案庫開啟這台裝置與 Infinite Moodboard 可存取的 Drive 檔案。" onClose={onClose} wide>
       <div className="drive-library">
+        <section className="library-primary-location" aria-label="目前主要儲存位置">
+          {primaryStorageTarget === "drive" ? <Cloud size={19} /> : primaryStorageTarget === "local" ? <HardDrive size={19} /> : <Info size={19} />}
+          <div>
+            <strong>{primaryStorageTarget === "drive" ? "主要儲存位置：Google Drive" : primaryStorageTarget === "local" ? "主要儲存位置：這台裝置" : "尚未選擇主要儲存位置"}</strong>
+            <small>{primaryStorageTarget === "drive" ? "本機只作離線、同步佇列與復原用的安全副本。" : "點擊「儲存」會更新這個瀏覽器中的主檔。"}</small>
+          </div>
+        </section>
         <section className={`drive-status-panel is-${status.tone}`} aria-live="polite">
           <span className="drive-status-icon" aria-hidden="true"><StatusIcon size={22} className={busy ? "is-spinning" : ""} /></span>
           <div>
@@ -4959,6 +5014,8 @@ function DriveLibraryModal({
           <strong>{`${listedItems.length} / ${libraryItems.length} 份 Moodboard`}</strong>
           <div className="drive-library-list-actions">
             <ListSearchToggle search={search} resultCount={listedItems.length} totalCount={libraryItems.length} label="搜尋我的 Moodboards" />
+            <button className="quiet-button" type="button" onClick={onOpenDeviceFile}><FileUp size={15} />從檔案開啟</button>
+            <button className="quiet-button" type="button" onClick={onDownloadBackup}><Download size={15} />下載 `.moodboard` 備份</button>
             <button className="quiet-button" type="button" onClick={onCreateLocal}><Plus size={15} />新增 Moodboard</button>
           </div>
         </div>
@@ -5232,6 +5289,8 @@ function SettingsModal({
   driveCurrentContentBytes,
   driveSession,
   driveSettings,
+  primaryStorageTarget,
+  storagePreferences,
   localLibrarySummary,
   enableProviderTesting = false,
   initialSection = "general",
@@ -5273,6 +5332,10 @@ function SettingsModal({
   onSetRulerUnit,
   onOpenShortcuts,
   onOpenDriveLibrary,
+  onDownloadBackup,
+  onSetStorageTarget,
+  onSetAutoSave,
+  onSetShowSaveStatus,
   onSaveDrive,
   onSetDriveAutoSync,
   onClose,
@@ -5413,8 +5476,28 @@ function SettingsModal({
           ) : section === "storage" ? (
             <section className="settings-section" aria-labelledby="settings-storage-title">
               <div className="settings-section-heading">
-                <div><h3 id="settings-storage-title">儲存與同步</h3><p>優先把工作檔保存到 Google Drive，同時保留本機安全暫存。</p></div>
+                <div><h3 id="settings-storage-title">儲存與同步</h3><p>每份 Moodboard 只有一個主要儲存位置；本機安全副本不會變成第二份競爭的主檔。</p></div>
               </div>
+              <div className="settings-subsection-heading">
+                <Save size={17} />
+                <div><strong>目前 Moodboard 的主要儲存位置</strong><small>切換時不會刪除原本檔案；選擇 Drive 後才會另外要求登入與授權。</small></div>
+              </div>
+              <div className="settings-storage-targets" role="radiogroup" aria-label="主要儲存位置">
+                <button className={primaryStorageTarget === "local" ? "is-active" : ""} type="button" role="radio" aria-checked={primaryStorageTarget === "local"} onClick={() => onSetStorageTarget("local")}>
+                  <HardDrive size={18} /><span><strong>這台裝置</strong><small>可離線、不需要登入</small></span>{primaryStorageTarget === "local" ? <Check size={16} /> : null}
+                </button>
+                <button className={primaryStorageTarget === "drive" ? "is-active" : ""} type="button" role="radio" aria-checked={primaryStorageTarget === "drive"} onClick={() => onSetStorageTarget("drive")}>
+                  <Cloud size={18} /><span><strong>Google Drive</strong><small>跨裝置使用，仍保留本機安全副本</small></span>{primaryStorageTarget === "drive" ? <Check size={16} /> : null}
+                </button>
+              </div>
+              <button className="settings-toggle-row" type="button" aria-pressed={storagePreferences.autoSave} onClick={() => onSetAutoSave(!storagePreferences.autoSave)}>
+                <span><Save size={18} /><span><strong>自動儲存</strong><small>本機復原副本始終保留；啟用後，停止編輯時也會自動更新主要位置。</small></span></span>
+                <b>{storagePreferences.autoSave ? "啟用" : "停用"}</b>
+              </button>
+              <button className="settings-toggle-row" type="button" aria-pressed={storagePreferences.showSaveStatus} onClick={() => onSetShowSaveStatus(!storagePreferences.showSaveStatus)}>
+                <span><Check size={18} /><span><strong>顯示儲存完成狀態</strong><small>在檔名下方安靜顯示位置與完成時間，不會中斷編輯。</small></span></span>
+                <b>{storagePreferences.showSaveStatus ? "啟用" : "停用"}</b>
+              </button>
               <div className="settings-drive-quota">
                 <HardDrive size={18} />
                 <div>
@@ -5450,7 +5533,6 @@ function SettingsModal({
                   </div>
                   <div className="settings-account-links settings-drive-actions">
                     <button className="primary-button" type="button" onClick={onSaveDrive} disabled={["syncing", "checking"].includes(driveSession.status)}><CloudUpload size={16} />{currentDriveLink ? "立即同步" : "儲存目前 Moodboard"}</button>
-                    <button className="secondary-button" type="button" onClick={onOpenDriveLibrary}><FolderOpen size={15} />我的 Moodboards</button>
                     <button className="quiet-button" type="button" onClick={onDisconnectDrive} title="只中斷目前分頁，不影響 PETFASHION 登入"><CloudOff size={15} />中斷此分頁</button>
                   </div>
                 </>
@@ -5460,6 +5542,10 @@ function SettingsModal({
                   <button className="primary-button" type="button" onClick={onConnectDrive} disabled={driveSession.status === "connecting"}><Cloud size={16} />連結 Google Drive</button>
                 </div>
               )}
+              <div className="settings-account-links settings-storage-file-actions">
+                <button className="secondary-button" type="button" onClick={onOpenDriveLibrary}><FolderOpen size={15} />我的 Moodboards</button>
+                <button className="quiet-button" type="button" onClick={onDownloadBackup}><Download size={15} />下載 `.moodboard` 備份</button>
+              </div>
               <p className="settings-update-note">若離線、容量不足或授權失效，編輯不會中斷；畫布會標示等待同步，並可隨時下載 `.moodboard` 備份。</p>
             </section>
           ) : section === "general" ? (
@@ -5933,6 +6019,7 @@ function App() {
   setActiveInterfaceLocale(interfaceLocale);
   const authPreviewUserRef = useRef(moodboardAuthPreviewUser());
   const initialDriveSettingsRef = useRef(loadDriveState());
+  const initialStoragePreferencesRef = useRef(loadStoragePreferences());
   const initialBoardRef = useRef(createBoard({ name: localizedDefaultBoardName(interfaceLocale) }));
   const [board, setBoard] = useState(initialBoardRef.current);
   const boardRef = useRef(initialBoardRef.current);
@@ -5986,6 +6073,7 @@ function App() {
   const [showVersions, setShowVersions] = useState(false);
   const [showCollaboration, setShowCollaboration] = useState(false);
   const [showDriveLibrary, setShowDriveLibrary] = useState(false);
+  const [showStorageLocation, setShowStorageLocation] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [settingsInitialSection, setSettingsInitialSection] = useState("general");
@@ -6005,6 +6093,7 @@ function App() {
   const [pendingAdvancedFeature, setPendingAdvancedFeature] = useState(null);
   const [online, setOnline] = useState(() => navigator.onLine !== false);
   const [driveSettings, setDriveSettings] = useState(initialDriveSettingsRef.current);
+  const [storagePreferences, setStoragePreferences] = useState(initialStoragePreferencesRef.current);
   const [driveSession, setDriveSession] = useState(() => ({
     status: initialDriveSettingsRef.current.enabled ? "authorization-required" : "disconnected",
     connected: false,
@@ -6092,6 +6181,7 @@ function App() {
   const fileHandleRef = useRef(null);
   const driveTokenRef = useRef(null);
   const driveOperationEpochRef = useRef(0);
+  const storageTargetOperationEpochRef = useRef(0);
   const driveSaveControllerRef = useRef(null);
   const driveSavePromiseRef = useRef(null);
   const undoRef = useRef([]);
@@ -6668,6 +6758,17 @@ function App() {
     });
   }, []);
 
+  const updateStoragePreferences = useCallback((updater) => {
+    setStoragePreferences((current) => {
+      const next = typeof updater === "function" ? updater(current) : updater;
+      return saveStoragePreferences(localStorage, next);
+    });
+  }, []);
+
+  const setBoardPrimaryStorage = useCallback((boardId, target) => {
+    updateStoragePreferences((current) => setBoardStorageTarget(current, boardId, target));
+  }, [updateStoragePreferences]);
+
   const currentDriveAccessToken = useCallback(() => {
     const token = driveTokenRef.current;
     if (!isGoogleDriveTokenUsable(token)) return "";
@@ -6840,7 +6941,9 @@ function App() {
   const openGoogleDriveLibrary = useCallback(() => {
     setShowDriveLibrary(true);
     refreshLocalLibrarySummary();
-  }, [refreshLocalLibrarySummary]);
+    const accessToken = currentDriveAccessToken();
+    if (accessToken) refreshGoogleDrive(accessToken);
+  }, [currentDriveAccessToken, refreshGoogleDrive, refreshLocalLibrarySummary]);
 
   const closeAdvancedFeatureGate = useCallback(() => {
     if (authBusy) return;
@@ -7107,6 +7210,8 @@ function App() {
       driveTokenRef.current = null;
       const clearedDriveState = saveDriveState(localStorage, {});
       setDriveSettings(clearedDriveState);
+      const clearedStoragePreferences = saveStoragePreferences(localStorage, {});
+      setStoragePreferences(clearedStoragePreferences);
       setDriveSession({ status: "disconnected", connected: false, busy: false, message: "", user: null, quota: null, files: [], conflict: null, lastSyncedAt: "" });
       const freshBoard = createBoard({ name: localizedDefaultBoardName(interfaceLocale) });
       initialBoardRef.current = freshBoard;
@@ -7123,6 +7228,7 @@ function App() {
       setVersions([]);
       setDirty(false);
       setSaveState("已建立空白本機 Moodboard");
+      setShowStorageLocation(true);
       await refreshLocalLibrarySummary();
       setShowDeleteLocalData(false);
       announce("這台裝置上的 Moodboard、版本與 Drive 連結資料已清除；雲端檔案未刪除。", "success");
@@ -7420,9 +7526,13 @@ function App() {
           boardRef.current = normalized;
           setBoard(normalized);
           setView(normalized.view || { x: 0, y: 0, zoom: 1 });
+          if (!storageTargetForBoard(initialStoragePreferencesRef.current, normalized.id)) {
+            setBoardPrimaryStorage(normalized.id, initialDriveSettingsRef.current.links?.[normalized.id] ? "drive" : "local");
+          }
           setSaveState("已從本機恢復");
         } else {
           setSaveState("本機自動儲存");
+          setShowStorageLocation(true);
         }
       })
       .catch(() => setSaveState("自動儲存不可用"))
@@ -7432,7 +7542,7 @@ function App() {
         refreshLocalLibrarySummary();
       });
     return () => { cancelled = true; };
-  }, [refreshLocalLibrarySummary]);
+  }, [refreshLocalLibrarySummary, setBoardPrimaryStorage]);
 
   useEffect(() => {
     const markInteraction = () => { startupUserInteractedRef.current = true; };
@@ -7453,24 +7563,60 @@ function App() {
   useEffect(() => {
     if (!hydrated) return undefined;
     window.clearTimeout(saveTimerRef.current);
-    setSaveState("儲存中…");
+    setSaveState(storagePreferences.autoSave ? "儲存中…" : "正在更新本機復原副本…");
     const snapshot = { ...board, view };
+    const primaryTarget = storageTargetForBoard(storagePreferences, snapshot.id);
     saveTimerRef.current = window.setTimeout(() => {
       persistBoardLocally(snapshot)
         .then(async () => {
           const link = driveSettings.links[snapshot.id];
-          if (driveSettings.enabled && driveSettings.autoSync && link) {
+          if (storagePreferences.autoSave && primaryTarget === "drive" && driveSettings.enabled && driveSettings.autoSync && link) {
             await enqueueSync(snapshot, { fileId: link.fileId, expectedVersion: link.version });
           }
           await refreshLocalLibrarySummary();
-          setSaveState(`本機已儲存 ${new Date().toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" })}`);
+          const savedAt = new Date().toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" });
+          setSaveState(!storagePreferences.autoSave
+            ? `本機復原副本已更新 · ${savedAt}；主要位置等待手動儲存`
+            : primaryTarget === "local"
+              ? `已儲存在這台裝置 · ${savedAt}`
+              : primaryTarget === "drive"
+                ? `本機安全副本已更新 · ${savedAt}`
+                : `安全暫存已更新 · ${savedAt}`);
+          if (
+            storagePreferences.autoSave
+            && primaryTarget === "local"
+            && boardRef.current.revision === snapshot.revision
+            && boardRef.current.updatedAt === snapshot.updatedAt
+          ) setDirty(false);
         })
         .catch((error) => {
-          if (error?.name !== "AbortError") setSaveState("自動儲存失敗");
+          if (error?.name !== "AbortError") setSaveState("本機復原副本寫入失敗");
         });
     }, 550);
     return () => window.clearTimeout(saveTimerRef.current);
-  }, [board, driveSettings.autoSync, driveSettings.enabled, driveSettings.links, hydrated, persistBoardLocally, refreshLocalLibrarySummary, view]);
+  }, [board, driveSettings.autoSync, driveSettings.enabled, driveSettings.links, hydrated, persistBoardLocally, refreshLocalLibrarySummary, storagePreferences, view]);
+
+  useEffect(() => {
+    const flushRecoveryCopy = () => {
+      if (!dirty) return;
+      persistBoardLocally({ ...boardRef.current, view: viewRef.current }).catch(() => undefined);
+    };
+    const warnBeforeUnload = (event) => {
+      if (!dirty || storagePreferences.autoSave) return;
+      flushRecoveryCopy();
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    const flushWhenHidden = () => {
+      if (document.visibilityState === "hidden") flushRecoveryCopy();
+    };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    document.addEventListener("visibilitychange", flushWhenHidden);
+    return () => {
+      window.removeEventListener("beforeunload", warnBeforeUnload);
+      document.removeEventListener("visibilitychange", flushWhenHidden);
+    };
+  }, [dirty, persistBoardLocally, storagePreferences.autoSave]);
 
   useEffect(() => {
     if (!authReady || !hydrated || !("BroadcastChannel" in window)) return undefined;
@@ -7723,6 +7869,7 @@ function App() {
       setFilters(DEFAULT_FILTERS);
       setSelectedCaptureId(null);
       fileHandleRef.current = handle;
+      setBoardPrimaryStorage(imported.id, "local");
       setDirty(false);
       publishBoard(imported);
       announce(`已開啟「${imported.name}」`, "success");
@@ -7731,7 +7878,22 @@ function App() {
       announce(error.message || "Infinite Moodboard 檔案無法開啟。", "error");
       return null;
     }
-  }, [announce, publishBoard, pushUndo]);
+  }, [announce, publishBoard, pushUndo, setBoardPrimaryStorage]);
+
+  const importLocalBoardFile = useCallback(async (file, handle = null) => {
+    const current = { ...boardRef.current, view: viewRef.current };
+    try {
+      await persistBoardLocally(current);
+      if (dirty || current.objects.length) {
+        await saveVersion(current, translateInterfaceText("切換 Moodboard 前"), "automatic");
+      }
+    } catch (error) {
+      announce(error?.message || "目前 Moodboard 無法先建立復原副本，因此未開啟另一份檔案。", "error");
+      return null;
+    }
+    cancelDriveOperations();
+    return importBoardFile(file, handle);
+  }, [announce, cancelDriveOperations, dirty, importBoardFile, persistBoardLocally]);
 
   const openBoardFile = useCallback(async () => {
     if (window.showOpenFilePicker) {
@@ -7740,14 +7902,14 @@ function App() {
           types: [{ description: "Infinite Moodboard 檔案", accept: { "application/json": [".moodboard", ".json"] } }],
           multiple: false,
         });
-        await importBoardFile(await handle.getFile(), handle);
+        await importLocalBoardFile(await handle.getFile(), handle);
       } catch (error) {
         if (error.name !== "AbortError") announce("無法開啟檔案。", "error");
       }
     } else {
       boardInputRef.current?.click();
     }
-  }, [announce, importBoardFile]);
+  }, [announce, importLocalBoardFile]);
 
   const boardSnapshot = useCallback(() => ({ ...boardRef.current, view: viewRef.current }), []);
 
@@ -8026,6 +8188,9 @@ function App() {
       }
       cancelDriveOperations();
       const next = ensureBoard(nextBoard);
+      if (!storageTargetForBoard(storagePreferences, next.id)) {
+        setBoardPrimaryStorage(next.id, driveSettings.links[next.id] ? "drive" : "local");
+      }
       initialBoardRef.current = next;
       boardRef.current = next;
       viewRef.current = next.view || { x: 0, y: 0, zoom: 1 };
@@ -8050,7 +8215,7 @@ function App() {
       announce(error?.message || "無法切換 Moodboard；目前畫布未受影響。", "error");
       return null;
     }
-  }, [announce, boardSnapshot, cancelDriveOperations, dirty, persistBoardLocally, refreshLocalLibrarySummary, stopCloudCollaboration]);
+  }, [announce, boardSnapshot, cancelDriveOperations, dirty, driveSettings.links, persistBoardLocally, refreshLocalLibrarySummary, setBoardPrimaryStorage, stopCloudCollaboration, storagePreferences]);
 
   const openLocalMoodboard = useCallback((record) => {
     if (!record?.board) {
@@ -8074,6 +8239,7 @@ function App() {
     [board],
   );
   const currentDriveLink = driveSettings.links[board.id] || null;
+  const currentPrimaryStorageTarget = storageTargetForBoard(storagePreferences, board.id);
 
   const saveBoardToGoogleDrive = useCallback(({ asCopy = false, silent = false } = {}) => {
     if (!authReady) {
@@ -8159,6 +8325,7 @@ function App() {
         });
         assertCurrentOperation();
         updateDriveSettings((current) => linkDriveFile({ ...current, enabled: true, folderId }, snapshot, savedFile));
+        if (!asCopy) setBoardPrimaryStorage(snapshot.id, "drive");
         const [postAbout, files] = await Promise.all([
           getGoogleDriveAbout(accessToken).catch(() => about),
           listGoogleDriveMoodboards(accessToken, folderId).catch(() => null),
@@ -8226,7 +8393,7 @@ function App() {
     })();
     driveSavePromiseRef.current = operation;
     return operation;
-  }, [announce, authReady, boardSnapshot, currentDriveAccessToken, driveSettings.autoSync, driveSettings.folderId, driveSettings.links, persistBoardLocally, refreshLocalLibrarySummary, requestAdvancedFeature, updateDriveSettings]);
+  }, [announce, authReady, boardSnapshot, currentDriveAccessToken, driveSettings.autoSync, driveSettings.folderId, driveSettings.links, persistBoardLocally, refreshLocalLibrarySummary, requestAdvancedFeature, setBoardPrimaryStorage, updateDriveSettings]);
 
   const openGoogleDriveFile = useCallback(async (file) => {
     const operationEpoch = driveOperationEpochRef.current;
@@ -8257,6 +8424,7 @@ function App() {
       if (!imported) throw new DriveApiError("Google Drive 檔案內容無法辨識。", { code: "drive/invalid-file" });
       if (operationEpoch !== driveOperationEpochRef.current) return;
       updateDriveSettings((state) => linkDriveFile(state, imported, metadata));
+      setBoardPrimaryStorage(imported.id, "drive");
       setDriveSession((session) => ({
         ...session,
         status: "synced",
@@ -8284,7 +8452,7 @@ function App() {
       }));
       announce(driveErrorMessage(error), "error");
     }
-  }, [announce, boardSnapshot, currentDriveAccessToken, dirty, importBoardFile, updateDriveSettings]);
+  }, [announce, boardSnapshot, currentDriveAccessToken, dirty, importBoardFile, setBoardPrimaryStorage, updateDriveSettings]);
 
   const refreshDriveVersions = useCallback(async () => {
     const boardId = boardRef.current.id;
@@ -8382,16 +8550,57 @@ function App() {
       } else {
         downloadBlob(new Blob([content], { type: "application/json" }), filename);
       }
-      setDirty(false);
+      if (!forceDownload) setDirty(false);
       announce(forceDownload ? "離線備份已下載" : "Infinite Moodboard 檔案已儲存", "success");
     } catch (error) {
       if (error.name !== "AbortError") announce("儲存失敗，畫布仍保留在本機自動儲存。", "error");
     }
   }, [announce, boardSnapshot]);
 
+  const saveBoardToLocalPrimary = useCallback(async ({ silent = false } = {}) => {
+    const snapshot = boardSnapshot();
+    const operationEpoch = storageTargetOperationEpochRef.current;
+    const operationIsCurrent = () => isCurrentStorageTargetOperation({
+      expectedEpoch: operationEpoch,
+      currentEpoch: storageTargetOperationEpochRef.current,
+      expectedBoardId: snapshot.id,
+      currentBoardId: boardRef.current.id,
+    });
+    try {
+      setSaveState("儲存中…");
+      await persistBoardLocally(snapshot);
+      if (!operationIsCurrent()) return false;
+      setBoardPrimaryStorage(snapshot.id, "local");
+      await refreshLocalLibrarySummary();
+      if (!operationIsCurrent()) return false;
+      if (
+        boardRef.current.revision === snapshot.revision
+        && boardRef.current.updatedAt === snapshot.updatedAt
+      ) setDirty(false);
+      const savedAt = new Date().toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" });
+      setSaveState(`已儲存在這台裝置 · ${savedAt}`);
+      if (!silent) announce("已儲存在這台裝置。", "success");
+      return true;
+    } catch (error) {
+      if (error?.name !== "AbortError") {
+        setSaveState("儲存失敗；變更仍留在目前分頁");
+        if (!silent) announce("無法儲存到這台裝置；目前畫布未被取代。", "error");
+      }
+      return false;
+    }
+  }, [announce, boardSnapshot, persistBoardLocally, refreshLocalLibrarySummary, setBoardPrimaryStorage]);
+
   const savePreferredBoard = useCallback(() => {
+    if (!currentPrimaryStorageTarget) {
+      setShowStorageLocation(true);
+      return;
+    }
+    if (currentPrimaryStorageTarget === "local") {
+      saveBoardToLocalPrimary();
+      return;
+    }
     if (!authReady) {
-      saveBoardFile(false);
+      requestAdvancedFeature("drive");
       return;
     }
     if (!currentDriveAccessToken()) {
@@ -8400,11 +8609,70 @@ function App() {
       return;
     }
     saveBoardToGoogleDrive();
-  }, [authReady, currentDriveAccessToken, driveSettings.enabled, saveBoardFile, saveBoardToGoogleDrive]);
+  }, [authReady, currentDriveAccessToken, currentPrimaryStorageTarget, driveSettings.enabled, requestAdvancedFeature, saveBoardToGoogleDrive, saveBoardToLocalPrimary]);
+
+  const choosePrimaryStorageTarget = useCallback(async (target) => {
+    const operationEpoch = storageTargetOperationEpochRef.current + 1;
+    storageTargetOperationEpochRef.current = operationEpoch;
+    const boardId = boardRef.current.id;
+    setBoardPrimaryStorage(boardId, target);
+    setShowStorageLocation(false);
+    if (target === "local") {
+      cancelDriveOperations();
+      window.clearTimeout(driveSyncTimerRef.current);
+      await removeSyncJob(boardId).catch(() => undefined);
+      if (!isCurrentStorageTargetOperation({
+        expectedEpoch: operationEpoch,
+        currentEpoch: storageTargetOperationEpochRef.current,
+        expectedBoardId: boardId,
+        currentBoardId: boardRef.current.id,
+      })) return;
+      setDriveSession((current) => ({
+        ...current,
+        status: current.connected ? "ready" : "disconnected",
+        busy: false,
+        message: "已切換到這台裝置；既有 Drive 檔案未刪除。",
+        conflict: null,
+      }));
+      const saved = await saveBoardToLocalPrimary();
+      if (!saved || !isCurrentStorageTargetOperation({
+        expectedEpoch: operationEpoch,
+        currentEpoch: storageTargetOperationEpochRef.current,
+        expectedBoardId: boardId,
+        currentBoardId: boardRef.current.id,
+      })) return;
+      await refreshLocalLibrarySummary();
+      return;
+    }
+
+    setSaveState("Google Drive 尚未連結；本機安全副本持續保留");
+    setShowSettings(false);
+    if (!authReady) {
+      requestAdvancedFeature("drive");
+      return;
+    }
+    openGoogleDriveLibrary();
+  }, [authReady, cancelDriveOperations, openGoogleDriveLibrary, refreshLocalLibrarySummary, requestAdvancedFeature, saveBoardToLocalPrimary, setBoardPrimaryStorage]);
+
+  const setAutoSavePreference = useCallback((enabled) => {
+    updateStoragePreferences((current) => ({ ...current, autoSave: Boolean(enabled) }));
+    if (!enabled) {
+      window.clearTimeout(saveTimerRef.current);
+      window.clearTimeout(driveSyncTimerRef.current);
+      setSaveState("已關閉主要位置自動儲存；本機復原副本仍會更新");
+    } else {
+      setSaveState("自動儲存已開啟");
+    }
+    announce(enabled ? "已開啟自動儲存。" : "已關閉主要位置自動儲存；本機復原副本仍會保留。", enabled ? "success" : "warning");
+  }, [announce, updateStoragePreferences]);
+
+  const setSaveStatusPreference = useCallback((enabled) => {
+    updateStoragePreferences((current) => ({ ...current, showSaveStatus: Boolean(enabled) }));
+  }, [updateStoragePreferences]);
 
   useEffect(() => {
     window.clearTimeout(driveSyncTimerRef.current);
-    if (!hydrated || !authReady || !driveSettings.enabled || !driveSettings.autoSync || !currentDriveLink) return undefined;
+    if (!hydrated || !authReady || !storagePreferences.autoSave || currentPrimaryStorageTarget !== "drive" || !driveSettings.enabled || !driveSettings.autoSync || !currentDriveLink) return undefined;
     const alreadySynced = currentDriveLink.syncedRevision >= board.revision
       && (!board.updatedAt || currentDriveLink.syncedUpdatedAt === board.updatedAt);
     if (alreadySynced) return undefined;
@@ -8421,7 +8689,7 @@ function App() {
       saveBoardToGoogleDrive({ silent: true });
     }, 6000);
     return () => window.clearTimeout(driveSyncTimerRef.current);
-  }, [authReady, board.revision, board.updatedAt, currentDriveAccessToken, currentDriveLink, driveSettings.autoSync, driveSettings.enabled, hydrated, online, saveBoardToGoogleDrive]);
+  }, [authReady, board.revision, board.updatedAt, currentDriveAccessToken, currentDriveLink, currentPrimaryStorageTarget, driveSettings.autoSync, driveSettings.enabled, hydrated, online, saveBoardToGoogleDrive, storagePreferences.autoSave]);
 
   const exportBrowserHtml = useCallback(async () => {
     try {
@@ -10218,6 +10486,11 @@ function App() {
         closeInterfaceThemes();
         return;
       }
+      if (event.key === "Escape" && showStorageLocation) {
+        event.preventDefault();
+        setShowStorageLocation(false);
+        return;
+      }
       if (event.key === "Escape" && showDriveLibrary) {
         event.preventDefault();
         setShowDriveLibrary(false);
@@ -10339,7 +10612,7 @@ function App() {
       window.removeEventListener("keyup", keyUp);
       window.removeEventListener("blur", blur);
     };
-  }, [announce, cancelPendingObjectDeletion, closeAdvancedFeatureGate, closeInterfaceThemes, closePreparedDownloads, copySelectedObjects, cutSelectedObjects, deleteSelected, dragActive, duplicateSelected, escapeCancellationRequest, filters.colors.length, filters.symbols.length, focusMode, isClearingLocalData, keepEscapeAdjustment, leftPanelVisible, leftTab, loadedTextFlow, mobilePanel, openBoardFile, openListSearch, pasteCopiedObjects, pendingAdvancedFeature, pendingObjectDeletion, preparedDownloads.length, redo, requestActivePointerCancellation, requestAdvancedFeature, restoreWorkspaceChrome, rightPanelVisible, savePreferredBoard, shapeMenuOpen, showAnnotationBuilder, showBothPanels, showCollaboration, showDeleteLocalData, showDriveLibrary, showGridBuilder, showInterfaceThemes, showSettings, showShortcuts, showVersions, toggleBothPanels, toggleCanvasBackground, toggleFocusMode, toggleGuides, toggleLeftPanel, toggleRightPanel, toggleRulers, toggleSelectionGroup, tool, undo]);
+  }, [announce, cancelPendingObjectDeletion, closeAdvancedFeatureGate, closeInterfaceThemes, closePreparedDownloads, copySelectedObjects, cutSelectedObjects, deleteSelected, dragActive, duplicateSelected, escapeCancellationRequest, filters.colors.length, filters.symbols.length, focusMode, isClearingLocalData, keepEscapeAdjustment, leftPanelVisible, leftTab, loadedTextFlow, mobilePanel, openBoardFile, openListSearch, pasteCopiedObjects, pendingAdvancedFeature, pendingObjectDeletion, preparedDownloads.length, redo, requestActivePointerCancellation, requestAdvancedFeature, restoreWorkspaceChrome, rightPanelVisible, savePreferredBoard, shapeMenuOpen, showAnnotationBuilder, showBothPanels, showCollaboration, showDeleteLocalData, showDriveLibrary, showGridBuilder, showInterfaceThemes, showSettings, showShortcuts, showStorageLocation, showVersions, toggleBothPanels, toggleCanvasBackground, toggleFocusMode, toggleGuides, toggleLeftPanel, toggleRightPanel, toggleRulers, toggleSelectionGroup, tool, undo]);
 
   const exportObjects = useCallback(async (scopeOverride) => {
     const scope = typeof scopeOverride === "string" ? scopeOverride : exportScope;
@@ -10462,9 +10735,9 @@ function App() {
     }
     const files = [...event.dataTransfer.files];
     const boardFile = files.find((file) => /\.(moodboard|json)$/i.test(file.name));
-    if (boardFile && files.length === 1) importBoardFile(boardFile);
+    if (boardFile && files.length === 1) importLocalBoardFile(boardFile);
     else addMediaFiles(files, screenToWorld(event.clientX, event.clientY));
-  }, [addMediaFiles, announce, cloudReadOnly, importBoardFile, screenToWorld]);
+  }, [addMediaFiles, announce, cloudReadOnly, importLocalBoardFile, screenToWorld]);
 
   const filteredObjects = useMemo(() => board.objects.filter((object) => object.visible && matchesFilters(object, filters)), [board.objects, filters]);
   const sourceAssets = useMemo(() => sourceAssetsFromObjects(board.objects), [board.objects]);
@@ -10506,9 +10779,19 @@ function App() {
   const resolvedKeyObjectId = selectedIds.includes(keyObjectId) ? keyObjectId : (selectedIds[0] || null);
   const effectiveLeftPanelVisible = !focusMode && leftPanelVisible;
   const effectiveRightPanelVisible = !focusMode && rightPanelVisible;
-  const topbarSaveState = currentDriveLink || driveSettings.enabled
-    ? driveStatusPresentation(driveSession).label
-    : (dirty ? "有未寫入檔案的變更" : saveState);
+  const drivePresentation = driveStatusPresentation(driveSession);
+  const driveNeedsAttention = ["offline", "quota", "conflict", "authorization-required", "error"].includes(driveSession.status);
+  const localSaveNeedsAttention = ["本機復原副本寫入失敗", "儲存失敗；變更仍留在目前分頁", "自動儲存不可用"].includes(saveState);
+  const preferLocalSaveState = localSaveNeedsAttention || (!storagePreferences.autoSave && dirty);
+  const topbarSaveState = currentPrimaryStorageTarget === "drive"
+    ? (preferLocalSaveState
+      ? saveState
+      : storagePreferences.showSaveStatus || driveNeedsAttention || dirty
+      ? (driveSession.message || drivePresentation.label)
+      : "主要位置：Google Drive")
+    : currentPrimaryStorageTarget === "local"
+      ? (storagePreferences.showSaveStatus || dirty ? saveState : "主要位置：這台裝置")
+      : "尚未選擇主要儲存位置";
 
   return (
     <main
@@ -10546,17 +10829,15 @@ function App() {
           >
             <PanelLeft size={18} />
           </IconButton>
-          <button className="topbar-button" type="button" onClick={openBoardFile} title="從這台裝置開啟 .moodboard"><FolderOpen size={17} /><span>開啟</span></button>
-          <button className="topbar-button" type="button" onClick={openGoogleDriveLibrary} title="開啟 Google Drive 中的 Moodboard"><Cloud size={17} /><span>Drive</span></button>
-          <button className="topbar-button" type="button" onClick={savePreferredBoard} title={authReady ? "優先儲存到 Google Drive" : "儲存到這台裝置"}><Save size={17} /><span>儲存</span></button>
+          <button className="topbar-button" type="button" onClick={openGoogleDriveLibrary} title="開啟這台裝置或 Google Drive 中的 Moodboard"><FolderOpen size={17} /><span>我的 Moodboards</span></button>
+          <button className="topbar-button" type="button" onClick={savePreferredBoard} title={currentPrimaryStorageTarget === "drive" ? "儲存到 Google Drive" : currentPrimaryStorageTarget === "local" ? "儲存到這台裝置" : "選擇主要儲存位置"}><Save size={17} /><span>儲存</span></button>
           <button className="topbar-button" type="button" onClick={exportBrowserHtml} title="匯出可用一般瀏覽器開啟的唯讀 HTML"><FileCode2 size={17} /><span>瀏覽器版</span></button>
-          <IconButton label="儲存到這台裝置" onClick={() => saveBoardFile(false)}><FileArchive size={18} /></IconButton>
         </div>
 
         <label className="board-title-field">
           <span className="sr-only">Infinite Moodboard 名稱</span>
           <input value={board.name} onChange={(event) => applyBoard((current) => ({ ...current, name: event.target.value }))} disabled={cloudReadOnly} />
-          <small>{topbarSaveState}</small>
+          <small aria-live="polite">{topbarSaveState}</small>
         </label>
 
         <div className="topbar-secondary">
@@ -11009,6 +11290,14 @@ function App() {
         />
       ) : null}
 
+      {showStorageLocation ? (
+        <StorageLocationModal
+          currentTarget={currentPrimaryStorageTarget}
+          onChoose={choosePrimaryStorageTarget}
+          onClose={() => setShowStorageLocation(false)}
+        />
+      ) : null}
+
       {showGridBuilder ? (
         <GridModal selectedCount={selectedObjects.filter((object) => !isArtboardObject(object)).length} onApply={applyGrid} onClose={() => setShowGridBuilder(false)} />
       ) : null}
@@ -11030,6 +11319,8 @@ function App() {
           driveCurrentContentBytes={currentDriveContentBytes}
           driveSession={driveSession}
           driveSettings={driveSettings}
+          primaryStorageTarget={currentPrimaryStorageTarget}
+          storagePreferences={storagePreferences}
           localLibrarySummary={localLibrarySummary}
           enableProviderTesting={providerTestMode}
           initialSection={settingsInitialSection}
@@ -11083,6 +11374,10 @@ function App() {
             setShowSettings(false);
             openGoogleDriveLibrary();
           }}
+          onDownloadBackup={() => saveBoardFile(true)}
+          onSetStorageTarget={choosePrimaryStorageTarget}
+          onSetAutoSave={setAutoSavePreference}
+          onSetShowSaveStatus={setSaveStatusPreference}
           onSaveDrive={() => saveBoardToGoogleDrive()}
           onSetDriveAutoSync={setDriveAutoSync}
           onClose={() => setShowSettings(false)}
@@ -11157,11 +11452,14 @@ function App() {
           currentLink={currentDriveLink}
           driveSession={driveSession}
           driveSettings={driveSettings}
+          primaryStorageTarget={currentPrimaryStorageTarget}
           localBoards={localBoards}
           syncJobs={syncJobs}
           onConnect={connectGoogleDrive}
           onCreateLocal={createLocalMoodboard}
           onDisconnect={disconnectGoogleDrive}
+          onDownloadBackup={() => saveBoardFile(true)}
+          onOpenDeviceFile={openBoardFile}
           onOpenLocal={openLocalMoodboard}
           onOpenFile={openGoogleDriveFile}
           onRecoverRemote={(file) => recoverGoogleDriveVersionAsCopy(file)}
@@ -11210,7 +11508,7 @@ function App() {
       <input ref={imageInputRef} className="sr-only" type="file" accept="image/*" multiple onChange={onMediaInput} />
       <input ref={videoInputRef} className="sr-only" type="file" accept="video/*" multiple onChange={onMediaInput} />
       <input ref={svgInputRef} className="sr-only" type="file" accept=".svg,image/svg+xml" multiple onChange={onSvgInput} />
-      <input ref={boardInputRef} className="sr-only" type="file" accept=".moodboard,.json,application/json" onChange={(event) => { const [file] = event.target.files || []; if (file) importBoardFile(file); event.target.value = ""; }} />
+      <input ref={boardInputRef} className="sr-only" type="file" accept=".moodboard,.json,application/json" onChange={(event) => { const [file] = event.target.files || []; if (file) importLocalBoardFile(file); event.target.value = ""; }} />
       <input ref={themeInputRef} className="sr-only" type="file" accept=".moodtheme,.json,application/json" onChange={(event) => { const [file] = event.target.files || []; if (file) importInterfaceThemeFile(file); event.target.value = ""; }} />
       <input ref={objectColorLibraryInputRef} className="sr-only" type="file" accept=".moodcolors,.json,application/json" onChange={(event) => { const [file] = event.target.files || []; if (file) importObjectColorLibraryFile(file); event.target.value = ""; }} />
     </main>

@@ -848,6 +848,50 @@ const EN_EXACT = Object.freeze({
   "需另外取得 drive.file 最小權限；登入本身不會上傳 Moodboard。": "The minimum drive.file permission is requested separately; sign-in alone never uploads a Moodboard.",
   "管理 Drive": "Manage Drive",
   "儲存與同步": "Storage & sync",
+  "選擇主要儲存位置": "Choose the primary storage location",
+  "每份 Moodboard 只有一個主要位置，之後可在設定中更改。": "Each Moodboard has one primary location. You can change it later in Settings.",
+  "主要儲存位置": "Primary storage location",
+  "這台裝置": "This device",
+  "自動儲存在這個瀏覽器；適合離線使用，不需要登入。": "Auto-saves in this browser. Works offline and does not require sign-in.",
+  "適合跨裝置開啟；會另外詢問 Drive 權限，並保留本機安全副本。": "Best for cross-device access. Drive permission is requested separately, and a local safety copy is retained.",
+  "切換位置不會刪除另一端的檔案；未同步變更會先留在這台裝置。": "Changing locations never deletes the other copy. Unsynced changes stay on this device first.",
+  "在同一個檔案庫開啟這台裝置與 Infinite Moodboard 可存取的 Drive 檔案。": "Open files on this device and Drive files available to Infinite Moodboard from one library.",
+  "主要儲存位置：Google Drive": "Primary storage: Google Drive",
+  "主要儲存位置：這台裝置": "Primary storage: this device",
+  "尚未選擇主要儲存位置": "No primary storage location selected",
+  "本機只作離線、同步佇列與復原用的安全副本。": "The local copy is only a safety layer for offline work, the sync queue, and recovery.",
+  "點擊「儲存」會更新這個瀏覽器中的主檔。": "Choosing Save updates the primary file in this browser.",
+  "從檔案開啟": "Open from file",
+  "下載 `.moodboard` 備份": "Download `.moodboard` backup",
+  "Drive 有較新版本": "Drive has a newer version",
+  "每份 Moodboard 只有一個主要儲存位置；本機安全副本不會變成第二份競爭的主檔。": "Each Moodboard has one primary storage location. The local safety copy is not a competing second master file.",
+  "目前 Moodboard 的主要儲存位置": "Primary storage for this Moodboard",
+  "切換時不會刪除原本檔案；選擇 Drive 後才會另外要求登入與授權。": "Changing locations never deletes the original file. Sign-in and Drive authorization are requested only after you choose Drive.",
+  "可離線、不需要登入": "Works offline; no sign-in required",
+  "跨裝置使用，仍保留本機安全副本": "Cross-device access with a retained local safety copy",
+  "自動儲存": "Auto-save",
+  "本機復原副本始終保留；啟用後，停止編輯時也會自動更新主要位置。": "A local recovery copy is always retained. When enabled, the primary location is also updated after editing pauses.",
+  "顯示儲存完成狀態": "Show save completion status",
+  "在檔名下方安靜顯示位置與完成時間，不會中斷編輯。": "Quietly show the location and completion time below the file name without interrupting editing.",
+  "開啟這台裝置或 Google Drive 中的 Moodboard": "Open a Moodboard from this device or Google Drive",
+  "我的 Moodboards": "My Moodboards",
+  "儲存到 Google Drive": "Save to Google Drive",
+  "Google Drive 尚未連結；本機安全副本持續保留": "Google Drive is not connected. The local safety copy remains available.",
+  "本機有尚未同步的變更": "Local changes have not been synced",
+  "正在更新本機復原副本…": "Updating the local recovery copy…",
+  "本機復原副本寫入失敗": "The local recovery copy could not be saved",
+  "儲存失敗；變更仍留在目前分頁": "Save failed. Changes remain in this tab.",
+  "已關閉主要位置自動儲存；本機復原副本仍會更新": "Primary-location autosave is off. The local recovery copy will keep updating.",
+  "已關閉主要位置自動儲存；本機復原副本仍會保留。": "Primary-location autosave is off. The local recovery copy will still be retained.",
+  "已切換到這台裝置；既有 Drive 檔案未刪除。": "Switched to this device. The existing Drive file was not deleted.",
+  "主要位置：Google Drive": "Primary location: Google Drive",
+  "主要位置：這台裝置": "Primary location: this device",
+  "目前 Moodboard 無法先建立復原副本，因此未開啟另一份檔案。": "The current Moodboard could not be backed up for recovery, so the other file was not opened.",
+  "自動儲存已開啟": "Auto-save is on",
+  "已開啟自動儲存。": "Auto-save enabled.",
+  "已關閉自動儲存；請記得手動儲存。": "Auto-save disabled. Remember to save manually.",
+  "已儲存在這台裝置。": "Saved on this device.",
+  "無法儲存到這台裝置；目前畫布未被取代。": "Unable to save on this device. The current Moodboard was not replaced.",
   "優先把工作檔保存到 Google Drive，同時保留本機安全暫存。": "Save project files to Google Drive first while retaining a local safety cache.",
   "Drive 授權和 PETFASHION 登入分開管理。": "Drive authorization and PETFASHION sign-in are managed separately.",
   "只要求 drive.file 最小權限": "Requests only the minimum drive.file permission",
@@ -1318,6 +1362,26 @@ const EN_PATTERNS = Object.freeze([
   [/^帳號：(.+)$/, "Account: $1"],
   [/^Infinite Moodboard 應用程式版本 (.+)$/, "Infinite Moodboard application version $1"],
   [/^構圖 (\d+)$/, "Composition $1"],
+  [/^已儲存在這台裝置 · (上午|下午)(\d{2}):(\d{2})$/, (_value, period, hour, minute) => {
+    const normalizedHour = (Number(hour) % 12) + (period === "下午" ? 12 : 0);
+    return `Saved on this device · ${String(normalizedHour).padStart(2, "0")}:${minute}`;
+  }],
+  [/^本機安全副本已更新 · (上午|下午)(\d{2}):(\d{2})$/, (_value, period, hour, minute) => {
+    const normalizedHour = (Number(hour) % 12) + (period === "下午" ? 12 : 0);
+    return `Local safety copy updated · ${String(normalizedHour).padStart(2, "0")}:${minute}`;
+  }],
+  [/^安全暫存已更新 · (上午|下午)(\d{2}):(\d{2})$/, (_value, period, hour, minute) => {
+    const normalizedHour = (Number(hour) % 12) + (period === "下午" ? 12 : 0);
+    return `Safety cache updated · ${String(normalizedHour).padStart(2, "0")}:${minute}`;
+  }],
+  [/^本機復原副本已更新 · (上午|下午)(\d{2}):(\d{2})；主要位置等待手動儲存$/, (_value, period, hour, minute) => {
+    const normalizedHour = (Number(hour) % 12) + (period === "下午" ? 12 : 0);
+    return `Local recovery copy updated · ${String(normalizedHour).padStart(2, "0")}:${minute}; primary location awaiting manual save`;
+  }],
+  [/^已儲存在這台裝置 · (.+)$/, "Saved on this device · $1"],
+  [/^本機安全副本已更新 · (.+)$/, "Local safety copy updated · $1"],
+  [/^安全暫存已更新 · (.+)$/, "Safety cache updated · $1"],
+  [/^本機復原副本已更新 · (.+)；主要位置等待手動儲存$/, "Local recovery copy updated · $1; primary location awaiting manual save"],
   [/^本機已儲存 (上午|下午)(\d{2}):(\d{2})$/, (_value, period, hour, minute) => {
     const normalizedHour = (Number(hour) % 12) + (period === "下午" ? 12 : 0);
     return `Saved locally ${String(normalizedHour).padStart(2, "0")}:${minute}`;

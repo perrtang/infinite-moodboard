@@ -13,7 +13,21 @@ function linkedBoardIdForFile(fileId, links) {
 
 export function moodboardLibraryStatus(item) {
   if (item.syncJob && SYNC_STATES.has(item.syncJob.state)) return item.syncJob.state;
-  if (item.local && item.remote) return "synced";
+  if (item.local && item.remote) {
+    const linkedVersion = String(item.link?.version || "");
+    const remoteVersion = String(item.remote?.version || "");
+    if (linkedVersion && remoteVersion && linkedVersion !== remoteVersion) return "needs-review";
+    const localRevision = Number(item.local?.revision ?? item.local?.board?.revision ?? 0);
+    const syncedRevision = Number(item.link?.syncedRevision ?? 0);
+    const localUpdatedAt = String(item.local?.updatedAt || item.local?.board?.updatedAt || "");
+    const syncedUpdatedAt = String(item.link?.syncedUpdatedAt || "");
+    const hasSyncFingerprint = Boolean(syncedUpdatedAt) || syncedRevision > 0;
+    if (hasSyncFingerprint && (
+      localRevision !== syncedRevision
+      || (syncedUpdatedAt && localUpdatedAt && localUpdatedAt !== syncedUpdatedAt)
+    )) return "local-changed";
+    return "synced";
+  }
   if (item.local && item.linkedFileId) return "linked";
   if (item.local) return "local-only";
   return "remote-only";
@@ -34,6 +48,7 @@ export function mergeMoodboardLibrary({ localBoards = [], remoteFiles = [], sync
       local,
       remote: null,
       syncJob: jobsByBoard.get(boardId) || null,
+      link,
       linkedFileId: String(link?.fileId || ""),
       updatedAt: newestTimestamp(local.updatedAt, local.savedAt),
     });
@@ -51,6 +66,7 @@ export function mergeMoodboardLibrary({ localBoards = [], remoteFiles = [], sync
       local: existing?.local || null,
       remote,
       syncJob: existing?.syncJob || (boardId ? jobsByBoard.get(boardId) : null) || null,
+      link: existing?.link || (boardId ? links?.[boardId] : null) || null,
       linkedFileId: String(remote.id || existing?.linkedFileId || ""),
       updatedAt: newestTimestamp(existing?.updatedAt, remote.modifiedTime, remote.createdTime),
     });
@@ -66,6 +82,7 @@ export function mergeMoodboardLibrary({ localBoards = [], remoteFiles = [], sync
       local: null,
       remote: null,
       syncJob: job,
+      link: links?.[boardId] || null,
       linkedFileId: String(job.fileId || links?.[boardId]?.fileId || ""),
       updatedAt: newestTimestamp(job.updatedAt, job.board?.updatedAt),
     });
