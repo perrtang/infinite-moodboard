@@ -268,11 +268,17 @@ import {
 } from "./ui-preferences.js";
 import {
   APP_RELEASE_DATE,
+  APP_UPDATE_ATTEMPT_STORAGE_KEY,
   APP_UPDATE_MANIFEST_URL,
   APP_VERSION,
   APP_VERSION_LABEL,
+  buildUpdateReloadUrl,
   compareSemanticVersions,
+  isAppUpdateSnoozed,
+  loadUpdatePreference,
   normalizeUpdateManifest,
+  saveUpdatePreference,
+  snoozeAppUpdate,
 } from "./version.js";
 import {
   INTERFACE_LOCALES,
@@ -463,6 +469,22 @@ const GUIDES_VISIBLE_STORAGE_KEY = "infinite-moodboard-guides-visible-v1";
 const RULER_UNIT_STORAGE_KEY = "infinite-moodboard-ruler-unit-v1";
 const CANVAS_TOOLBAR_POSITION_STORAGE_KEY = "infinite-moodboard-canvas-toolbar-position-v1";
 const RULER_SIZE = 22;
+
+function readSessionValue(key) {
+  try {
+    return sessionStorage.getItem(key) || "";
+  } catch {
+    return "";
+  }
+}
+
+function writeSessionValue(key, value) {
+  try {
+    sessionStorage.setItem(key, String(value || ""));
+  } catch {
+    // Session storage can be unavailable without preventing safe local editing.
+  }
+}
 
 const SHORTCUT_SECTIONS = [
   {
@@ -4953,6 +4975,49 @@ function CollaborationModal({
   );
 }
 
+function AppUpdateNotice({
+  updateCheck,
+  updateAction,
+  autoUpdateEnabled,
+  onEnableAutoUpdate,
+  onUpdateNow,
+  onSnooze,
+}) {
+  if (updateCheck.status !== "available" || !updateCheck.manifest) return null;
+  const busy = updateAction.status === "saving" || updateAction.status === "reloading";
+  const version = updateCheck.manifest.version;
+
+  return (
+    <aside className={`app-update-notice${updateAction.status === "error" ? " is-error" : ""}`} aria-labelledby="app-update-notice-title" aria-live="polite">
+      <div className="app-update-notice-heading">
+        <span className="app-update-notice-icon" aria-hidden="true"><Download size={19} /></span>
+        <div>
+          <strong id="app-update-notice-title">{`Infinite Moodboard v${version} 可以更新`}</strong>
+          <small>{updateCheck.manifest.summary || "新的穩定版本已可使用。"}</small>
+        </div>
+      </div>
+      <p>立即更新會先儲存目前工作並建立「更新前自動備份」；任何一步失敗都不會重新載入。</p>
+      {updateAction.message ? (
+        <div className={`app-update-action-status is-${updateAction.status}`} role="status">
+          {updateAction.status === "error" ? <AlertTriangle size={15} /> : <RefreshCw size={15} className={busy ? "is-spinning" : ""} />}
+          <span>{updateAction.message}</span>
+        </div>
+      ) : null}
+      <div className="app-update-notice-actions">
+        <button className="primary-button" type="button" onClick={onUpdateNow} disabled={busy}>
+          <RefreshCw size={15} className={busy ? "is-spinning" : ""} />
+          {busy ? "正在安全更新…" : "立即更新"}
+        </button>
+        <button className="secondary-button" type="button" onClick={onEnableAutoUpdate} disabled={busy || autoUpdateEnabled} aria-pressed={autoUpdateEnabled}>
+          <Check size={15} />{autoUpdateEnabled ? "自動更新已開啟" : "自動更新"}
+        </button>
+        <button className="text-button" type="button" onClick={onSnooze} disabled={busy}>稍後更新</button>
+      </div>
+      <small className="app-update-auto-note">自動更新只會在下一次安全開啟時套用，不會在編輯途中突然重整。</small>
+    </aside>
+  );
+}
+
 function SettingsModal({
   activeTheme,
   accountLinkBusy,
@@ -4972,6 +5037,8 @@ function SettingsModal({
   mode,
   typography,
   updateCheck,
+  updateAction,
+  autoUpdateEnabled,
   leftPanelVisible,
   rightPanelVisible,
   rulersVisible,
@@ -4983,6 +5050,9 @@ function SettingsModal({
   onSetTypography,
   onResetTypography,
   onCheckForUpdates,
+  onSetAutoUpdate,
+  onUpdateNow,
+  onSnoozeUpdate,
   onConnectDrive,
   onDisconnectDrive,
   onManageThemes,
@@ -5393,6 +5463,20 @@ function SettingsModal({
                 <span aria-hidden="true">{updateStatus.icon}</span>
                 <div><strong>{updateStatus.title}</strong><small>{updateStatus.detail}</small></div>
               </div>
+              <button className="settings-toggle-row" type="button" aria-pressed={autoUpdateEnabled} onClick={() => onSetAutoUpdate(!autoUpdateEnabled)}>
+                <span><RefreshCw size={18} /><span><strong>安全自動更新</strong><small>只在下一次安全開啟時套用；編輯途中不會突然重新載入。</small></span></span>
+                <b>{autoUpdateEnabled ? "已開啟" : "關閉"}</b>
+              </button>
+              {updateCheck.status === "available" ? (
+                <div className="settings-update-actions" role="group" aria-label="更新方式">
+                  <button className="primary-button" type="button" onClick={onUpdateNow} disabled={updateAction.status === "saving" || updateAction.status === "reloading"}>
+                    <RefreshCw size={16} className={updateAction.status === "saving" || updateAction.status === "reloading" ? "is-spinning" : ""} />
+                    {updateAction.status === "saving" || updateAction.status === "reloading" ? "正在安全更新…" : "立即更新"}
+                  </button>
+                  <button className="quiet-button" type="button" onClick={onSnoozeUpdate} disabled={updateAction.status === "saving" || updateAction.status === "reloading"}>稍後更新</button>
+                </div>
+              ) : null}
+              {updateAction.message ? <p className={`settings-update-action-message is-${updateAction.status}`} role="status">{updateAction.message}</p> : null}
               <p className="settings-update-note">版本檢查不會上傳 Moodboard、素材或使用紀錄；若目前離線，可以繼續編輯並稍後重試。</p>
             </section>
           )}
@@ -5739,6 +5823,9 @@ function App() {
   const [interfaceTypography, setInterfaceTypography] = useState(loadStoredInterfaceTypography);
   const [canvasBackground, setCanvasBackground] = useState(loadStoredCanvasBackground);
   const [updateCheck, setUpdateCheck] = useState({ status: "idle", manifest: null, checkedAt: null, message: "" });
+  const [updatePreference, setUpdatePreference] = useState(loadUpdatePreference);
+  const [updateAction, setUpdateAction] = useState({ status: "idle", message: "" });
+  const [updateNoticeDismissed, setUpdateNoticeDismissed] = useState(false);
   const [versions, setVersions] = useState([]);
   const [versionLabel, setVersionLabel] = useState("");
   const [versionBusy, setVersionBusy] = useState(false);
@@ -5792,6 +5879,9 @@ function App() {
   const localPersistenceGenerationRef = useRef(0);
   const driveSyncTimerRef = useRef(null);
   const toastTimerRef = useRef(null);
+  const startupUserInteractedRef = useRef(false);
+  const autoUpdateDeferredVersionRef = useRef("");
+  const updateApplyPromiseRef = useRef(null);
   const preparedDownloadsRef = useRef([]);
   const emailLinkHandledRef = useRef(false);
   const doubleClickPanMovedRef = useRef(false);
@@ -6783,25 +6873,41 @@ function App() {
     const timeoutId = window.setTimeout(() => controller.abort(), 8000);
     setUpdateCheck({ status: "checking", manifest: null, checkedAt: null, message: "" });
     try {
-      const manifestUrl = new URL(APP_UPDATE_MANIFEST_URL, window.location.href);
-      manifestUrl.searchParams.set("checked", String(Date.now()));
-      const response = await fetch(manifestUrl, { cache: "no-store", signal: controller.signal });
-      if (!response.ok) throw new Error(`更新服務回應 ${response.status}`);
-      const manifest = normalizeUpdateManifest(await response.json());
+      const testVersion = import.meta.env.DEV ? new URLSearchParams(window.location.search).get("updateVersion") : "";
+      let manifest;
+      if (testVersion) {
+        manifest = normalizeUpdateManifest({
+          version: testVersion,
+          summary: "測試新版：驗證不中斷工作的更新流程。",
+          url: window.location.href,
+        });
+      } else {
+        const manifestUrl = new URL(APP_UPDATE_MANIFEST_URL, window.location.href);
+        manifestUrl.searchParams.set("checked", String(Date.now()));
+        const response = await fetch(manifestUrl, { cache: "no-store", signal: controller.signal });
+        if (!response.ok) throw new Error(`更新服務回應 ${response.status}`);
+        manifest = normalizeUpdateManifest(await response.json());
+      }
       const comparison = compareSemanticVersions(APP_VERSION, manifest.version);
-      setUpdateCheck({
+      const next = {
         status: comparison < 0 ? "available" : comparison > 0 ? "preview" : "current",
         manifest,
         checkedAt: new Date().toISOString(),
         message: "",
-      });
+      };
+      setUpdateCheck(next);
+      setUpdateNoticeDismissed(next.status === "available" && isAppUpdateSnoozed(localStorage, manifest.version));
+      if (next.status !== "available") setUpdateAction({ status: "idle", message: "" });
+      return next;
     } catch (error) {
       const message = error?.name === "AbortError"
         ? "連線逾時，請稍後重試。"
         : navigator.onLine === false
           ? "目前沒有網路連線；連線後即可重新檢查。"
           : "無法取得穩定版資訊，請稍後重試。";
-      setUpdateCheck({ status: "error", manifest: null, checkedAt: new Date().toISOString(), message });
+      const next = { status: "error", manifest: null, checkedAt: new Date().toISOString(), message };
+      setUpdateCheck(next);
+      return next;
     } finally {
       window.clearTimeout(timeoutId);
     }
@@ -7001,6 +7107,22 @@ function App() {
       });
     return () => { cancelled = true; };
   }, [refreshLocalLibrarySummary]);
+
+  useEffect(() => {
+    const markInteraction = () => { startupUserInteractedRef.current = true; };
+    window.addEventListener("pointerdown", markInteraction, true);
+    window.addEventListener("keydown", markInteraction, true);
+    return () => {
+      window.removeEventListener("pointerdown", markInteraction, true);
+      window.removeEventListener("keydown", markInteraction, true);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated || !online) return undefined;
+    const timer = window.setTimeout(() => { checkForAppUpdates(); }, 900);
+    return () => window.clearTimeout(timer);
+  }, [checkForAppUpdates, hydrated, online]);
 
   useEffect(() => {
     if (!hydrated) return undefined;
@@ -7292,6 +7414,74 @@ function App() {
   }, [announce, importBoardFile]);
 
   const boardSnapshot = useCallback(() => ({ ...boardRef.current, view: viewRef.current }), []);
+
+  const setAppAutoUpdate = useCallback((enabled) => {
+    const next = saveUpdatePreference(localStorage, enabled ? "auto" : "manual");
+    setUpdatePreference(next);
+    if (enabled) {
+      const availableVersion = updateCheck.status === "available" ? updateCheck.manifest?.version : "";
+      autoUpdateDeferredVersionRef.current = availableVersion || "";
+      setUpdateNoticeDismissed(true);
+      setUpdateAction({ status: "scheduled", message: "已開啟安全自動更新；目前工作不中斷，下次安全開啟時套用。" });
+      announce("已開啟安全自動更新；不會在編輯途中重新載入。", "success");
+    } else {
+      autoUpdateDeferredVersionRef.current = "";
+      setUpdateNoticeDismissed(false);
+      setUpdateAction({ status: "idle", message: "" });
+      announce("已關閉自動更新；仍可在更新通知中選擇立即更新。", "success");
+    }
+  }, [announce, updateCheck.manifest?.version, updateCheck.status]);
+
+  const snoozeCurrentAppUpdate = useCallback(() => {
+    const version = updateCheck.status === "available" ? updateCheck.manifest?.version : "";
+    if (!version) return;
+    snoozeAppUpdate(localStorage, version);
+    setUpdateNoticeDismissed(true);
+    setUpdateAction({ status: "idle", message: "" });
+    announce("已稍後處理更新；24 小時內不會再次提示。", "success");
+  }, [announce, updateCheck.manifest?.version, updateCheck.status]);
+
+  const applyAppUpdate = useCallback(({ automatic = false } = {}) => {
+    if (updateApplyPromiseRef.current) return updateApplyPromiseRef.current;
+    const manifest = updateCheck.status === "available" ? updateCheck.manifest : null;
+    if (!manifest) return Promise.resolve(false);
+
+    const task = (async () => {
+      setUpdateNoticeDismissed(false);
+      setUpdateAction({ status: "saving", message: automatic ? "正在安全保存並準備自動更新…" : "正在保存目前工作並建立更新前備份…" });
+      window.clearTimeout(saveTimerRef.current);
+      const snapshot = boardSnapshot();
+      if (import.meta.env.DEV && new URLSearchParams(window.location.search).get("updateFailure") === "save") {
+        throw new Error("測試：無法完成本機儲存");
+      }
+      await persistBoardLocally(snapshot);
+      await saveVersion(snapshot, translateInterfaceText("更新前自動備份"), "automatic");
+      setSaveState(`本機已儲存 ${new Date().toLocaleTimeString(interfaceLocaleToIntl(interfaceLocale), { hour: "2-digit", minute: "2-digit" })}`);
+      setUpdateAction({ status: "reloading", message: `備份完成，正在載入 v${manifest.version}…` });
+      writeSessionValue(APP_UPDATE_ATTEMPT_STORAGE_KEY, manifest.version);
+      window.location.assign(buildUpdateReloadUrl(window.location.href, manifest.version));
+      return true;
+    })().catch((error) => {
+      const message = error?.message
+        ? `更新已停止：${error.message}。目前畫面與工作內容保持不變。`
+        : "更新已停止；無法完成本機儲存或備份，目前畫面與工作內容保持不變。";
+      setUpdateAction({ status: "error", message });
+      return false;
+    }).finally(() => {
+      updateApplyPromiseRef.current = null;
+    });
+    updateApplyPromiseRef.current = task;
+    return task;
+  }, [boardSnapshot, interfaceLocale, persistBoardLocally, updateCheck.manifest, updateCheck.status]);
+
+  useEffect(() => {
+    const version = updateCheck.status === "available" ? updateCheck.manifest?.version : "";
+    if (!hydrated || !version || updatePreference !== "auto" || updateNoticeDismissed) return;
+    if (startupUserInteractedRef.current) return;
+    if (autoUpdateDeferredVersionRef.current === version) return;
+    if (readSessionValue(APP_UPDATE_ATTEMPT_STORAGE_KEY) === version) return;
+    applyAppUpdate({ automatic: true });
+  }, [applyAppUpdate, hydrated, updateCheck.manifest?.version, updateCheck.status, updateNoticeDismissed, updatePreference]);
 
   const stopCloudCollaboration = useCallback(async ({ forget = false } = {}) => {
     const session = cloudCollaborationSessionRef.current;
@@ -10301,6 +10491,16 @@ function App() {
       </div>
 
       {mobilePanel ? <button className="mobile-scrim" type="button" aria-label="關閉面板" onClick={() => setMobilePanel(null)} /> : null}
+      {!updateNoticeDismissed && !showSettings ? (
+        <AppUpdateNotice
+          updateCheck={updateCheck}
+          updateAction={updateAction}
+          autoUpdateEnabled={updatePreference === "auto"}
+          onEnableAutoUpdate={() => setAppAutoUpdate(true)}
+          onUpdateNow={() => applyAppUpdate()}
+          onSnooze={snoozeCurrentAppUpdate}
+        />
+      ) : null}
       {toast ? <div className={`toast toast-${toast.tone}`} role="status">{toast.tone === "success" ? <Check size={16} /> : toast.tone === "error" ? <AlertTriangle size={16} /> : null}<span>{toast.message}</span></div> : null}
 
       {escapeCancellationRequest ? (
@@ -10347,6 +10547,8 @@ function App() {
           mode={activeThemeMode}
           typography={interfaceTypography}
           updateCheck={updateCheck}
+          updateAction={updateAction}
+          autoUpdateEnabled={updatePreference === "auto"}
           leftPanelVisible={leftPanelVisible}
           rightPanelVisible={rightPanelVisible}
           rulersVisible={rulersVisible}
@@ -10358,6 +10560,9 @@ function App() {
           onSetTypography={updateInterfaceTypography}
           onResetTypography={resetInterfaceTypography}
           onCheckForUpdates={checkForAppUpdates}
+          onSetAutoUpdate={setAppAutoUpdate}
+          onUpdateNow={() => applyAppUpdate()}
+          onSnoozeUpdate={snoozeCurrentAppUpdate}
           onConnectDrive={connectGoogleDrive}
           onDisconnectDrive={disconnectGoogleDrive}
           onManageThemes={openInterfaceThemes}

@@ -6854,6 +6854,111 @@ button.status-label:hover {
   font-size: calc(11px + var(--ui-font-offset, 0px));
 }
 
+.app-update-notice {
+  background: var(--modal-bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  bottom: 64px;
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.38);
+  display: grid;
+  gap: 10px;
+  left: 50%;
+  max-width: min(470px, calc(100vw - 32px));
+  padding: 14px 16px;
+  position: fixed;
+  transform: translateX(-50%);
+  width: max-content;
+  z-index: 126;
+}
+
+.app-update-notice.is-error {
+  border-color: rgb(var(--danger-rgb) / 0.56);
+}
+
+.app-update-notice-heading {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+}
+
+.app-update-notice-heading > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.app-update-notice-heading strong {
+  font-size: calc(12px + var(--ui-font-offset, 0px));
+}
+
+.app-update-notice-heading small,
+.app-update-auto-note,
+.app-update-notice > p {
+  color: var(--text-muted);
+  font-size: calc(9px + var(--ui-font-offset, 0px));
+  line-height: 1.5;
+}
+
+.app-update-notice > p,
+.app-update-auto-note {
+  margin: 0;
+}
+
+.app-update-notice-icon {
+  align-items: center;
+  color: var(--accent);
+  display: inline-flex;
+  flex: 0 0 auto;
+  justify-content: center;
+}
+
+.app-update-notice-actions,
+.settings-update-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.app-update-notice-actions .text-button {
+  min-height: 36px;
+  padding-inline: 9px;
+}
+
+.app-update-action-status {
+  align-items: flex-start;
+  background: var(--quiet-bg);
+  border-radius: 6px;
+  color: var(--text-muted);
+  display: flex;
+  font-size: calc(9px + var(--ui-font-offset, 0px));
+  gap: 7px;
+  line-height: 1.45;
+  padding: 8px 9px;
+}
+
+.app-update-action-status svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.app-update-action-status.is-error,
+.settings-update-action-message.is-error {
+  color: var(--danger);
+}
+
+.settings-update-actions {
+  justify-content: flex-start;
+}
+
+.settings-update-action-message {
+  color: var(--text-muted);
+  font-size: calc(9px + var(--ui-font-offset, 0px));
+  line-height: 1.5;
+  margin: 0;
+}
+
 .toast {
   align-items: center;
   background: var(--modal-bg);
@@ -8221,6 +8326,45 @@ button.status-label:hover {
   .cloud-collaboration-actions > button,
   .collaboration-invite-field button {
     justify-content: center;
+    width: 100%;
+  }
+}
+
+@media (max-width: 900px) {
+  .app-update-notice {
+    bottom: 116px;
+    max-height: calc(100vh - 180px);
+    max-width: calc(100vw - 20px);
+    overflow: auto;
+    padding: 13px;
+    width: calc(100vw - 20px);
+  }
+
+  .app-update-notice-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .app-update-notice-actions button {
+    justify-content: center;
+    min-height: 44px;
+    width: 100%;
+  }
+
+  .app-update-notice-actions .text-button {
+    grid-column: 1 / -1;
+    min-height: 44px;
+  }
+
+  .settings-update-actions {
+    align-items: stretch;
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .settings-update-actions button {
+    justify-content: center;
+    min-height: 44px;
     width: 100%;
   }
 }

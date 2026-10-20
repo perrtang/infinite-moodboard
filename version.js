@@ -1,6 +1,10 @@
-export const APP_VERSION = "0.17.0";
+export const APP_VERSION = "0.18.0";
 export const APP_VERSION_LABEL = `App v${APP_VERSION}`;
 export const APP_RELEASE_DATE = "2026-10-20";
+export const APP_UPDATE_PREFERENCE_STORAGE_KEY = "infinite-moodboard-update-preference-v1";
+export const APP_UPDATE_SNOOZE_STORAGE_KEY = "infinite-moodboard-update-snooze-v1";
+export const APP_UPDATE_ATTEMPT_STORAGE_KEY = "infinite-moodboard-update-attempt-v1";
+export const APP_UPDATE_SNOOZE_DURATION_MS = 24 * 60 * 60 * 1000;
 const APP_BASE_URL = import.meta.env?.BASE_URL || "/";
 export const APP_UPDATE_MANIFEST_URL = import.meta.env?.VITE_MOODBOARD_UPDATE_MANIFEST_URL
   || `${APP_BASE_URL.endsWith("/") ? APP_BASE_URL : `${APP_BASE_URL}/`}infinite-moodboard-update.json`;
@@ -35,4 +39,62 @@ export function normalizeUpdateManifest(value) {
     summary: String(value.summary || "").trim(),
     url: String(value.url || "").trim(),
   };
+}
+
+export function normalizeUpdatePreference(value) {
+  return value === "auto" ? "auto" : "manual";
+}
+
+export function loadUpdatePreference(storage = globalThis.localStorage) {
+  try {
+    return normalizeUpdatePreference(storage?.getItem(APP_UPDATE_PREFERENCE_STORAGE_KEY));
+  } catch {
+    return "manual";
+  }
+}
+
+export function saveUpdatePreference(storage = globalThis.localStorage, value = "manual") {
+  const preference = normalizeUpdatePreference(value);
+  try {
+    storage?.setItem(APP_UPDATE_PREFERENCE_STORAGE_KEY, preference);
+  } catch {
+    // Private or embedded browsing contexts can deny storage without blocking editing.
+  }
+  return preference;
+}
+
+export function snoozeAppUpdate(
+  storage = globalThis.localStorage,
+  version,
+  now = Date.now(),
+  durationMs = APP_UPDATE_SNOOZE_DURATION_MS,
+) {
+  const record = {
+    version: String(version || "").trim(),
+    until: Number(now) + Math.max(0, Number(durationMs) || 0),
+  };
+  try {
+    storage?.setItem(APP_UPDATE_SNOOZE_STORAGE_KEY, JSON.stringify(record));
+  } catch {
+    // The current in-memory dismissal still protects the session when storage is unavailable.
+  }
+  return record;
+}
+
+export function isAppUpdateSnoozed(storage = globalThis.localStorage, version, now = Date.now()) {
+  try {
+    const record = JSON.parse(storage?.getItem(APP_UPDATE_SNOOZE_STORAGE_KEY) || "null");
+    return record?.version === String(version || "").trim()
+      && Number.isFinite(Number(record.until))
+      && Number(record.until) > Number(now);
+  } catch {
+    return false;
+  }
+}
+
+export function buildUpdateReloadUrl(href, version) {
+  const url = new URL(href);
+  url.searchParams.set("appUpdate", String(version || "latest").trim() || "latest");
+  url.searchParams.set("updatedAt", String(Date.now()));
+  return url.href;
 }

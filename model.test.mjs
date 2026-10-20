@@ -67,10 +67,16 @@ import {
 } from "./ui-preferences.js";
 import {
   APP_RELEASE_DATE,
+  APP_UPDATE_PREFERENCE_STORAGE_KEY,
   APP_VERSION,
   APP_VERSION_LABEL,
+  buildUpdateReloadUrl,
   compareSemanticVersions,
+  isAppUpdateSnoozed,
+  loadUpdatePreference,
   normalizeUpdateManifest,
+  saveUpdatePreference,
+  snoozeAppUpdate,
 } from "./version.js";
 import {
   detectInterfaceLocale,
@@ -98,6 +104,35 @@ test("application update manifests compare stable semantic versions", () => {
     url: "",
   });
   assert.throws(() => normalizeUpdateManifest({ version: "next" }), /版本編號格式不正確/);
+});
+
+test("application update choices persist safely and snooze only the matching release", () => {
+  const values = new Map();
+  const storage = {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, String(value)),
+  };
+
+  assert.equal(loadUpdatePreference(storage), "manual");
+  assert.equal(saveUpdatePreference(storage, "auto"), "auto");
+  assert.equal(values.get(APP_UPDATE_PREFERENCE_STORAGE_KEY), "auto");
+  assert.equal(loadUpdatePreference(storage), "auto");
+
+  snoozeAppUpdate(storage, "0.18.1", 1_000, 5_000);
+  assert.equal(isAppUpdateSnoozed(storage, "0.18.1", 5_999), true);
+  assert.equal(isAppUpdateSnoozed(storage, "0.18.1", 6_000), false);
+  assert.equal(isAppUpdateSnoozed(storage, "0.18.2", 2_000), false);
+});
+
+test("application update reload URL keeps the current route and adds a cache-busting target", () => {
+  const href = buildUpdateReloadUrl("https://example.com/tools/moodboard.html?board=one#canvas", "0.18.1");
+  const url = new URL(href);
+  assert.equal(url.origin, "https://example.com");
+  assert.equal(url.pathname, "/tools/moodboard.html");
+  assert.equal(url.searchParams.get("board"), "one");
+  assert.equal(url.searchParams.get("appUpdate"), "0.18.1");
+  assert.match(url.searchParams.get("updatedAt"), /^\d+$/);
+  assert.equal(url.hash, "#canvas");
 });
 
 test("interface locale detection and language packs cover Traditional Chinese, Simplified Chinese, and English", () => {
@@ -128,6 +163,9 @@ test("interface locale detection and language packs cover Traditional Chinese, S
   assert.equal(translateInterfaceText("已加入 3 個素材", "en"), "Added 3 assets");
   assert.equal(translateInterfaceText("已切換為深色模式。", "en"), "Switched to dark mode.");
   assert.equal(translateInterfaceText("已重新顯示畫布格線。", "en"), "Canvas grid shown again.");
+  assert.equal(translateInterfaceText("立即更新", "en"), "Update now");
+  assert.equal(translateInterfaceText("安全自動更新", "zh-Hans"), "安全自动更新");
+  assert.equal(translateInterfaceText("Infinite Moodboard v0.18.1 可以更新", "en"), "Infinite Moodboard v0.18.1 is ready");
   assert.equal(translateInterfaceText("登入後使用協作與同步", "en"), "Sign in for collaboration and sync");
   assert.equal(translateInterfaceText("訪客模式", "en"), "Guest mode");
   assert.equal(translateInterfaceText("登入後使用進階 3D", "zh-Hans"), "登录后使用进阶 3D");
