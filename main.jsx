@@ -289,8 +289,10 @@ import {
 import {
   RULER_UNITS,
   buildRulerTicks,
+  clampCanvasToolbarPosition,
   formatGuideValue,
   matchesListQuery,
+  normalizeCanvasToolbarPosition,
   normalizeRulerUnit,
   shouldConfirmEscapeCancellation,
   snapGuidePosition,
@@ -459,6 +461,7 @@ const LAST_DARK_THEME_STORAGE_KEY = "infinite-moodboard-last-dark-theme-v1";
 const RULERS_VISIBLE_STORAGE_KEY = "infinite-moodboard-rulers-visible-v1";
 const GUIDES_VISIBLE_STORAGE_KEY = "infinite-moodboard-guides-visible-v1";
 const RULER_UNIT_STORAGE_KEY = "infinite-moodboard-ruler-unit-v1";
+const CANVAS_TOOLBAR_POSITION_STORAGE_KEY = "infinite-moodboard-canvas-toolbar-position-v1";
 const RULER_SIZE = 22;
 
 const SHORTCUT_SECTIONS = [
@@ -544,6 +547,14 @@ function loadStoredCanvasBackground() {
     return normalizeCanvasBackground(JSON.parse(localStorage.getItem(CANVAS_BACKGROUND_STORAGE_KEY) || "{}"));
   } catch {
     return { ...DEFAULT_CANVAS_BACKGROUND };
+  }
+}
+
+function loadStoredCanvasToolbarPosition() {
+  try {
+    return normalizeCanvasToolbarPosition(JSON.parse(localStorage.getItem(CANVAS_TOOLBAR_POSITION_STORAGE_KEY) || "null"));
+  } catch {
+    return null;
   }
 }
 
@@ -5743,6 +5754,8 @@ function App() {
   const [guideDrag, setGuideDrag] = useState(null);
   const [leftPanelResizing, setLeftPanelResizing] = useState(false);
   const [canvasViewportSize, setCanvasViewportSize] = useState({ width: 0, height: 0 });
+  const [canvasToolbarPosition, setCanvasToolbarPosition] = useState(loadStoredCanvasToolbarPosition);
+  const [canvasToolbarDragging, setCanvasToolbarDragging] = useState(false);
   const [sessionName, setSessionNameState] = useState(() => localStorage.getItem("moodboard-session-name") || createSessionName());
   const [peers, setPeers] = useState([]);
   const [cloudCollaboration, setCloudCollaboration] = useState(EMPTY_CLOUD_COLLABORATION);
@@ -5756,6 +5769,7 @@ function App() {
 
   const appRootRef = useRef(null);
   const canvasRef = useRef(null);
+  const canvasToolbarRef = useRef(null);
   const imageInputRef = useRef(null);
   const videoInputRef = useRef(null);
   const svgInputRef = useRef(null);
@@ -6010,6 +6024,21 @@ function App() {
     };
   }, []);
 
+  useLayoutEffect(() => {
+    const toolbar = canvasToolbarRef.current;
+    if (!toolbar || !canvasToolbarPosition || !canvasViewportSize.width || !canvasViewportSize.height) return;
+    if (window.matchMedia("(max-width: 900px)").matches) return;
+    const rect = toolbar.getBoundingClientRect();
+    const next = clampCanvasToolbarPosition(
+      canvasToolbarPosition,
+      canvasViewportSize,
+      { width: rect.width, height: rect.height },
+      { margin: 8 },
+    );
+    if (next.x === canvasToolbarPosition.x && next.y === canvasToolbarPosition.y) return;
+    setCanvasToolbarPosition(next);
+  }, [canvasToolbarPosition, canvasViewportSize]);
+
   useEffect(() => {
     localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(customThemes));
   }, [customThemes]);
@@ -6026,6 +6055,15 @@ function App() {
   useEffect(() => {
     localStorage.setItem(CANVAS_BACKGROUND_STORAGE_KEY, JSON.stringify(canvasBackground));
   }, [canvasBackground]);
+
+  useEffect(() => {
+    if (canvasToolbarDragging) return;
+    if (canvasToolbarPosition) {
+      localStorage.setItem(CANVAS_TOOLBAR_POSITION_STORAGE_KEY, JSON.stringify(canvasToolbarPosition));
+    } else {
+      localStorage.removeItem(CANVAS_TOOLBAR_POSITION_STORAGE_KEY);
+    }
+  }, [canvasToolbarDragging, canvasToolbarPosition]);
 
   useEffect(() => {
     localStorage.setItem(RULERS_VISIBLE_STORAGE_KEY, String(rulersVisible));
@@ -6141,6 +6179,110 @@ function App() {
     setToast({ message, tone });
     toastTimerRef.current = window.setTimeout(() => setToast(null), 3600);
   }, []);
+
+  const resetCanvasToolbarPosition = useCallback(() => {
+    setCanvasToolbarPosition(null);
+    announce("畫布工具列已回到預設位置。", "success");
+  }, [announce]);
+
+  const onCanvasToolbarDragStart = useCallback((event) => {
+    if (event.button !== 0 || window.matchMedia("(max-width: 900px)").matches) return;
+    const toolbar = canvasToolbarRef.current;
+    const container = toolbar?.parentElement;
+    if (!toolbar || !container) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const containerRect = container.getBoundingClientRect();
+    const toolbarRect = toolbar.getBoundingClientRect();
+    const startPointer = { x: event.clientX, y: event.clientY };
+    const startPosition = {
+      x: toolbarRect.left - containerRect.left,
+      y: toolbarRect.top - containerRect.top,
+    };
+    const previousPosition = canvasToolbarPosition ? { ...canvasToolbarPosition } : null;
+    const bounds = { width: containerRect.width, height: containerRect.height };
+    const toolbarSize = { width: toolbarRect.width, height: toolbarRect.height };
+    let moved = false;
+    let releaseGesture = () => {};
+    setCanvasToolbarDragging(true);
+
+    const move = (moveEvent) => {
+      const dx = moveEvent.clientX - startPointer.x;
+      const dy = moveEvent.clientY - startPointer.y;
+      if (!moved && Math.hypot(dx, dy) < 3) return;
+      moved = true;
+      setCanvasToolbarPosition(clampCanvasToolbarPosition(
+        { x: startPosition.x + dx, y: startPosition.y + dy },
+        bounds,
+        toolbarSize,
+        { margin: 8 },
+      ));
+    };
+    const cleanup = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", cancel);
+      releaseGesture();
+    };
+    const finish = () => {
+      cleanup();
+      setCanvasToolbarDragging(false);
+    };
+    const cancel = () => {
+      cleanup();
+      setCanvasToolbarPosition(previousPosition);
+      setCanvasToolbarDragging(false);
+    };
+    releaseGesture = registerPointerGesture({
+      label: "移動畫布工具列",
+      affectsDocument: false,
+      hasChanges: () => moved,
+      pause: cleanup,
+      cancel,
+      keep: finish,
+    });
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", finish, { once: true });
+    window.addEventListener("pointercancel", cancel, { once: true });
+  }, [canvasToolbarPosition, registerPointerGesture]);
+
+  const onCanvasToolbarHandleKeyDown = useCallback((event) => {
+    if (event.key === "Home") {
+      event.preventDefault();
+      event.stopPropagation();
+      resetCanvasToolbarPosition();
+      return;
+    }
+    const directions = {
+      ArrowLeft: [-1, 0],
+      ArrowRight: [1, 0],
+      ArrowUp: [0, -1],
+      ArrowDown: [0, 1],
+    };
+    const direction = directions[event.key];
+    if (!direction || window.matchMedia("(max-width: 900px)").matches) return;
+    const toolbar = canvasToolbarRef.current;
+    const container = toolbar?.parentElement;
+    if (!toolbar || !container) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const toolbarRect = toolbar.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    const currentPosition = canvasToolbarPosition || {
+      x: toolbarRect.left - containerRect.left,
+      y: toolbarRect.top - containerRect.top,
+    };
+    const step = event.shiftKey ? 24 : 8;
+    setCanvasToolbarPosition(clampCanvasToolbarPosition(
+      {
+        x: currentPosition.x + direction[0] * step,
+        y: currentPosition.y + direction[1] * step,
+      },
+      { width: containerRect.width, height: containerRect.height },
+      { width: toolbarRect.width, height: toolbarRect.height },
+      { margin: 8 },
+    ));
+  }, [canvasToolbarPosition, resetCanvasToolbarPosition]);
 
   const updateDriveSettings = useCallback((updater) => {
     setDriveSettings((current) => {
@@ -9884,7 +10026,30 @@ function App() {
         />
 
         <section className="canvas-column">
-          <div className="canvas-toolbar" aria-label="畫布工具">
+          <div
+            ref={canvasToolbarRef}
+            className={`canvas-toolbar ${canvasToolbarPosition ? "has-custom-position" : ""} ${canvasToolbarDragging ? "is-dragging" : ""}`}
+            style={canvasToolbarPosition ? {
+              "--canvas-toolbar-x": `${canvasToolbarPosition.x}px`,
+              "--canvas-toolbar-y": `${canvasToolbarPosition.y}px`,
+            } : undefined}
+            aria-label="畫布工具"
+          >
+            <button
+              className="canvas-toolbar-drag-handle"
+              type="button"
+              aria-label="移動畫布工具列"
+              title="拖曳移動；方向鍵微調；連按兩下或 Home 回到預設位置"
+              onPointerDown={onCanvasToolbarDragStart}
+              onDoubleClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                resetCanvasToolbarPosition();
+              }}
+              onKeyDown={onCanvasToolbarHandleKeyDown}
+            >
+              <GripVertical size={15} aria-hidden="true" />
+            </button>
             <div className="tool-group">
               <IconButton label="選取工具 Shift+V" active={tool === "select"} aria-pressed={tool === "select"} onClick={() => setTool("select")}><MousePointer2 size={18} /></IconButton>
               <IconButton label="平移工具 Shift+H（按住 Shift 可暫時選取）" active={tool === "hand"} aria-pressed={tool === "hand"} onClick={() => setTool("hand")}><Hand size={18} /></IconButton>

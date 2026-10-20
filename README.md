@@ -2,6 +2,12 @@
 
 Infinite Moodboard 是 PETFASHION 的免費、離線優先視覺工作台。圖片、影片、文字、SVG、版本與構圖運算都在瀏覽器中進行；使用者可下載可編輯的 `.moodboard` 工作檔，或輸出 PNG、WebP、AVIF、PDF 與唯讀 HTML。
 
+## v0.17.0 重點（本機待發布）
+
+- 浮動畫布工具列預設移到尺規下方，不再遮住頂部刻度。
+- 桌機可用左側握把拖曳工具列，方向鍵可微調；位置會限制在可視畫布並儲存於當前裝置。
+- 拖曳中按 `Escape` 回到拖曳前的位置；連按握把兩下或按 `Home` 回到安全預設位置。窄螢幕則維持安全置中，不套用桌機座標。
+
 ## v0.16.0 重點（本機待發布）
 
 - `時尚黑白` 成為全新或尚未設定裝置的預設介面主題；既有裝置已主動選擇的其他主題仍會保留。
@@ -116,10 +122,10 @@ npx firebase-tools deploy --only firestore:rules
 完成一個可驗收里程碑後，先通過測試與建置、提交所有變更，再執行：
 
 ```bash
-./scripts/checkpoint-version.sh 0.16.0
+./scripts/checkpoint-version.sh 0.17.0
 ```
 
-腳本會確認工作目錄乾淨且 `package.json` 版號一致，建立或驗證 `backup/v0.16.0` 標籤，並把 Git bundle 與原始碼 zip 寫入專案外的 `backups/infinite-moodboard/`。可用 `git switch --detach backup/v0.16.0` 檢查舊版；需要正式回復時，再從該標籤建立修復分支，避免直接覆蓋目前工作。
+腳本會確認工作目錄乾淨且 `package.json` 版號一致，建立或驗證 `backup/v0.17.0` 標籤，並把 Git bundle 與原始碼 zip 寫入專案外的 `backups/infinite-moodboard/`。可用 `git switch --detach backup/v0.17.0` 檢查舊版；需要正式回復時，再從該標籤建立修復分支，避免直接覆蓋目前工作。
 
 ## 發布
 

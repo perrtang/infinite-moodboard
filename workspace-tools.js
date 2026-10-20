@@ -81,3 +81,27 @@ export function matchesListQuery(values, query) {
 export function shouldConfirmEscapeCancellation({ affectsDocument = false, hasChanges = false } = {}) {
   return Boolean(affectsDocument && hasChanges);
 }
+
+export function normalizeCanvasToolbarPosition(value) {
+  if (!value || typeof value !== "object") return null;
+  const x = Number(value.x);
+  const y = Number(value.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return { x: Math.round(x), y: Math.round(y) };
+}
+
+export function clampCanvasToolbarPosition(position, bounds, toolbarSize, options = {}) {
+  const normalized = normalizeCanvasToolbarPosition(position) || { x: 0, y: 0 };
+  const width = Math.max(0, Number(bounds?.width) || 0);
+  const height = Math.max(0, Number(bounds?.height) || 0);
+  const toolbarWidth = Math.max(0, Number(toolbarSize?.width) || 0);
+  const toolbarHeight = Math.max(0, Number(toolbarSize?.height) || 0);
+  const margin = Math.max(0, Number(options.margin) || 0);
+  const minimumY = Math.max(margin, Number(options.minimumY) || margin);
+  const maximumX = Math.max(margin, width - toolbarWidth - margin);
+  const maximumY = Math.max(minimumY, height - toolbarHeight - margin);
+  return {
+    x: Math.round(Math.min(maximumX, Math.max(margin, normalized.x))),
+    y: Math.round(Math.min(maximumY, Math.max(minimumY, normalized.y))),
+  };
+}

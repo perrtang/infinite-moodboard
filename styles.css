@@ -2893,14 +2893,56 @@ html[lang="en"] .sidebar-tabs button svg {
   background: var(--toolbar-bg);
   border: 1px solid var(--border);
   border-radius: 8px;
+  flex-wrap: wrap;
   gap: 4px;
+  justify-content: center;
   left: 50%;
+  max-width: calc(100% - 16px);
   min-height: 44px;
   padding: 3px;
   position: absolute;
-  top: 12px;
+  top: 30px;
   transform: translateX(-50%);
+  width: max-content;
   z-index: 20;
+}
+
+.canvas-toolbar.has-custom-position {
+  left: var(--canvas-toolbar-x);
+  top: var(--canvas-toolbar-y);
+  transform: none;
+}
+
+.canvas-toolbar.is-dragging {
+  box-shadow: 0 10px 28px rgb(0 0 0 / 0.34), 0 0 0 1px var(--border-strong);
+  user-select: none;
+}
+
+.canvas-toolbar-drag-handle {
+  align-items: center;
+  align-self: stretch;
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  color: var(--text-muted);
+  cursor: grab;
+  display: flex;
+  justify-content: center;
+  min-height: 34px;
+  padding: 0;
+  touch-action: none;
+  width: 22px;
+}
+
+.canvas-toolbar-drag-handle:hover,
+.canvas-toolbar-drag-handle:focus-visible {
+  background: var(--quiet-bg);
+  color: var(--text);
+}
+
+.canvas-toolbar-drag-handle:active,
+.canvas-toolbar.is-dragging .canvas-toolbar-drag-handle {
+  cursor: grabbing;
 }
 
 .tool-group,
@@ -7362,9 +7404,31 @@ button.status-label:hover {
     display: none;
   }
 
-  .canvas-toolbar {
+  .canvas-toolbar:not(.has-custom-position) {
     left: 12px;
     transform: none;
+  }
+
+  .canvas-toolbar {
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: calc(100% - 24px);
+  }
+
+  .canvas-toolbar .tool-divider,
+  .canvas-toolbar .zoom-group .icon-button:first-child,
+  .canvas-toolbar .zoom-group .icon-button:nth-last-child(2) {
+    display: none;
+  }
+
+  .canvas-toolbar .insert-tool {
+    min-width: 34px;
+    padding: 0;
+  }
+
+  .canvas-toolbar .insert-tool-label,
+  .canvas-toolbar .insert-tool-chevron {
+    display: none;
   }
 }
 
@@ -7729,12 +7793,18 @@ button.status-label:hover {
     z-index: 60;
   }
 
-  .canvas-toolbar {
+  .canvas-toolbar,
+  .canvas-toolbar.has-custom-position {
     left: 50%;
     max-width: calc(100vw - 24px);
     overflow: visible;
     scrollbar-width: none;
+    top: 8px;
     transform: translateX(-50%);
+  }
+
+  .canvas-toolbar-drag-handle {
+    display: none;
   }
 
   .filter-stage {
@@ -7854,10 +7924,6 @@ button.status-label:hover {
 
   .collaboration-button span {
     display: none;
-  }
-
-  .canvas-toolbar {
-    top: 8px;
   }
 
   .tool-divider,
@@ -8160,6 +8226,18 @@ button.status-label:hover {
 }
 
 @media (max-width: 420px) {
+  .canvas-toolbar,
+  .canvas-toolbar.has-custom-position {
+    flex-wrap: nowrap;
+    gap: 0;
+    padding: 2px;
+  }
+
+  .canvas-toolbar .tool-group,
+  .canvas-toolbar .insert-tools {
+    gap: 0;
+  }
+
   .canvas-toolbar .zoom-group {
     display: none;
   }

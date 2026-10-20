@@ -1,8 +1,8 @@
 {
   "product": "Infinite Moodboard",
   "channel": "stable",
-  "version": "0.16.0",
+  "version": "0.17.0",
   "releasedAt": "2026-10-20",
-  "summary": "時尚黑白成為預設介面主題；啟動、狀態、游標、選取與 3D 控制皆使用灰階對比。",
+  "summary": "浮動畫布工具列預設避開尺規，並可在桌機拖曳、鍵盤微調、記住位置與快速復原。",
   "url": "https://perrtang.github.io/infinite-moodboard/"
 }

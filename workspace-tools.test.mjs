@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildRulerTicks,
+  clampCanvasToolbarPosition,
   formatGuideValue,
   matchesListQuery,
+  normalizeCanvasToolbarPosition,
   normalizeRulerUnit,
   pixelsToUnit,
   shouldConfirmEscapeCancellation,
@@ -43,4 +45,27 @@ test("Escape confirmation is reserved for changed document gestures", () => {
   assert.equal(shouldConfirmEscapeCancellation({ affectsDocument: true, hasChanges: false }), false);
   assert.equal(shouldConfirmEscapeCancellation({ affectsDocument: false, hasChanges: true }), false);
   assert.equal(shouldConfirmEscapeCancellation(), false);
+});
+
+test("canvas toolbar positions reject malformed storage and round valid coordinates", () => {
+  assert.equal(normalizeCanvasToolbarPosition(null), null);
+  assert.equal(normalizeCanvasToolbarPosition({ x: "bad", y: 20 }), null);
+  assert.deepEqual(normalizeCanvasToolbarPosition({ x: 18.6, y: "40.2" }), { x: 19, y: 40 });
+});
+
+test("canvas toolbar positions stay inside the visible workspace", () => {
+  const bounds = { width: 900, height: 640 };
+  const toolbar = { width: 520, height: 44 };
+  assert.deepEqual(
+    clampCanvasToolbarPosition({ x: -100, y: -40 }, bounds, toolbar, { margin: 8 }),
+    { x: 8, y: 8 },
+  );
+  assert.deepEqual(
+    clampCanvasToolbarPosition({ x: 800, y: 800 }, bounds, toolbar, { margin: 8 }),
+    { x: 372, y: 588 },
+  );
+  assert.deepEqual(
+    clampCanvasToolbarPosition({ x: 50, y: 50 }, { width: 200, height: 30 }, toolbar, { margin: 8 }),
+    { x: 8, y: 8 },
+  );
 });
