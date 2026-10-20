@@ -26,6 +26,13 @@ Infinite Moodboard runs the canvas, imported media, transforms, exports, and ver
 - Optional Google Drive file storage and opt-in realtime collaboration with view/edit permission requests.
 - 3D, Drive, collaboration, and export runtimes are loaded only when used, keeping the opening bundle smaller.
 
+## v0.31.0 — link-first sharing release
+
+- Adds one clear Share action that creates a link for the current Moodboard.
+- Opens a shared link automatically after verified sign-in, with view-only access by default and an explicit request-to-edit flow.
+- Keeps collaboration sharing separate from Google Drive storage and explains that boundary in the interface.
+- Restricts bearer invites to viewer access and prevents an owner from creating another owner through the collaboration API.
+
 ## v0.30.0 — storage destination release
 
 - Gives every Moodboard one clear primary storage location: this device or Google Drive.

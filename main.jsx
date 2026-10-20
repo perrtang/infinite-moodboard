@@ -1767,8 +1767,8 @@ function MobileTopbarMoreMenu({
           onKeyDown={navigateMenu}
         >
           <button type="button" role="menuitem" onClick={() => activate(onOpenCollaboration)}>
-            <Users size={18} />
-            <span>協作</span>
+            <Share2 size={18} />
+            <span>分享</span>
             {collaborationCount > 0 ? <b>{collaborationCount}</b> : null}
           </button>
           <button type="button" role="menuitem" onClick={() => activate(onOpenAccount)}>
@@ -4459,6 +4459,11 @@ function AuthGate({
       title: "登入後使用協作與同步",
       description: "登入後才能啟用跨分頁協作與未來雲端同步；本機工作仍可繼續使用。",
     }
+    : feature === "shared-moodboard"
+      ? {
+        title: "登入後開啟分享的 Moodboard",
+        description: "登入後會直接以僅檢視身分開啟；需要修改時，可向擁有者申請編輯權限。",
+      }
     : feature === "drive"
       ? {
         title: "登入後連結 Google Drive",
@@ -5052,11 +5057,9 @@ function DriveLibraryModal({
 }
 
 function CollaborationModal({
+  boardName,
   sessionName,
   setSessionName,
-  peerCount,
-  driveConnected,
-  driveLinked,
   cloud,
   initialInvite,
   resumeAvailable,
@@ -5068,14 +5071,12 @@ function CollaborationModal({
   onResolveAccessRequest,
   onSetMemberRole,
   onLeaveRoom,
-  onOpenDrive,
   onClose,
 }) {
   const [inviteDraft, setInviteDraft] = useState(initialInvite || "");
   const [permissionAction, setPermissionAction] = useState("");
   const cloudConnected = ["connected", "syncing", "offline", "degraded"].includes(cloud.status) && Boolean(cloud.roomId);
   const cloudBusy = ["creating", "joining", "connecting"].includes(cloud.status);
-  const cloudReady = cloud.status === "connected" || cloud.status === "syncing";
   const pendingAccessRequests = (cloud.accessRequests || []).filter((request) => request.status === "pending");
 
   const runPermissionAction = async (key, action) => {
@@ -5093,33 +5094,39 @@ function CollaborationModal({
   }, [initialInvite]);
 
   return (
-    <Modal title="協作與 Google Drive" description="即時共編會在你明確建立或加入空間後，才把這份 Moodboard 傳到共編服務。" onClose={onClose} wide>
-      <div className="collaboration-status">
-        <section className="capability is-ready">
-          <div><Users size={21} /><span><strong>同裝置多分頁共編</strong><small>{`目前 ${peerCount + 1} 個分頁在線，變更會即時同步。`}</small></span></div>
-          <span className="status-label"><Check size={14} /> 已啟用</span>
-        </section>
-        <section className="capability is-ready">
-          <div><History size={21} /><span><strong>本機版本與離線檔案</strong><small>可建立、還原版本，也可隨時下載完整 Infinite Moodboard。</small></span></div>
-          <span className="status-label"><Check size={14} /> 已啟用</span>
-        </section>
-        <section className={`capability ${driveConnected ? "is-ready" : "is-pending"}`}>
-          <div><HardDrive size={21} /><span><strong>Google Drive 檔案與跨裝置保存</strong><small>{driveConnected ? (driveLinked ? "目前 Moodboard 已連結雲端檔案，本機變更可安全同步。" : "Drive 已連結；儲存目前 Moodboard 後即可跨裝置開啟。") : "需另外取得 drive.file 最小權限；登入本身不會上傳 Moodboard。"}</small></span></div>
-          <button className="status-label" type="button" onClick={onOpenDrive}>{driveConnected ? <Check size={14} /> : <CloudOff size={14} />} {driveConnected ? "管理 Drive" : "連結 Drive"}</button>
-        </section>
-        <section className={`capability ${cloudReady ? "is-ready" : cloud.status === "error" ? "is-error" : "is-pending"}`}>
-          <div><Share2 size={21} /><span><strong>跨裝置即時共編</strong><small>以已驗證的 PETFASHION 帳號控管成員；不同物件的同時修改會自動合併。</small></span></div>
-          <span className="status-label">{cloudReady ? <Check size={14} /> : <CloudOff size={14} />} {cloudReady ? "已連線" : cloudBusy ? "連線中" : "尚未加入"}</span>
-        </section>
-      </div>
-
+    <Modal title="分享與共同編輯" description="建立分享連結後，收到連結的人登入即可檢視這份 Moodboard，並可向你申請編輯。" onClose={onClose} wide>
       <section className={`cloud-collaboration-panel is-${cloud.status}`} aria-live="polite">
         {cloudConnected ? (
           <>
             <div className="cloud-collaboration-heading">
-              <div><strong>共編空間</strong><small data-l10n-ignore>{cloud.roomId}</small></div>
+              <div><strong data-l10n-ignore>{boardName || "未命名 Infinite Moodboard"}</strong><small>{cloud.role === "owner" ? "已開啟分享" : "已加入分享的 Moodboard"}</small></div>
               <span className="cloud-role-badge">{collaborationRoleLabel(cloud.role)}</span>
             </div>
+            {cloud.role === "owner" ? (
+              <section className="collaboration-share-card" aria-labelledby="collaboration-share-link-title">
+                <div className="collaboration-share-summary">
+                  <span className="collaboration-permission-icon" aria-hidden="true"><Share2 size={18} /></span>
+                  <div>
+                    <strong id="collaboration-share-link-title">分享連結</strong>
+                    <small>任何持有連結且已登入的用戶都能檢視；編輯仍需由你核准。</small>
+                  </div>
+                </div>
+                <label className="collaboration-invite-field">
+                  <span>目前 Moodboard 的分享連結</span>
+                  <div>
+                    <input
+                      value={cloud.inviteUrl || ""}
+                      readOnly
+                      data-l10n-ignore
+                      aria-label="目前 Moodboard 的分享連結"
+                      onFocus={(event) => event.currentTarget.select()}
+                    />
+                    <button className="primary-button" type="button" onClick={onCopyInvite} disabled={!cloud.inviteUrl}><Copy size={16} />複製分享連結</button>
+                  </div>
+                </label>
+                <p className="collaboration-share-note"><History size={14} />分享連結自建立起 30 天內有效；已加入的成員可繼續使用。</p>
+              </section>
+            ) : null}
             <p className="cloud-collaboration-message">{cloud.message || "即時共編已連線。"}</p>
             <div className="collaboration-peer-list" aria-label="目前共編成員">
               {(cloud.peers || []).map((peer) => (
@@ -5198,37 +5205,37 @@ function CollaborationModal({
               </details>
             ) : null}
             <div className="cloud-collaboration-actions">
-              <button className="primary-button" type="button" onClick={onCopyInvite} disabled={!cloud.inviteUrl}><Copy size={16} />複製檢視邀請連結</button>
-              <button className="quiet-button" type="button" onClick={onLeaveRoom}><X size={15} />離開共編</button>
+              <button className="quiet-button" type="button" onClick={onLeaveRoom}><X size={15} />{cloud.role === "owner" ? "停止在這台裝置共編" : "離開共編"}</button>
             </div>
           </>
         ) : (
           <>
             <div className="cloud-collaboration-choice">
-              <div><strong>用目前 Moodboard 開始共編</strong><small>會先建立本機版本，再上傳可合併的共編資料。</small></div>
-              <button className="primary-button" type="button" onClick={onCreateRoom} disabled={cloudBusy}><Users size={16} />{cloud.status === "creating" ? "建立中…" : "建立共編空間"}</button>
+              <div><strong>分享目前 Moodboard</strong><small>會先建立可復原的本機版本，再上傳這一份 Moodboard 的共編資料。</small></div>
+              <button className="primary-button" type="button" onClick={onCreateRoom} disabled={cloudBusy}><Share2 size={16} />{cloud.status === "creating" ? "建立中…" : "建立分享連結"}</button>
             </div>
-            <div className="cloud-collaboration-divider"><span>或加入別人的空間</span></div>
-            <label className="collaboration-invite-field">
-              <span>邀請連結或代碼</span>
-              <div><input value={inviteDraft} onChange={(event) => setInviteDraft(event.target.value)} placeholder="貼上 ?collab=… 連結" /><button className="secondary-button" type="button" onClick={() => onJoinRoom(inviteDraft)} disabled={cloudBusy || !inviteDraft.trim()}><Share2 size={15} />加入檢視</button></div>
-            </label>
-            {resumeAvailable ? <button className="text-button collaboration-resume-button" type="button" onClick={onResumeRoom} disabled={cloudBusy}><RefreshCw size={14} />繼續上次的共編空間</button> : null}
+            <details className="collaboration-member-management collaboration-join-options" open={Boolean(initialInvite || cloud.status === "error")}>
+              <summary><Share2 size={15} />加入別人分享的 Moodboard</summary>
+              <label className="collaboration-invite-field">
+                <span>分享連結或代碼</span>
+                <div><input value={inviteDraft} onChange={(event) => setInviteDraft(event.target.value)} placeholder="貼上 ?collab=… 連結" /><button className="secondary-button" type="button" onClick={() => onJoinRoom(inviteDraft)} disabled={cloudBusy || !inviteDraft.trim()}><Share2 size={15} />加入檢視</button></div>
+              </label>
+              {resumeAvailable ? <button className="text-button collaboration-resume-button" type="button" onClick={onResumeRoom} disabled={cloudBusy}><RefreshCw size={14} />繼續上次的共編空間</button> : null}
+            </details>
             {cloud.message ? <p className={`cloud-collaboration-message${cloud.status === "error" ? " is-error" : ""}`}>{cloud.message}</p> : null}
           </>
         )}
       </section>
-      <label className="session-name-field">
-        <span>這個分頁顯示名稱</span>
-        <input value={sessionName} onChange={(event) => setSessionName(event.target.value.slice(0, 24))} />
-      </label>
+      <details className="collaboration-member-management collaboration-session-options">
+        <summary><UserRound size={15} />共同編輯顯示名稱</summary>
+        <label className="session-name-field">
+          <span>這個分頁顯示名稱</span>
+          <input value={sessionName} onChange={(event) => setSessionName(event.target.value.slice(0, 24))} />
+        </label>
+      </details>
       <div className="architecture-note">
-        <strong>離線與隱私</strong>
-        <p>網路中斷時，變更會先留在這台裝置；恢復連線後再合併。共編不會自動開啟，也不會把其它本機 Moodboard 上傳。</p>
-      </div>
-      <div className="architecture-note">
-        <strong>兩種離線檔案</strong>
-        <p>`.moodboard` 是本應用的可編輯工作檔，不代表其他 Mood board 軟體相容；「瀏覽器版」會另外匯出任何現代瀏覽器都能開啟的單檔 HTML，內容完整但唯讀。</p>
+        <strong>分享、儲存與隱私</strong>
+        <p>分享只會上傳目前這一份 Moodboard；Google Drive 的儲存與同步仍在「我的 Moodboards」管理，兩者不是同一個連結。網路中斷時，變更會先留在這台裝置，恢復連線後再合併。</p>
       </div>
     </Modal>
   );
@@ -6191,6 +6198,7 @@ function App() {
   const sessionIdRef = useRef(createId("session"));
   const cloudCollaborationSessionRef = useRef(null);
   const initialCollaborationInviteRef = useRef(normalizeCollaborationInvite(window.location.href));
+  const automaticCollaborationJoinRef = useRef("");
   const saveTimerRef = useRef(null);
   const localSavePromiseRef = useRef(Promise.resolve());
   const localPersistenceGenerationRef = useRef(0);
@@ -6915,7 +6923,7 @@ function App() {
   }, [announce, updateDriveSettings]);
 
   const completeAdvancedFeature = useCallback((feature) => {
-    if (feature === "collaboration") {
+    if (feature === "collaboration" || feature === "shared-moodboard") {
       setShowCollaboration(true);
       return;
     }
@@ -8038,7 +8046,7 @@ function App() {
       return;
     }
     await stopCloudCollaboration({ forget: false });
-    setCloudCollaboration({ ...EMPTY_CLOUD_COLLABORATION, status: "creating", message: "正在建立安全的共編空間…" });
+    setCloudCollaboration({ ...EMPTY_CLOUD_COLLABORATION, status: "creating", message: "正在建立安全的分享連結…" });
     try {
       const { createMoodboardCollaborationRoom } = await loadCollaborationRuntime();
       await saveVersion(boardSnapshot(), translateInterfaceText("開始即時共編前"), "automatic");
@@ -8052,7 +8060,7 @@ function App() {
       setCollaborationResume(resume);
       initialCollaborationInviteRef.current = "";
       scrubCollaborationInviteFromUrl();
-      announce("共編空間已建立；分享連結會先讓對方以僅檢視身分加入。", "success");
+      announce("分享連結已建立；對方登入後會以僅檢視身分開啟。", "success");
     } catch (error) {
       const message = collaborationErrorMessage(error);
       setCloudCollaboration({ ...EMPTY_CLOUD_COLLABORATION, status: "error", message });
@@ -8086,7 +8094,7 @@ function App() {
       setCollaborationResume(resume);
       initialCollaborationInviteRef.current = "";
       scrubCollaborationInviteFromUrl();
-      announce(session.canEdit ? "已加入即時共編空間。" : "已加入共編空間，目前為僅檢視。", "success");
+      announce(session.canEdit ? "已開啟分享的 Moodboard，可以共同編輯。" : "已開啟分享的 Moodboard，目前為僅檢視。", "success");
     } catch (error) {
       const message = collaborationErrorMessage(error);
       setCloudCollaboration({ ...EMPTY_CLOUD_COLLABORATION, status: "error", message });
@@ -8119,9 +8127,9 @@ function App() {
     if (!cloudCollaboration.inviteUrl) return;
     try {
       await navigator.clipboard.writeText(cloudCollaboration.inviteUrl);
-      announce("檢視邀請連結已複製；對方可加入並申請編輯權限。", "success");
+      announce("分享連結已複製；對方登入後即可檢視並申請編輯權限。", "success");
     } catch {
-      announce("無法自動複製；請從網址列手動複製邀請連結。", "warning");
+      announce("無法自動複製；請選取分享連結後手動複製。", "warning");
     }
   }, [announce, cloudCollaboration.inviteUrl]);
 
@@ -8174,9 +8182,15 @@ function App() {
   useEffect(() => {
     const inviteId = initialCollaborationInviteRef.current;
     if (!hydrated || !inviteId) return;
-    if (authReady) setShowCollaboration(true);
-    else if (authSession.status !== "loading") requestAdvancedFeature("collaboration");
-  }, [authReady, authSession.status, hydrated, requestAdvancedFeature]);
+    if (!authReady) {
+      if (authSession.status !== "loading") requestAdvancedFeature("shared-moodboard");
+      return;
+    }
+    setShowCollaboration(true);
+    if (automaticCollaborationJoinRef.current === inviteId || cloudCollaborationSessionRef.current) return;
+    automaticCollaborationJoinRef.current = inviteId;
+    joinCloudCollaboration(inviteId);
+  }, [authReady, authSession.status, hydrated, joinCloudCollaboration, requestAdvancedFeature]);
 
   const activateLocalMoodboard = useCallback(async (nextBoard, message) => {
     const current = boardSnapshot();
@@ -10849,14 +10863,14 @@ function App() {
             type="button"
             aria-label={authReady
               ? cloudCollaboration.roomId
-                ? `協作，${Math.max(1, cloudCollaboration.peers.length)} 位成員在線`
-                : `協作，${peers.length + 1} 個分頁在線`
-              : "協作，需要登入"}
+                ? `分享，${Math.max(1, cloudCollaboration.peers.length)} 位成員在線`
+                : "分享目前 Moodboard"
+              : "分享，需要登入"}
             onClick={() => requestAdvancedFeature("collaboration")}
           >
-            <Users size={17} /><span>協作</span>{authReady && cloudCollaboration.roomId
+            <Share2 size={17} /><span>分享</span>{authReady && cloudCollaboration.roomId
               ? <b>{Math.max(1, cloudCollaboration.peers.length)}</b>
-              : authReady && peers.length ? <b>{peers.length + 1}</b> : null}
+              : null}
           </button>
           <button
             className="account-menu-button"
@@ -11472,11 +11486,9 @@ function App() {
       ) : null}
       {showCollaboration ? (
         <CollaborationModal
+          boardName={board.name}
           sessionName={sessionName}
           setSessionName={setSessionName}
-          peerCount={peers.length}
-          driveConnected={driveSession.connected}
-          driveLinked={Boolean(currentDriveLink)}
           cloud={cloudCollaboration}
           initialInvite={initialCollaborationInviteRef.current}
           resumeAvailable={Boolean(collaborationResume?.roomId && collaborationResume.boardId === board.id)}
@@ -11488,10 +11500,6 @@ function App() {
           onResolveAccessRequest={resolveCloudCollaborationAccessRequest}
           onSetMemberRole={setCloudCollaborationMemberRole}
           onLeaveRoom={leaveCloudCollaboration}
-          onOpenDrive={() => {
-            setShowCollaboration(false);
-            openGoogleDriveLibrary();
-          }}
           onClose={() => setShowCollaboration(false)}
         />
       ) : null}

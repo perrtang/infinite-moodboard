@@ -623,7 +623,7 @@ export async function joinMoodboardCollaborationInvite(options) {
   }
   const database = getMoodboardCollaborationDatabase();
   const inviteSnapshot = await getDoc(doc(database, COLLABORATION_INVITES_COLLECTION, inviteId));
-  if (!inviteSnapshot.exists() || inviteSnapshot.data().active !== true) {
+  if (!inviteSnapshot.exists() || inviteSnapshot.data().active !== true || inviteSnapshot.data().role !== COLLABORATION_DEFAULT_INVITE_ROLE) {
     const error = new Error("找不到可用的共編邀請。");
     error.code = "collaboration/invite-not-found";
     throw error;
@@ -646,7 +646,7 @@ export async function joinMoodboardCollaborationInvite(options) {
   if (!memberExists) {
     await setDoc(memberRef, {
       uid: user.uid,
-      role: normalizeCollaborationRole(invite.role) === "viewer" ? "viewer" : "editor",
+      role: COLLABORATION_DEFAULT_INVITE_ROLE,
       name: String(user.displayName || "協作者").slice(0, 80),
       joinedAt: serverTimestamp(),
       inviteId,

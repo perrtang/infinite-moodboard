@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
   COLLABORATION_DEFAULT_INVITE_ROLE,
@@ -22,6 +23,8 @@ import {
   writeBoardToCollaborationDocument,
 } from "./collaboration.js";
 import { createBoard, ensureBoard } from "./model.js";
+
+const appSource = await readFile(new URL("./main.jsx", import.meta.url), "utf8");
 
 function sampleBoard() {
   return ensureBoard(createBoard({
@@ -93,6 +96,14 @@ test("shared collaboration links start as view only and access request states ar
   assert.equal(normalizeCollaborationAccessRequestStatus("pending"), "pending");
   assert.equal(normalizeCollaborationAccessRequestStatus("unexpected"), "none");
   assert.equal(collaborationAccessRequestStatusLabel("approved"), "已核准編輯");
+});
+
+test("shared Moodboard links use a link-first flow and auto-join after verified sign-in", () => {
+  assert.match(appSource, /title="分享與共同編輯"/);
+  assert.match(appSource, /建立分享連結/);
+  assert.match(appSource, /複製分享連結/);
+  assert.match(appSource, /requestAdvancedFeature\("shared-moodboard"\)/);
+  assert.match(appSource, /automaticCollaborationJoinRef\.current = inviteId;\s*joinCloudCollaboration\(inviteId\);/);
 });
 
 test("collaboration document keeps assets while preserving each device viewport", () => {

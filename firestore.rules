@@ -38,11 +38,11 @@ service cloud.firestore {
       return isMember(roomId) && currentMember(roomId).data.role == 'owner';
     }
 
-    function validInvite(inviteId, roomId, role) {
+    function validViewerInvite(inviteId, roomId) {
       let invite = get(invitePath(inviteId));
       return invite.data.active == true
         && invite.data.roomId == roomId
-        && invite.data.role == role
+        && invite.data.role == 'viewer'
         && invite.data.expiresAt > request.time;
     }
 
@@ -76,9 +76,11 @@ service cloud.firestore {
               && request.resource.data.role == 'owner'
               && getAfter(roomPath(roomId)).data.ownerUid == request.auth.uid)
             || (memberUid == request.auth.uid
+              && request.resource.data.role == 'viewer'
               && request.resource.data.inviteId is string
-              && validInvite(request.resource.data.inviteId, roomId, request.resource.data.role))
-            || isOwner(roomId)
+              && validViewerInvite(request.resource.data.inviteId, roomId))
+            || (isOwner(roomId)
+              && request.resource.data.role in ['editor', 'viewer'])
           );
         allow update: if isOwner(roomId)
           && request.resource.data.uid == resource.data.uid
@@ -201,13 +203,13 @@ service cloud.firestore {
       allow create: if verified()
         && request.resource.data.createdBy == request.auth.uid
         && request.resource.data.roomId is string
-        && request.resource.data.role in ['editor', 'viewer']
+        && request.resource.data.role == 'viewer'
         && getAfter(roomPath(request.resource.data.roomId)).data.ownerUid == request.auth.uid;
       allow update: if verified()
         && isOwner(resource.data.roomId)
         && request.resource.data.roomId == resource.data.roomId
         && request.resource.data.createdBy == resource.data.createdBy
-        && request.resource.data.role in ['editor', 'viewer'];
+        && request.resource.data.role == 'viewer';
       allow delete: if verified() && isOwner(resource.data.roomId);
     }
   }

@@ -112,9 +112,14 @@ test("Google Drive storage and recovery copy is localized", () => {
 
 test("real-time collaboration copy is localized", () => {
   assert.equal(translateInterfaceText("建立共編空間", "en"), "Create collaboration room");
+  assert.equal(translateInterfaceText("分享", "en"), "Share");
+  assert.equal(translateInterfaceText("建立分享連結", "en"), "Create share link");
+  assert.equal(translateInterfaceText("複製分享連結", "en"), "Copy share link");
+  assert.equal(translateInterfaceText("登入後開啟分享的 Moodboard", "en"), "Sign in to open the shared Moodboard");
   assert.equal(translateInterfaceText("可編輯", "en"), "Can edit");
   assert.equal(translateInterfaceText("3 個變更等待同步", "en"), "3 changes waiting to sync");
   assert.equal(translateInterfaceText("協作，2 位成員在線", "en"), "Collaboration, 2 collaborators online");
+  assert.equal(translateInterfaceText("分享，2 位成員在線", "en"), "Share, 2 collaborators online");
   assert.equal(translateInterfaceText("所有變更已同步。", "en"), "All changes are synced.");
   assert.match(translateInterfaceText("目前帳號沒有這個共編空間的權限，或雲端安全規則尚未啟用。", "en"), /cannot access/);
   assert.equal(translateInterfaceText("離線與隱私", "zh-Hans"), "离线与隐私");

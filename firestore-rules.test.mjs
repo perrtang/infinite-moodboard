@@ -17,7 +17,8 @@ test("collaboration rules gate edits by owner or editor membership", () => {
 });
 
 test("collaboration rules validate bearer invites and cap chunk size", () => {
-  assert.match(rules, /validInvite\(request\.resource\.data\.inviteId, roomId, request\.resource\.data\.role\)/);
+  assert.match(rules, /validViewerInvite\(request\.resource\.data\.inviteId, roomId\)/);
+  assert.match(rules, /invite\.data\.role == 'viewer'/);
   assert.match(rules, /request\.resource\.data\.data\.size\(\) <= 500000/);
   assert.match(rules, /request\.resource\.data\.byteLength <= 50331648/);
 });
@@ -45,4 +46,7 @@ test("viewers can request edit access while only owners can decide or change rol
   assert.match(rules, /resource\.data\.role in \['editor', 'viewer'\]/);
   assert.match(rules, /request\.resource\.data\.role in \['editor', 'viewer'\]/);
   assert.match(collaborationSource, /role: COLLABORATION_DEFAULT_INVITE_ROLE/);
+  assert.match(collaborationSource, /inviteSnapshot\.data\(\)\.role !== COLLABORATION_DEFAULT_INVITE_ROLE/);
+  assert.match(rules, /isOwner\(roomId\)[\s\S]*request\.resource\.data\.role in \['editor', 'viewer'\]/);
+  assert.match(rules, /match \/infiniteMoodboardInvites\/\{inviteId\}[\s\S]*request\.resource\.data\.role == 'viewer'/);
 });
