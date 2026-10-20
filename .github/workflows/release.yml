@@ -35,4 +35,4 @@ jobs:
             --verify-tag \
             --generate-notes \
             --title "Infinite Moodboard $GITHUB_REF_NAME" \
-            --notes "Recommended: use the hosted app at https://perrtang.github.io/infinite-moodboard/. The attached ZIP is a self-hosted static web build, not a native desktop installer."
+            --notes "Recommended: use the hosted app at https://moodboard.petfashion.tw/. The attached ZIP is a self-hosted static web build, not a native desktop installer."

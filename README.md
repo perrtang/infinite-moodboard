@@ -2,7 +2,7 @@
 
 > A free, local-first infinite canvas for visual research, references, layouts, and moodboards — built by PETFASHION.
 
-[![Open the app](https://img.shields.io/badge/Open-Infinite_Moodboard-111111?style=for-the-badge)](https://perrtang.github.io/infinite-moodboard/)
+[![Open the app](https://img.shields.io/badge/Open-Infinite_Moodboard-111111?style=for-the-badge)](https://moodboard.petfashion.tw/)
 [![Latest release](https://img.shields.io/github/v/release/perrtang/infinite-moodboard?display_name=tag&style=for-the-badge)](https://github.com/perrtang/infinite-moodboard/releases/latest)
 [![Test and deploy](https://github.com/perrtang/infinite-moodboard/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/perrtang/infinite-moodboard/actions/workflows/deploy-pages.yml)
 
@@ -12,7 +12,7 @@ Infinite Moodboard runs the canvas, imported media, transforms, exports, and ver
 
 ## Start here
 
-- **Recommended:** [open the web app](https://perrtang.github.io/infinite-moodboard/). Your work is saved locally in the current browser until you explicitly download, export, connect Drive, or start collaboration.
+- **Recommended:** [open the web app](https://moodboard.petfashion.tw/). Your work is saved locally in the current browser until you explicitly download, export, connect Drive, or start collaboration.
 - **Editable files:** download a `.moodboard` file from the app and reopen it in the online app at any time.
 - **Self-hosting:** download the latest `self-hosted.zip` from [GitHub Releases](https://github.com/perrtang/infinite-moodboard/releases/latest). It is a static web build, not a native desktop installer; follow the included `SELF_HOSTING.md` instead of double-clicking `index.html`.
 
@@ -25,6 +25,12 @@ Infinite Moodboard runs the canvas, imported media, transforms, exports, and ver
 - Traditional Chinese, Simplified Chinese, and English interfaces.
 - Optional Google Drive file storage and opt-in realtime collaboration with view/edit permission requests.
 - 3D, Drive, collaboration, and export runtimes are loaded only when used, keeping the opening bundle smaller.
+
+## v0.27.0 — PETFASHION custom-domain release
+
+- Publishes the install-free GitHub Pages app at `moodboard.petfashion.tw`.
+- Builds Pages from the domain root while preserving the portable relative-path self-hosted ZIP.
+- Keeps the previous GitHub Pages URL as GitHub's managed redirect and retains versioned rollback tags and external backups.
 
 ## v0.26.0 — GitHub distribution release
 
@@ -63,7 +69,7 @@ npm run build
 Create the self-hosted release asset:
 
 ```bash
-npm run release:package -- 0.26.0
+npm run release:package -- 0.27.0
 ```
 
 Google Drive uses the least-privilege `drive.file` scope. A fork must supply its own OAuth client and approved origins:
@@ -89,12 +95,12 @@ No open-source license has been selected. Public source visibility does not gran
 
 ## 繁體中文
 
-Infinite Moodboard 是 PETFASHION 的免費、本機優先無限畫布。圖片、影片、文字、SVG、版本與輸出主要在瀏覽器內處理；不登入也能編輯、儲存、開啟與輸出。建議直接使用[線上版](https://perrtang.github.io/infinite-moodboard/)，並定期下載可再次編輯的 `.moodboard` 工作檔。只有主動使用 Google Drive、即時共編等連線功能時才需要登入與另外授權。
+Infinite Moodboard 是 PETFASHION 的免費、本機優先無限畫布。圖片、影片、文字、SVG、版本與輸出主要在瀏覽器內處理；不登入也能編輯、儲存、開啟與輸出。建議直接使用[線上版](https://moodboard.petfashion.tw/)，並定期下載可再次編輯的 `.moodboard` 工作檔。只有主動使用 Google Drive、即時共編等連線功能時才需要登入與另外授權。
 
 下載的 `self-hosted.zip` 是供自行架站的靜態網頁版本，不是桌面安裝程式。資料與權限界線請讀 [PRIVACY.md](PRIVACY.md)。
 
 ## 简体中文
 
-Infinite Moodboard 是 PETFASHION 的免费、本地优先无限画布。图片、视频、文字、SVG、版本与输出主要在浏览器内处理；无需登录也能编辑、保存、打开与导出。建议直接使用[在线版](https://perrtang.github.io/infinite-moodboard/)，并定期下载可再次编辑的 `.moodboard` 工作文件。只有主动使用 Google Drive、实时协作等联网功能时才需要登录与另外授权。
+Infinite Moodboard 是 PETFASHION 的免费、本地优先无限画布。图片、视频、文字、SVG、版本与输出主要在浏览器内处理；无需登录也能编辑、保存、打开与导出。建议直接使用[在线版](https://moodboard.petfashion.tw/)，并定期下载可再次编辑的 `.moodboard` 工作文件。只有主动使用 Google Drive、实时协作等联网功能时才需要登录与另外授权。
 
 下载的 `self-hosted.zip` 是供自行部署的静态网页版本，不是桌面安装程序。数据与权限边界请阅读 [PRIVACY.md](PRIVACY.md)。

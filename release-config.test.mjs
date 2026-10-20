@@ -30,6 +30,9 @@ test("GitHub release assets are built from a verified tag without cloud rule dep
   assert.match(releaseWorkflow, /gh release create/);
   assert.match(releaseWorkflow, /SHA256SUMS\.txt/);
   assert.doesNotMatch(`${releaseWorkflow}\n${pagesWorkflow}`, /firebase(?:-tools)?\s+deploy|firestore:rules/);
+  assert.match(pagesWorkflow, /VITE_BASE_PATH:\s*\//);
+  assert.doesNotMatch(pagesWorkflow, /VITE_BASE_PATH:\s*\/infinite-moodboard\//);
+  assert.match(releaseWorkflow, /https:\/\/moodboard\.petfashion\.tw\//);
   assert.match(packageScript, /VITE_BASE_PATH=\.\/ npm run build/);
 });
 
