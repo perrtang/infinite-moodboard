@@ -331,6 +331,11 @@ import {
   shouldConfirmEscapeCancellation,
 } from "./workspace-tools.js";
 import { isEditableShortcutEvent } from "./workspace-keyboard.js";
+import {
+  fitSourceView,
+  panSourceView,
+  zoomSourceViewAtPoint,
+} from "./source-view.js";
 import "./styles.css";
 
 const loadAssetExportRuntime = () => import("./asset-export.js");
@@ -4586,11 +4591,15 @@ function sourceTypeLabel(object) {
   return "圖片";
 }
 
-function SourceStage({ sourceAssets, activeSourceId, onSelectSource }) {
+function SourceStage({ sourceAssets, activeSourceId, onSelectSource, onExit, spaceDown = false }) {
   const [viewMode, setViewMode] = useState("grid");
+  const [sourceView, setSourceView] = useState({ x: 0, y: 0, zoom: 1 });
+  const [sourceViewFit, setSourceViewFit] = useState(true);
+  const [sourcePanning, setSourcePanning] = useState(false);
   const search = useListSearch("sources");
-  const swipeStartRef = useRef(null);
   const thumbnailTapRef = useRef({ id: null, time: 0 });
+  const sourceViewportRef = useRef(null);
+  const sourcePanRef = useRef(null);
   const listedSources = sourceAssets.filter((source) => matchesListQuery([
     source.representative.originalFilename,
     source.representative.name,
@@ -4599,11 +4608,41 @@ function SourceStage({ sourceAssets, activeSourceId, onSelectSource }) {
   const selectedIndex = listedSources.findIndex((source) => source.sourceId === activeSourceId);
   const activeIndex = listedSources.length ? Math.max(0, selectedIndex) : 0;
   const activeSource = listedSources[activeIndex];
+  const activeObject = activeSource?.representative || null;
+  const mediaSize = {
+    width: Math.max(1, Number(activeObject?.originalWidth || activeObject?.width) || 1),
+    height: Math.max(1, Number(activeObject?.originalHeight || activeObject?.height) || 1),
+  };
   const goToSlide = useCallback((nextIndex) => {
     if (!listedSources.length) return;
     const source = listedSources[(nextIndex + listedSources.length) % listedSources.length];
     onSelectSource(source.sourceId);
   }, [listedSources, onSelectSource]);
+
+  const fitActiveSource = useCallback(() => {
+    const rect = sourceViewportRef.current?.getBoundingClientRect();
+    if (!rect || !activeObject) return;
+    setSourceView(fitSourceView({ width: rect.width, height: rect.height }, {
+      width: activeObject.originalWidth || activeObject.width,
+      height: activeObject.originalHeight || activeObject.height,
+    }));
+    setSourceViewFit(true);
+  }, [activeObject]);
+
+  const resetSourceTo100 = useCallback(() => {
+    setSourceView({ x: 0, y: 0, zoom: 1 });
+    setSourceViewFit(false);
+  }, []);
+
+  const zoomSourceAt = useCallback((nextZoom, point) => {
+    const rect = sourceViewportRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setSourceView((current) => zoomSourceViewAtPoint(current, nextZoom, point || {
+      x: rect.width / 2,
+      y: rect.height / 2,
+    }, { width: rect.width, height: rect.height }));
+    setSourceViewFit(false);
+  }, []);
 
   useEffect(() => {
     if (listedSources.length && selectedIndex < 0) onSelectSource(listedSources[0].sourceId);
@@ -4626,21 +4665,73 @@ function SourceStage({ sourceAssets, activeSourceId, onSelectSource }) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [activeIndex, goToSlide, viewMode]);
 
+  useLayoutEffect(() => {
+    if (viewMode !== "original" || !activeObject) return undefined;
+    const frame = window.requestAnimationFrame(fitActiveSource);
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeObject?.sourceId, activeSource?.sourceId, fitActiveSource, viewMode]);
+
+  useEffect(() => {
+    if (viewMode !== "original" || !sourceViewFit || !sourceViewportRef.current || typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(() => fitActiveSource());
+    observer.observe(sourceViewportRef.current);
+    return () => observer.disconnect();
+  }, [fitActiveSource, sourceViewFit, viewMode]);
+
   const openOriginal = useCallback((index) => {
     const source = listedSources[index];
     if (source) onSelectSource(source.sourceId);
     setViewMode("original");
   }, [listedSources, onSelectSource]);
 
+  const startSourcePan = (event) => {
+    if (event.button !== 0 || event.target.closest("button, video[controls]")) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    sourcePanRef.current = { clientX: event.clientX, clientY: event.clientY, view: sourceView };
+    setSourcePanning(true);
+    setSourceViewFit(false);
+  };
+  const moveSourcePan = (event) => {
+    const pan = sourcePanRef.current;
+    if (!pan) return;
+    event.preventDefault();
+    setSourceView(panSourceView(pan.view, event.clientX - pan.clientX, event.clientY - pan.clientY));
+  };
+  const endSourcePan = (event) => {
+    if (!sourcePanRef.current) return;
+    sourcePanRef.current = null;
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+    setSourcePanning(false);
+  };
+  const wheelSource = (event) => {
+    if (event.target.closest("video[controls]")) return;
+    event.preventDefault();
+    const rect = sourceViewportRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const factor = Math.exp(-event.deltaY * 0.0015);
+    zoomSourceAt(sourceView.zoom * factor, { x: event.clientX - rect.left, y: event.clientY - rect.top });
+  };
+
   return (
     <div className={`filter-stage source-stage ${search.open ? "has-list-search" : ""}`} aria-label="來源素材檢視">
       <header>
         <div>
+          <button className="source-stage-back" type="button" onClick={onExit} aria-label="回到 Moodboard"><ArrowLeft size={16} /><span>回到 Moodboard</span></button>
+          <span className="source-stage-separator" aria-hidden="true" />
           <ImageIcon size={18} />
           <span>來源素材</span>
           <strong>{search.query ? `${listedSources.length} / ${sourceAssets.length}` : `${sourceAssets.length} 個來源`}</strong>
         </div>
         <div className="filter-stage-actions">
+          {viewMode === "original" && activeSource ? (
+            <div className="source-view-controls" role="group" aria-label="素材縮放">
+              <IconButton label="縮小素材" onClick={() => zoomSourceAt(sourceView.zoom / 1.2)}><ZoomOut size={16} /></IconButton>
+              <button type="button" className="source-view-value" onClick={resetSourceTo100} title="回到素材原始 100%" aria-label={`素材縮放 ${Math.round(sourceView.zoom * 100)}%；點擊回到 100%`}>{Math.round(sourceView.zoom * 100)}%</button>
+              <IconButton label="放大素材" onClick={() => zoomSourceAt(sourceView.zoom * 1.2)}><ZoomIn size={16} /></IconButton>
+              <IconButton label="符合素材到視窗" active={sourceViewFit} aria-pressed={sourceViewFit} onClick={fitActiveSource}><Maximize2 size={16} /></IconButton>
+            </div>
+          ) : null}
           <ListSearchToggle search={search} resultCount={listedSources.length} totalCount={sourceAssets.length} label="搜尋來源素材" />
           <div className="view-mode-control" role="group" aria-label="來源素材檢視方式">
             <button type="button" className={viewMode === "grid" ? "is-active" : ""} aria-pressed={viewMode === "grid"} onClick={() => setViewMode("grid")}><LayoutGrid size={15} /> 縮圖</button>
@@ -4685,24 +4776,36 @@ function SourceStage({ sourceAssets, activeSourceId, onSelectSource }) {
         </div>
       ) : null}
       {listedSources.length && viewMode === "original" && activeSource ? (
-        <div
-          className="filter-slideshow source-slideshow"
-          onPointerDown={(event) => {
-            if (event.target.closest("button, video[controls]")) return;
-            swipeStartRef.current = event.clientX;
-          }}
-          onPointerUp={(event) => {
-            if (swipeStartRef.current === null) return;
-            const delta = event.clientX - swipeStartRef.current;
-            swipeStartRef.current = null;
-            if (Math.abs(delta) < 48) return;
-            goToSlide(activeIndex + (delta < 0 ? 1 : -1));
-          }}
-        >
+        <div className="filter-slideshow source-slideshow">
           <button className="slide-arrow is-previous" type="button" onClick={() => goToSlide(activeIndex - 1)} aria-label="上一個來源素材"><ChevronLeft size={26} /></button>
           <figure>
-            <div className="slide-media">
-              <MediaElement object={activeSource.representative} controls={isVideoObject(activeSource.representative)} />
+            <div
+              ref={sourceViewportRef}
+              className={`slide-media source-inspection-canvas ${spaceDown ? "is-hand-ready" : ""} ${sourcePanning ? "is-panning" : ""}`}
+              onPointerDown={startSourcePan}
+              onPointerMove={moveSourcePan}
+              onPointerUp={endSourcePan}
+              onPointerCancel={endSourcePan}
+              onWheel={wheelSource}
+              onDoubleClick={fitActiveSource}
+              role="region"
+              tabIndex={0}
+              aria-label="素材原圖檢視區；拖曳平移，滾輪縮放，連按兩下符合視窗"
+            >
+              <div
+                className="source-inspection-world"
+                style={{
+                  width: mediaSize.width,
+                  height: mediaSize.height,
+                  transform: `translate(calc(-50% + ${sourceView.x}px), calc(-50% + ${sourceView.y}px)) scale(${sourceView.zoom})`,
+                }}
+              >
+                <MediaElement
+                  object={activeSource.representative}
+                  controls={isVideoObject(activeSource.representative)}
+                  style={{ width: mediaSize.width, height: mediaSize.height }}
+                />
+              </div>
             </div>
             <figcaption>
               <div>
@@ -11449,7 +11552,7 @@ function App() {
       if (leftTab === "sources") {
         const blockedModifier = modifier && !event.altKey && ["a", "c", "x", "v", "z"].includes(key);
         const blockedShift = shiftOnly && ["KeyV", "KeyH", "Digit3", "KeyR", "Semicolon", "Quote", "KeyD", "KeyG"].includes(event.code);
-        const blockedDirect = event.code === "Space" || ["Backspace", "Delete"].includes(event.key);
+        const blockedDirect = ["Backspace", "Delete"].includes(event.key);
         if (blockedModifier || blockedShift || blockedDirect) {
           event.preventDefault();
           if (!event.repeat) announce("目前正在操作來源素材；畫布物件未被變更。", "info");
@@ -12163,11 +12266,11 @@ function App() {
                 onDeleteGuide={deleteGuide}
               />
             ) : null}
-            <div
-              className={`world-layer ${inspectionActive ? "is-filter-muted" : ""}`}
+            {!sourceModeActive ? <div
+              className={`world-layer ${filtersActive ? "is-filter-muted" : ""}`}
               style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})` }}
-              aria-hidden={inspectionActive}
-              inert={inspectionActive ? true : undefined}
+              aria-hidden={filtersActive}
+              inert={filtersActive ? true : undefined}
             >
               {board.objects.filter((object) => object.visible).map((object) => (
                 <CanvasObject
@@ -12220,7 +12323,7 @@ function App() {
                   semanticLabel={selectionSemanticLabel}
                 />
               ) : null}
-            </div>
+            </div> : null}
 
             {showSelectionActions && !cloudReadOnly ? (
               <SelectionActionBar
@@ -12238,7 +12341,7 @@ function App() {
 
             {marquee && !inspectionActive ? <div className="selection-marquee" style={marquee} aria-hidden="true" /> : null}
 
-            {cloudReadOnly ? (
+            {cloudReadOnly && !sourceModeActive ? (
               <button className="cloud-read-only-banner" type="button" onClick={() => setShowCollaboration(true)}>
                 <Eye size={15} /><span><strong>僅檢視</strong><small>開啟協作面板以申請編輯權限</small></span>
               </button>
@@ -12266,6 +12369,8 @@ function App() {
                 sourceAssets={sourceAssets}
                 activeSourceId={resolvedActiveSourceId}
                 onSelectSource={setActiveSourceId}
+                onExit={() => changeLeftTab("layers")}
+                spaceDown={spaceDown}
               />
             ) : null}
 

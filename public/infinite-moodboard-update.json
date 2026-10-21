@@ -1,8 +1,8 @@
 {
   "product": "Infinite Moodboard",
   "channel": "stable",
-  "version": "0.38.0",
+  "version": "0.39.0",
   "releasedAt": "2026-10-21",
-  "summary": "新增可拖曳的尺規原點：從左上交叉處重新設定零點，物件與導引線維持原位，刻度、讀值與 Shift 吸附改以新原點計算。",
+  "summary": "素材檢視完整取代中央 Moodboard 編輯區，提供獨立的縮放、平移、符合視窗與 100% 檢視，返回後保留原本構圖視角。",
   "url": "https://moodboard.petfashion.tw/"
 }

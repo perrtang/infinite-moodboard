@@ -5,10 +5,11 @@ import { sourceExportArtifact } from "./asset-export.js";
 
 const source = await readFile(new URL("./main.jsx", import.meta.url), "utf8");
 
-test("source workspace renders source-specific controls instead of hidden canvas controls", () => {
-  assert.match(source, /sourceModeActive \? \(\s*<div className="source-toolbar-context">/);
+test("source workspace fully replaces the Moodboard surface with source-specific controls", () => {
+  assert.match(source, /className="source-stage-back"[\s\S]*onClick=\{onExit\}/);
   assert.match(source, /sourceModeActive \? \(\s*<SourceInspector/);
   assert.match(source, /\{!sourceModeActive \? <div className="export-dock"/);
+  assert.match(source, /\{!sourceModeActive \? <div\s+className=\{`world-layer/);
   assert.match(source, /onPointerDown=\{sourceModeActive \? undefined : onCanvasPointerDown\}/);
   assert.match(source, /onWheel=\{sourceModeActive \? undefined : onWheel\}/);
   assert.match(source, /onDrop=\{sourceModeActive \? onSourceModeDrop : onDrop\}/);
@@ -21,7 +22,18 @@ test("source workspace renders source-specific controls instead of hidden canvas
 test("source workspace blocks hidden canvas mutation shortcuts and media paste", () => {
   assert.match(source, /if \(leftTab === "sources"\) \{[\s\S]*blockedModifier[\s\S]*blockedShift[\s\S]*blockedDirect/);
   assert.match(source, /if \(leftTab === "sources"\) \{\s*announce\("素材檢視不會新增或改動畫布物件/);
-  assert.match(source, /inert=\{inspectionActive \? true : undefined\}/);
+  assert.match(source, /const blockedDirect = \["Backspace", "Delete"\]\.includes\(event\.key\)/);
+});
+
+test("source originals use an isolated pan and zoom viewport", () => {
+  assert.match(source, /fitSourceView/);
+  assert.match(source, /zoomSourceViewAtPoint/);
+  assert.match(source, /panSourceView/);
+  assert.match(source, /className=\{`slide-media source-inspection-canvas/);
+  assert.match(source, /onDoubleClick=\{fitActiveSource\}/);
+  assert.match(source, /role="region"\s+tabIndex=\{0\}\s+aria-label="素材原圖檢視區/);
+  assert.match(source, /onExit=\{\(\) => changeLeftTab\("layers"\)\}/);
+  assert.doesNotMatch(source, /<SourceStage[\s\S]{0,300}view=\{view\}/);
 });
 
 test("source export returns the original bytes and filename extension", async () => {

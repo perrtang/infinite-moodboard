@@ -26,6 +26,13 @@ Infinite Moodboard runs the canvas, imported media, transforms, exports, and ver
 - Optional Google Drive file storage and opt-in realtime collaboration with view/edit permission requests.
 - 3D, Drive, collaboration, and export runtimes are loaded only when used, keeping the opening bundle smaller.
 
+## v0.39.0 — immersive source-view release
+
+- Replaces the central Moodboard editing surface with a dedicated Source workspace while inspecting imported media.
+- Adds source-only pan, wheel zoom, 100%, and fit-to-window controls without mutating the Moodboard viewport.
+- Hides canvas tools, rulers, objects, status HUD, and export controls in Source mode, then restores the exact Moodboard view on return.
+- Keeps desktop and mobile controls touch-accessible and preserves source navigation, search, metadata, and original-file actions.
+
 ## v0.38.0 — movable ruler-origin release
 
 - Drag the ruler intersection to redefine the shared zero point without moving objects or guides.

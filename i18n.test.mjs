@@ -104,6 +104,8 @@ test("source workspace controls and isolation feedback are localized", () => {
   assert.equal(translateInterfaceText("定位 3 個可見畫布實例", "en"), "Locate 3 visible canvas instances");
   assert.equal(translateInterfaceText("2 個來源素材", "en"), "2 source assets");
   assert.equal(translateInterfaceText("目前正在操作來源素材；畫布物件未被變更。", "en"), "You are working with a source asset. Canvas objects were not changed.");
+  assert.equal(translateInterfaceText("符合素材到視窗", "en"), "Fit source to window");
+  assert.equal(translateInterfaceText("素材縮放 75%；點擊回到 100%", "en"), "Source zoom 75%; click to return to 100%");
   assert.equal(translateInterfaceText("下載目前的原始素材", "zh-Hans"), "下载当前的原始素材");
   assert.equal(translateInterfaceText("回到 Moodboard 後復原 ⌘Z", "en"), "Return to the Moodboard to undo ⌘Z");
   assert.equal(translateInterfaceText("素材檢視中 · Moodboard 名稱唯讀", "en"), "Source view · Moodboard name is read-only");
