@@ -3983,7 +3983,6 @@ html[lang="en"] .sidebar-tabs button svg {
 
 .canvas-viewport {
   background-color: var(--canvas-bg);
-  background-position: 0 0;
   height: 100%;
   overflow: hidden;
   position: relative;
@@ -3992,15 +3991,33 @@ html[lang="en"] .sidebar-tabs button svg {
 }
 
 .canvas-viewport.canvas-background-dots {
-  background-image: radial-gradient(circle, rgb(var(--muted-rgb) / 0.29) 0.75px, transparent 0.95px);
-  background-size: 16px 16px;
+  background-image:
+    radial-gradient(circle at 0 0, rgb(var(--muted-rgb) / 0.38) 0.8px, transparent 1.1px),
+    radial-gradient(circle at 0 0, rgb(var(--muted-rgb) / 0.2) 0.65px, transparent 0.95px);
+  background-position:
+    var(--canvas-grid-origin-x) var(--canvas-grid-origin-y),
+    var(--canvas-grid-origin-x) var(--canvas-grid-origin-y);
+  background-size:
+    var(--canvas-grid-major-step) var(--canvas-grid-major-step),
+    var(--canvas-grid-minor-step) var(--canvas-grid-minor-step);
 }
 
 .canvas-viewport.canvas-background-lines {
   background-image:
-    linear-gradient(rgb(var(--muted-rgb) / 0.14) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(var(--muted-rgb) / 0.14) 1px, transparent 1px);
-  background-size: 24px 24px;
+    linear-gradient(rgb(var(--muted-rgb) / 0.22) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(var(--muted-rgb) / 0.22) 1px, transparent 1px),
+    linear-gradient(rgb(var(--muted-rgb) / 0.1) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(var(--muted-rgb) / 0.1) 1px, transparent 1px);
+  background-position:
+    var(--canvas-grid-origin-x) var(--canvas-grid-origin-y),
+    var(--canvas-grid-origin-x) var(--canvas-grid-origin-y),
+    var(--canvas-grid-origin-x) var(--canvas-grid-origin-y),
+    var(--canvas-grid-origin-x) var(--canvas-grid-origin-y);
+  background-size:
+    var(--canvas-grid-major-step) var(--canvas-grid-major-step),
+    var(--canvas-grid-major-step) var(--canvas-grid-major-step),
+    var(--canvas-grid-minor-step) var(--canvas-grid-minor-step),
+    var(--canvas-grid-minor-step) var(--canvas-grid-minor-step);
 }
 
 .canvas-viewport.canvas-background-hidden {
@@ -8758,12 +8775,20 @@ button.status-label:hover {
   border-right: 1px solid var(--border);
   cursor: crosshair;
   display: flex;
+  box-sizing: border-box;
   height: 22px;
+  justify-content: center;
   left: 0;
+  line-height: 0;
   padding: 0;
   top: 0;
   width: 22px;
   z-index: 3;
+}
+
+.ruler-corner svg {
+  display: block;
+  flex: 0 0 auto;
 }
 
 .ruler-corner:hover,

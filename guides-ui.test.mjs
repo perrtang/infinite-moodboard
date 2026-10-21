@@ -53,6 +53,21 @@ test("the ruler intersection can reposition a shared origin without moving guide
   assert.match(styles, /\.ruler-origin-preview \{/);
 });
 
+test("the ruler intersection is optically centered and the canvas pattern follows ruler metrics", () => {
+  assert.match(main, /buildCanvasGridMetrics\(\{/);
+  assert.match(main, /"--canvas-grid-major-step"/);
+  assert.match(main, /"--canvas-grid-minor-step"/);
+  assert.match(main, /"--canvas-grid-origin-x"/);
+  assert.match(main, /style=\{canvasGridStyle\}/);
+  assert.match(styles, /\.ruler-corner \{[\s\S]*box-sizing: border-box;[\s\S]*justify-content: center;/);
+  assert.match(styles, /\.ruler-corner svg \{[\s\S]*display: block;/);
+  assert.match(styles, /var\(--canvas-grid-major-step\)/);
+  assert.match(styles, /var\(--canvas-grid-minor-step\)/);
+  assert.match(styles, /var\(--canvas-grid-origin-x\) var\(--canvas-grid-origin-y\)/);
+  assert.doesNotMatch(styles, /\.canvas-viewport\.canvas-background-dots\s*\{[^}]*16px 16px;/);
+  assert.doesNotMatch(styles, /\.canvas-viewport\.canvas-background-lines\s*\{[^}]*24px 24px;/);
+});
+
 test("guides use a dedicated selectable layer above ordinary object layers", () => {
   const guideSection = main.indexOf('className="guide-layer-section"');
   const objectBulkActions = main.indexOf('className="layer-bulk-actions"');

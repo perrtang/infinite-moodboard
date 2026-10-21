@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  buildCanvasGridMetrics,
   buildRulerTicks,
   clampCanvasToolbarPosition,
   formatGuideValue,
@@ -10,6 +11,7 @@ import {
   normalizeRulerUnit,
   pixelsToUnit,
   resolveGuidePosition,
+  resolveRulerScale,
   shouldConfirmEscapeCancellation,
   snapGuidePosition,
   unitToPixels,
@@ -81,6 +83,32 @@ test("ruler ticks measure from a custom world origin without moving the viewport
   const ticks = buildRulerTicks(400, 20, 2, "px", 50);
   const zero = ticks.find((tick) => tick.major && tick.label === "0");
   assert.equal(zero.position, 120);
+});
+
+test("canvas patterns and ruler ticks share one adaptive measurement scale", () => {
+  for (const unit of ["px", "mm", "cm", "in"]) {
+    for (const zoom of [0.5, 1, 2]) {
+      const scale = resolveRulerScale(zoom, unit);
+      const ticks = buildRulerTicks(900, 0, zoom, unit);
+      assert.ok(Math.abs(scale.majorScreenStep - scale.minorScreenStep * 5) < 0.0001);
+      assert.ok(Math.abs((ticks[1].position - ticks[0].position) - scale.minorScreenStep) < 0.0001);
+      assert.ok(scale.minorScreenStep >= 12.5);
+    }
+  }
+});
+
+test("canvas pattern origin follows pan, zoom, and the ruler origin", () => {
+  const metrics = buildCanvasGridMetrics({
+    viewX: 42,
+    viewY: -18,
+    zoom: 1.5,
+    unit: "mm",
+    originX: 20,
+    originY: -10,
+  });
+  assert.equal(metrics.screenOriginX, 72);
+  assert.equal(metrics.screenOriginY, -33);
+  assert.ok(metrics.majorScreenStep > metrics.minorScreenStep);
 });
 
 test("list search is normalized and can match across multiple fields", () => {

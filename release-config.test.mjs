@@ -43,6 +43,10 @@ test("GitHub release assets are built from a verified tag without cloud rule dep
   assert.doesNotMatch(`${releaseWorkflow}\n${pagesWorkflow}`, /firebase(?:-tools)?\s+deploy|firestore:rules/);
   assert.match(pagesWorkflow, /VITE_BASE_PATH:\s*\//);
   assert.doesNotMatch(pagesWorkflow, /VITE_BASE_PATH:\s*\/infinite-moodboard\//);
+  assert.match(pagesWorkflow, /outputs:[\s\S]*version:\s*\$\{\{ steps\.release-version\.outputs\.version \}\}/);
+  assert.match(pagesWorkflow, /Verify public update channel/);
+  assert.match(pagesWorkflow, /EXPECTED_VERSION:\s*\$\{\{ needs\.build\.outputs\.version \}\}/);
+  assert.match(pagesWorkflow, /\$\{UPDATE_MANIFEST_URL\}\?deployment=\$\{GITHUB_SHA\}-\$\{attempt\}/);
   assert.match(releaseWorkflow, /https:\/\/moodboard\.petfashion\.tw\//);
   assert.match(packageScript, /VITE_BASE_PATH=\.\/ npm run build/);
 });

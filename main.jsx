@@ -325,6 +325,7 @@ import {
 } from "./i18n.js";
 import {
   RULER_UNITS,
+  buildCanvasGridMetrics,
   buildRulerTicks,
   clampCanvasToolbarPosition,
   formatGuideValue,
@@ -6504,8 +6505,8 @@ function SettingsModal({
               </div>
               <div className="settings-canvas-background-options" role="radiogroup" aria-label="畫布背景樣式">
                 {[
-                  { id: "dots", label: "格點", detail: "離散定位點" },
-                  { id: "lines", label: "格線", detail: "連續方格線" },
+                  { id: "dots", label: "格點", detail: "跟隨尺規的定位點" },
+                  { id: "lines", label: "格線", detail: "跟隨尺規的尺寸格線" },
                   { id: "hidden", label: "隱藏", detail: "純色畫布" },
                 ].map((option) => (
                   <button
@@ -6522,6 +6523,7 @@ function SettingsModal({
                   </button>
                 ))}
               </div>
+              <p className="settings-shortcut-note">格點與格線會跟隨目前的尺規單位、原點與縮放比例。</p>
               <p className="settings-shortcut-note">Shift + ' ：隱藏或顯示，重新顯示會回到上次的格點或格線。</p>
               <div className="settings-subsection-heading">
                 <Ruler size={17} />
@@ -6973,6 +6975,20 @@ function App() {
   const [rulersVisible, setRulersVisible] = useState(() => localStorage.getItem(RULERS_VISIBLE_STORAGE_KEY) !== "false");
   const [guidesVisible, setGuidesVisible] = useState(() => localStorage.getItem(GUIDES_VISIBLE_STORAGE_KEY) !== "false");
   const [rulerUnit, setRulerUnit] = useState(() => normalizeRulerUnit(localStorage.getItem(RULER_UNIT_STORAGE_KEY)));
+  const canvasGridMetrics = useMemo(() => buildCanvasGridMetrics({
+    viewX: view.x,
+    viewY: view.y,
+    zoom: view.zoom,
+    unit: rulerUnit,
+    originX: board.rulerOrigin?.x,
+    originY: board.rulerOrigin?.y,
+  }), [board.rulerOrigin?.x, board.rulerOrigin?.y, rulerUnit, view.x, view.y, view.zoom]);
+  const canvasGridStyle = canvasBackground.mode === "hidden" ? undefined : {
+    "--canvas-grid-major-step": `${canvasGridMetrics.majorScreenStep}px`,
+    "--canvas-grid-minor-step": `${canvasGridMetrics.minorScreenStep}px`,
+    "--canvas-grid-origin-x": `${canvasGridMetrics.screenOriginX}px`,
+    "--canvas-grid-origin-y": `${canvasGridMetrics.screenOriginY}px`,
+  };
   const [guideDrag, setGuideDrag] = useState(null);
   const [leftPanelResizing, setLeftPanelResizing] = useState(false);
   const [canvasViewportSize, setCanvasViewportSize] = useState({ width: 0, height: 0 });
@@ -12922,6 +12938,7 @@ function App() {
           <div
             ref={canvasRef}
             className={`canvas-viewport canvas-background-${canvasBackground.mode} ${dragActive ? "is-drag-active" : ""} ${sourceModeActive ? "is-source-mode" : ""} ${tool === "hand" || spaceDown ? "uses-hand" : ""} ${tool === "zoom-window" ? "uses-zoom-window" : ""} ${tool === "3d" ? "uses-3d" : ""} ${rotationGesture ? "is-rotating" : ""} ${micro3DGesture ? "is-3d-rotating" : ""} ${modifierDown ? "can-temporary-select" : ""} ${loadedTextFlow ? "is-text-flow-loaded" : ""}`}
+            style={canvasGridStyle}
             onPointerDownCapture={sourceModeActive ? undefined : onZoomWindowPointerDown}
             onPointerDown={sourceModeActive ? undefined : onCanvasPointerDown}
             onDoubleClick={sourceModeActive ? undefined : onCanvasDoubleClick}

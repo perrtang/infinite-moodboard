@@ -1,8 +1,8 @@
 {
   "product": "Infinite Moodboard",
   "channel": "stable",
-  "version": "0.44.0",
+  "version": "0.45.0",
   "releasedAt": "2026-10-21",
-  "summary": "Guide Line 現在有獨立且固定置頂的特殊圖層，可多選、群組、批次移動、鎖定與刪除；鎖定後不會被選取，且不會混入一般物件的變形或輸出。導引線群組可隨 Moodboard 與協作資料安全保存。",
+  "summary": "格點與格線現在會跟隨尺規單位、原點、平移與縮放，左上尺規交叉控制也已完整置中。部署流程會讀回正式更新頻道的版號，避免舊版被誤判為最新版。",
   "url": "https://moodboard.petfashion.tw/"
 }

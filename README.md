@@ -26,6 +26,13 @@ Infinite Moodboard runs the canvas, imported media, transforms, exports, and ver
 - Optional Google Drive file storage and opt-in realtime collaboration with view/edit permission requests.
 - 3D, Drive, collaboration, and export runtimes are loaded only when used, keeping the opening bundle smaller.
 
+## v0.45.0 — ruler-aligned workspace release
+
+- Aligns canvas dots and grid lines with the active ruler unit, origin, pan, and zoom instead of using unrelated fixed pixel spacing.
+- Uses matching major/minor ruler divisions so the background remains a meaningful measurement aid at every supported zoom level.
+- Centers the ruler intersection control within the complete ruler composition.
+- Verifies the public stable-version manifest after every GitHub Pages deployment, preventing an older deployed feed from being reported as current.
+
 ## v0.44.0 — guide layers release
 
 - Adds a dedicated Guides section above ordinary object layers, matching the rule that every visible workspace element must remain discoverable in Layers.

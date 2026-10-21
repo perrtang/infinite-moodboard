@@ -67,16 +67,46 @@ export function formatGuideValue(value, unit = "px") {
   return `${rounded} ${resolved.label}`;
 }
 
-export function buildRulerTicks(length, viewOffset, zoom, unit = "px", origin = 0) {
-  const safeLength = Math.max(0, Number(length) || 0);
-  const safeOffset = Number(viewOffset) || 0;
+export function resolveRulerScale(zoom = 1, unit = "px") {
   const safeZoom = Math.max(0.01, Number(zoom) || 1);
   const resolvedUnit = normalizeRulerUnit(unit);
-  const safeOrigin = Number(origin) || 0;
   const pixelsPerUnit = RULER_UNITS[resolvedUnit].pixelsPerUnit;
   const majorStep = MAJOR_STEPS.find((step) => step * pixelsPerUnit * safeZoom >= 64)
     || MAJOR_STEPS.at(-1);
   const minorStep = majorStep / 5;
+  return {
+    unit: resolvedUnit,
+    zoom: safeZoom,
+    pixelsPerUnit,
+    majorStep,
+    minorStep,
+    majorScreenStep: majorStep * pixelsPerUnit * safeZoom,
+    minorScreenStep: minorStep * pixelsPerUnit * safeZoom,
+  };
+}
+
+export function buildCanvasGridMetrics({
+  viewX = 0,
+  viewY = 0,
+  zoom = 1,
+  unit = "px",
+  originX = 0,
+  originY = 0,
+} = {}) {
+  const scale = resolveRulerScale(zoom, unit);
+  return {
+    ...scale,
+    screenOriginX: (Number(viewX) || 0) + (Number(originX) || 0) * scale.zoom,
+    screenOriginY: (Number(viewY) || 0) + (Number(originY) || 0) * scale.zoom,
+  };
+}
+
+export function buildRulerTicks(length, viewOffset, zoom, unit = "px", origin = 0) {
+  const safeLength = Math.max(0, Number(length) || 0);
+  const safeOffset = Number(viewOffset) || 0;
+  const scale = resolveRulerScale(zoom, unit);
+  const { majorStep, minorStep, pixelsPerUnit, unit: resolvedUnit, zoom: safeZoom } = scale;
+  const safeOrigin = Number(origin) || 0;
   const firstValue = Math.floor((((-safeOffset / safeZoom) - safeOrigin) / pixelsPerUnit) / minorStep) * minorStep;
   const lastValue = ((((safeLength - safeOffset) / safeZoom) - safeOrigin) / pixelsPerUnit) + minorStep;
   const ticks = [];
