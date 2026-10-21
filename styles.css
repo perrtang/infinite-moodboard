@@ -8332,18 +8332,74 @@ button.status-label:hover {
 }
 
 .ruler-corner {
+  align-items: center;
   border: 0;
   border-bottom: 1px solid var(--border);
   border-right: 1px solid var(--border);
-  cursor: context-menu;
-  font-family: "SFMono-Regular", Menlo, monospace;
-  font-size: calc(8px + var(--ui-font-offset, 0px));
+  cursor: crosshair;
+  display: flex;
   height: 22px;
   left: 0;
   padding: 0;
   top: 0;
   width: 22px;
   z-index: 3;
+}
+
+.ruler-corner:hover,
+.ruler-corner:focus-visible {
+  background: var(--control-active-bg);
+  color: var(--accent-ui);
+}
+
+.ruler-corner.is-read-only {
+  cursor: context-menu;
+}
+
+.ruler-origin-preview {
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+  z-index: 5;
+}
+
+.ruler-origin-preview > i {
+  background: color-mix(in srgb, var(--accent-ui) 78%, transparent);
+  box-shadow: 0 0 8px rgb(var(--accent-rgb) / 0.32);
+  display: block;
+  position: absolute;
+}
+
+.ruler-origin-preview > i.is-vertical {
+  bottom: 0;
+  top: 0;
+  width: 1px;
+}
+
+.ruler-origin-preview > i.is-horizontal {
+  height: 1px;
+  left: 0;
+  right: 0;
+}
+
+.ruler-origin-preview > span {
+  align-items: center;
+  background: var(--floating-bg);
+  border: 1px solid var(--accent-ui);
+  border-radius: 7px;
+  color: var(--accent-ui);
+  display: inline-flex;
+  gap: 5px;
+  padding: 5px 7px;
+  position: absolute;
+  transform: translate(8px, 8px);
+}
+
+.ruler-origin-preview > span b {
+  color: inherit;
+  font-family: "SFMono-Regular", Menlo, monospace;
+  font-size: calc(9px + var(--ui-font-offset, 0px));
+  line-height: 1;
 }
 
 .workspace-ruler {

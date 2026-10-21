@@ -35,6 +35,7 @@ export function resolveGuidePosition({
   zoom = 1,
   unit = "px",
   snap = false,
+  origin = 0,
 } = {}) {
   const safeZoom = Math.max(0.01, Number(zoom) || 1);
   const position = (
@@ -42,7 +43,8 @@ export function resolveGuidePosition({
     - (Number(canvasStart) || 0)
     - (Number(viewOffset) || 0)
   ) / safeZoom;
-  return snap ? snapGuidePosition(position, unit) : position;
+  const safeOrigin = Number(origin) || 0;
+  return snap ? safeOrigin + snapGuidePosition(position - safeOrigin, unit) : position;
 }
 
 export function formatGuideValue(value, unit = "px") {
@@ -53,23 +55,24 @@ export function formatGuideValue(value, unit = "px") {
   return `${rounded} ${resolved.label}`;
 }
 
-export function buildRulerTicks(length, viewOffset, zoom, unit = "px") {
+export function buildRulerTicks(length, viewOffset, zoom, unit = "px", origin = 0) {
   const safeLength = Math.max(0, Number(length) || 0);
   const safeOffset = Number(viewOffset) || 0;
   const safeZoom = Math.max(0.01, Number(zoom) || 1);
   const resolvedUnit = normalizeRulerUnit(unit);
+  const safeOrigin = Number(origin) || 0;
   const pixelsPerUnit = RULER_UNITS[resolvedUnit].pixelsPerUnit;
   const majorStep = MAJOR_STEPS.find((step) => step * pixelsPerUnit * safeZoom >= 64)
     || MAJOR_STEPS.at(-1);
   const minorStep = majorStep / 5;
-  const firstValue = Math.floor(((-safeOffset / safeZoom) / pixelsPerUnit) / minorStep) * minorStep;
-  const lastValue = (((safeLength - safeOffset) / safeZoom) / pixelsPerUnit) + minorStep;
+  const firstValue = Math.floor((((-safeOffset / safeZoom) - safeOrigin) / pixelsPerUnit) / minorStep) * minorStep;
+  const lastValue = ((((safeLength - safeOffset) / safeZoom) - safeOrigin) / pixelsPerUnit) + minorStep;
   const ticks = [];
   const maximumTickCount = 240;
 
   for (let value = firstValue, index = 0; value <= lastValue && index < maximumTickCount; value += minorStep, index += 1) {
     const normalizedValue = Math.abs(value) < minorStep / 100 ? 0 : value;
-    const position = safeOffset + unitToPixels(normalizedValue, resolvedUnit) * safeZoom;
+    const position = safeOffset + (safeOrigin + unitToPixels(normalizedValue, resolvedUnit)) * safeZoom;
     const majorRatio = normalizedValue / majorStep;
     const major = Math.abs(majorRatio - Math.round(majorRatio)) < 0.0001;
     ticks.push({

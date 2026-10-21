@@ -44,3 +44,11 @@ test("the unexplained world-origin corner is removed", () => {
   assert.doesNotMatch(main, /className="world-origin"/);
   assert.doesNotMatch(styles, /\.world-origin/);
 });
+
+test("the ruler intersection can reposition a shared origin without moving guides", () => {
+  assert.match(main, /onPointerDown=\{startOriginDrag\}/);
+  assert.match(main, /onSetRulerOrigin\(\{ x: latest\.worldX, y: latest\.worldY \}\)/);
+  assert.match(main, /rulerOrigin=\{board\.rulerOrigin\}/);
+  assert.match(main, /guide\.position - \(guide\.axis === "x" \? origin\.x : origin\.y\)/);
+  assert.match(styles, /\.ruler-origin-preview \{/);
+});

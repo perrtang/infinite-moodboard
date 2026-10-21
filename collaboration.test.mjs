@@ -119,11 +119,13 @@ test("collaboration keeps global and individual guide locks with the shared boar
   const board = {
     ...sampleBoard(),
     guidesLocked: true,
+    rulerOrigin: { x: 24, y: -12 },
     guides: [{ id: "guide-locked", axis: "x", position: 144, locked: true }],
   };
   const document = createCollaborationDocument(board);
   const restored = readBoardFromCollaborationDocument(document, board);
   assert.equal(restored.guidesLocked, true);
+  assert.deepEqual(restored.rulerOrigin, { x: 24, y: -12 });
   assert.deepEqual(restored.guides, [{ id: "guide-locked", axis: "x", position: 144, locked: true }]);
   document.destroy();
 });

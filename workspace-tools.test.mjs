@@ -43,6 +43,15 @@ test("guide pointer positions use canvas pan and zoom before optional Shift snap
     unit: "px",
     snap: true,
   }), 93);
+  assert.equal(resolveGuidePosition({
+    clientPosition: 123.4,
+    canvasStart: 10,
+    viewOffset: 20,
+    zoom: 1,
+    unit: "px",
+    snap: true,
+    origin: 20.5,
+  }), 93.5);
 });
 
 test("ruler ticks adapt to zoom and always expose major labels", () => {
@@ -50,6 +59,12 @@ test("ruler ticks adapt to zoom and always expose major labels", () => {
   assert.ok(ticks.length > 5);
   assert.ok(ticks.some((tick) => tick.major && tick.label === "0"));
   assert.ok(ticks.every((tick, index) => index === 0 || tick.position > ticks[index - 1].position));
+});
+
+test("ruler ticks measure from a custom world origin without moving the viewport", () => {
+  const ticks = buildRulerTicks(400, 20, 2, "px", 50);
+  const zero = ticks.find((tick) => tick.major && tick.label === "0");
+  assert.equal(zero.position, 120);
 });
 
 test("list search is normalized and can match across multiple fields", () => {

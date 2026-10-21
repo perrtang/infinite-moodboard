@@ -795,6 +795,7 @@ test("workspace guides persist in moodboard files and legacy boards receive an e
   const legacy = ensureBoard({ schemaVersion: 10, name: "舊檔", objects: [] });
   assert.deepEqual(legacy.guides, []);
   assert.equal(legacy.guidesLocked, false);
+  assert.deepEqual(legacy.rulerOrigin, { x: 0, y: 0 });
 
   const board = ensureBoard({
     schemaVersion: 11,
@@ -814,6 +815,18 @@ test("workspace guides persist in moodboard files and legacy boards receive an e
     { id: "guide-invalid", axis: "y", position: 0, locked: false },
   ]);
   assert.equal(board.guidesLocked, true);
+});
+
+test("custom ruler origins persist without changing guide world coordinates", () => {
+  const board = ensureBoard({
+    schemaVersion: BOARD_SCHEMA_VERSION,
+    name: "尺規原點",
+    objects: [],
+    rulerOrigin: { x: 128.5, y: -40 },
+    guides: [{ id: "guide-origin", axis: "x", position: 256 }],
+  });
+  assert.deepEqual(board.rulerOrigin, { x: 128.5, y: -40 });
+  assert.equal(board.guides[0].position, 256);
 });
 
 test("individual guide locks persist independently from the global guide lock", () => {

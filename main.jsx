@@ -26,6 +26,7 @@ import {
   CloudOff,
   CloudUpload,
   Copy,
+  Crosshair,
   Diamond,
   Download,
   Ellipsis,
@@ -1578,22 +1579,27 @@ function WorkspaceRulers({
   view,
   viewportSize,
   unit,
+  rulerOrigin,
   onUnitChange,
+  onSetRulerOrigin,
   onStartGuide,
   onToggleGuideLocked,
   onDeleteGuide,
 }) {
   const [unitMenu, setUnitMenu] = useState(null);
   const [guideMenu, setGuideMenu] = useState(null);
+  const [originDrag, setOriginDrag] = useState(null);
   const guideMenuRef = useRef(null);
   const guideMenuTriggerRef = useRef(null);
+  const suppressCornerClickRef = useRef(false);
+  const origin = rulerOrigin || { x: 0, y: 0 };
   const horizontalTicks = useMemo(
-    () => buildRulerTicks(viewportSize.width, view.x, view.zoom, unit),
-    [unit, view.x, view.zoom, viewportSize.width],
+    () => buildRulerTicks(Math.max(0, viewportSize.width - RULER_SIZE), view.x - RULER_SIZE, view.zoom, unit, origin.x),
+    [origin.x, unit, view.x, view.zoom, viewportSize.width],
   );
   const verticalTicks = useMemo(
-    () => buildRulerTicks(viewportSize.height, view.y, view.zoom, unit),
-    [unit, view.y, view.zoom, viewportSize.height],
+    () => buildRulerTicks(Math.max(0, viewportSize.height - RULER_SIZE), view.y - RULER_SIZE, view.zoom, unit, origin.y),
+    [origin.y, unit, view.y, view.zoom, viewportSize.height],
   );
 
   useEffect(() => {
@@ -1631,6 +1637,73 @@ function WorkspaceRulers({
     event.stopPropagation();
     setGuideMenu(null);
     setUnitMenu({ x: event.clientX, y: event.clientY });
+  };
+  const startOriginDrag = (event) => {
+    if (readOnly || event.button !== 0) return;
+    const viewport = event.currentTarget.closest(".canvas-viewport");
+    const rect = viewport?.getBoundingClientRect();
+    if (!rect) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setUnitMenu(null);
+    setGuideMenu(null);
+    const start = { x: event.clientX, y: event.clientY };
+    let latest = null;
+    let moved = false;
+
+    const resolve = (pointerEvent) => {
+      const screenX = Math.max(RULER_SIZE, Math.min(rect.width, pointerEvent.clientX - rect.left));
+      const screenY = Math.max(RULER_SIZE, Math.min(rect.height, pointerEvent.clientY - rect.top));
+      return {
+        screenX,
+        screenY,
+        worldX: (screenX - view.x) / view.zoom,
+        worldY: (screenY - view.y) / view.zoom,
+      };
+    };
+    const move = (pointerEvent) => {
+      if (!moved && Math.hypot(pointerEvent.clientX - start.x, pointerEvent.clientY - start.y) < 4) return;
+      moved = true;
+      latest = resolve(pointerEvent);
+      setOriginDrag(latest);
+    };
+    const cleanup = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", cancel);
+      window.removeEventListener("keydown", cancelWithEscape, true);
+    };
+    const finish = (pointerEvent) => {
+      if (moved) {
+        latest = resolve(pointerEvent);
+        suppressCornerClickRef.current = true;
+        onSetRulerOrigin({ x: latest.worldX, y: latest.worldY });
+      }
+      setOriginDrag(null);
+      cleanup();
+    };
+    const cancel = () => {
+      setOriginDrag(null);
+      cleanup();
+    };
+    const cancelWithEscape = (keyEvent) => {
+      if (keyEvent.key !== "Escape") return;
+      keyEvent.preventDefault();
+      keyEvent.stopImmediatePropagation();
+      cancel();
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", finish, { once: true });
+    window.addEventListener("pointercancel", cancel, { once: true });
+    window.addEventListener("keydown", cancelWithEscape, true);
+  };
+  const handleCornerClick = (event) => {
+    if (suppressCornerClickRef.current) {
+      suppressCornerClickRef.current = false;
+      event.preventDefault();
+      return;
+    }
+    openUnitMenu(event);
   };
   const openGuideMenu = (event, guide, screenPosition = null) => {
     event.preventDefault();
@@ -1687,8 +1760,16 @@ function WorkspaceRulers({
     <div className="workspace-measurement-layer" aria-label="尺規與輔助導引線">
       {rulersVisible ? (
         <>
-          <button className="ruler-corner" type="button" onContextMenu={openUnitMenu} onClick={(event) => openUnitMenu(event)} aria-label={`尺規單位 ${RULER_UNITS[unit].label}；點擊切換`}>
-            {RULER_UNITS[unit].label}
+          <button
+            className={`ruler-corner ${readOnly ? "is-read-only" : ""}`}
+            type="button"
+            onPointerDown={startOriginDrag}
+            onContextMenu={openUnitMenu}
+            onClick={handleCornerClick}
+            aria-label={readOnly ? `尺規原點；目前僅檢視。按右鍵切換 ${RULER_UNITS[unit].label} 單位` : `拖曳以重新設定尺規原點；點擊切換 ${RULER_UNITS[unit].label} 單位`}
+            title={readOnly ? "尺規原點目前僅檢視；按右鍵切換單位" : "按住並拖曳以重新設定尺規原點；點擊切換單位"}
+          >
+            <Crosshair size={13} />
           </button>
           <div
             className={`workspace-ruler is-horizontal ${guidesLocked || readOnly ? "is-guide-locked" : ""}`}
@@ -1724,6 +1805,7 @@ function WorkspaceRulers({
         <div className="workspace-guides">
           {shownGuides.map((guide) => {
             const screenPosition = (guide.axis === "x" ? view.x : view.y) + guide.position * view.zoom;
+            const relativePosition = guide.position - (guide.axis === "x" ? origin.x : origin.y);
             return (
               <button
                 className={`workspace-guide is-${guide.axis === "x" ? "vertical" : "horizontal"} ${draggingGuide?.id === guide.id ? "is-dragging" : ""} ${guidesLocked || guide.locked || readOnly ? "is-locked" : ""}`}
@@ -1731,10 +1813,10 @@ function WorkspaceRulers({
                 type="button"
                 aria-disabled={guidesLocked || readOnly}
                 aria-label={readOnly
-                  ? `${guide.axis === "x" ? "垂直" : "水平"}導引線 ${formatGuideValue(guide.position, unit)}；目前僅檢視`
+                  ? `${guide.axis === "x" ? "垂直" : "水平"}導引線 ${formatGuideValue(relativePosition, unit)}；目前僅檢視`
                   : guidesLocked || guide.locked
-                  ? `${guide.axis === "x" ? "垂直" : "水平"}導引線 ${formatGuideValue(guide.position, unit)}；已鎖定`
-                  : `${guide.axis === "x" ? "垂直" : "水平"}導引線 ${formatGuideValue(guide.position, unit)}；拖曳移動，連按兩下刪除，按右鍵更多`}
+                  ? `${guide.axis === "x" ? "垂直" : "水平"}導引線 ${formatGuideValue(relativePosition, unit)}；已鎖定`
+                  : `${guide.axis === "x" ? "垂直" : "水平"}導引線 ${formatGuideValue(relativePosition, unit)}；拖曳移動，連按兩下刪除，按右鍵更多`}
                 title={readOnly ? "目前為僅檢視；無法調整導引線" : guidesLocked ? "所有導引線已鎖定；請從「檔案」解除鎖定" : guide.locked ? "此導引線已鎖定；按右鍵解除或刪除" : "拖曳移動；連按兩下刪除；按右鍵更多"}
                 onPointerDown={(event) => onStartGuide(event, guide.axis, guide.id)}
                 onContextMenu={(event) => openGuideMenu(event, guide, screenPosition)}
@@ -1749,10 +1831,17 @@ function WorkspaceRulers({
           })}
           {draggingGuide ? (
             <div className="workspace-guide-readout" style={readoutStyle} aria-hidden="true">
-              <span>{formatGuideValue(draggingGuide.position, unit)}</span>
+              <span>{formatGuideValue(draggingGuide.position - (draggingGuide.axis === "x" ? origin.x : origin.y), unit)}</span>
               {draggingGuide.snapped ? <strong>已吸附</strong> : null}
             </div>
           ) : null}
+        </div>
+      ) : null}
+      {originDrag ? (
+        <div className="ruler-origin-preview" aria-hidden="true">
+          <i className="is-vertical" style={{ left: originDrag.screenX }} />
+          <i className="is-horizontal" style={{ top: originDrag.screenY }} />
+          <span style={{ left: originDrag.screenX, top: originDrag.screenY }}><Crosshair size={15} /><b>0, 0</b></span>
         </div>
       ) : null}
       {unitMenu ? (
@@ -8317,6 +8406,18 @@ function App() {
     announce(nextLocked ? "已鎖定所有輔助導引線" : "已解除鎖定所有輔助導引線", "success");
   }, [announce, applyBoard, cloudReadOnly]);
 
+  const setRulerOrigin = useCallback((nextOrigin) => {
+    if (cloudReadOnly) {
+      announce("目前為僅檢視；無法變更尺規原點。", "warning");
+      return;
+    }
+    const x = Number(nextOrigin?.x);
+    const y = Number(nextOrigin?.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    applyBoard((current) => ({ ...current, rulerOrigin: { x, y } }));
+    announce("已重新設定尺規與導引線原點", "success");
+  }, [announce, applyBoard, cloudReadOnly]);
+
   const startGuideDrag = useCallback((event, axis, guideId = null) => {
     if (cloudReadOnly) return;
     if (event.button !== 0) return;
@@ -8351,6 +8452,9 @@ function App() {
     const update = () => {
       const currentView = viewRef.current;
       const viewOffset = guideAxis === "x" ? currentView.x : currentView.y;
+      const origin = guideAxis === "x"
+        ? Number(boardRef.current.rulerOrigin?.x) || 0
+        : Number(boardRef.current.rulerOrigin?.y) || 0;
       const position = resolveGuidePosition({
         clientPosition: guideAxis === "x" ? latestPointer.clientX : latestPointer.clientY,
         canvasStart: guideAxis === "x" ? rect.left : rect.top,
@@ -8358,6 +8462,7 @@ function App() {
         zoom: currentView.zoom,
         unit: rulerUnit,
         snap: snapActive,
+        origin,
       });
       latest = { id, axis: guideAxis, position, isNew: !existing, snapped: snapActive };
       setGuideDrag(latest);
@@ -8412,7 +8517,10 @@ function App() {
           ? current.guides.map((guide) => guide.id === id ? { ...guide, axis: guideAxis, position: latest.position } : guide)
           : [...current.guides, { id, axis: guideAxis, position: latest.position, locked: false }],
       }));
-      announce(`${existing ? "已移動" : "已建立"}${guideAxis === "x" ? "垂直" : "水平"}導引線：${formatGuideValue(latest.position, rulerUnit)}`, "success");
+      const origin = guideAxis === "x"
+        ? Number(boardRef.current.rulerOrigin?.x) || 0
+        : Number(boardRef.current.rulerOrigin?.y) || 0;
+      announce(`${existing ? "已移動" : "已建立"}${guideAxis === "x" ? "垂直" : "水平"}導引線：${formatGuideValue(latest.position - origin, rulerUnit)}`, "success");
     };
     const cancel = () => {
       cleanup();
@@ -12047,7 +12155,9 @@ function App() {
                 view={view}
                 viewportSize={canvasViewportSize}
                 unit={rulerUnit}
+                rulerOrigin={board.rulerOrigin}
                 onUnitChange={changeRulerUnit}
+                onSetRulerOrigin={setRulerOrigin}
                 onStartGuide={startGuideDrag}
                 onToggleGuideLocked={toggleGuideLocked}
                 onDeleteGuide={deleteGuide}

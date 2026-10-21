@@ -26,6 +26,12 @@ Infinite Moodboard runs the canvas, imported media, transforms, exports, and ver
 - Optional Google Drive file storage and opt-in realtime collaboration with view/edit permission requests.
 - 3D, Drive, collaboration, and export runtimes are loaded only when used, keeping the opening bundle smaller.
 
+## v0.38.0 — movable ruler-origin release
+
+- Drag the ruler intersection to redefine the shared zero point without moving objects or guides.
+- Recalculate ruler ticks, guide readouts, and Shift snapping relative to the new origin.
+- Save and synchronize the origin in `.moodboard` files while keeping ruler visibility and units device-local.
+
 ## v0.37.0 — temporary Hand tool release
 
 - Hold Space from any canvas tool to temporarily activate Hand and pan from blank canvas or over an object.

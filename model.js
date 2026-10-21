@@ -75,6 +75,7 @@ export function createBoard(overrides = {}) {
     groups: [],
     guides: [],
     guidesLocked: false,
+    rulerOrigin: { x: 0, y: 0 },
     captures: [],
     lastComposition: null,
     view: { x: 0, y: 0, zoom: 1 },
@@ -600,6 +601,10 @@ export function ensureBoard(value) {
     groups,
     guides: Array.isArray(value.guides) ? value.guides.map(normalizeGuide) : [],
     guidesLocked: Boolean(value.guidesLocked),
+    rulerOrigin: {
+      x: finiteNumber(value.rulerOrigin?.x, 0),
+      y: finiteNumber(value.rulerOrigin?.y, 0),
+    },
     captures: Array.isArray(value.captures) ? value.captures.map(normalizeCapture) : [],
     lastComposition: value.lastComposition && typeof value.lastComposition === "object"
       ? normalizeCapture({ ...value.lastComposition, name: "切換前的構圖" }, -1)

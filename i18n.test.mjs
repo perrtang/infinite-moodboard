@@ -75,6 +75,8 @@ test("workspace search, ruler, and shortcut copy is localized", () => {
   assert.equal(translateInterfaceText("尺規與輔助導引線", "en"), "Rulers and guides");
   assert.equal(translateInterfaceText("鎖定所有輔助導引線", "en"), "Lock all guides");
   assert.equal(translateInterfaceText("解除鎖定所有輔助導引線", "en"), "Unlock all guides");
+  assert.equal(translateInterfaceText("已重新設定尺規與導引線原點", "en"), "Ruler and guide origin updated");
+  assert.equal(translateInterfaceText("拖曳以重新設定尺規原點；點擊切換 px 單位", "en"), "Drag to reposition the ruler origin; click to change px units");
   assert.equal(translateInterfaceText("已吸附", "en"), "Snapped");
   assert.equal(translateInterfaceText("鎖定此導引線", "en"), "Lock this guide");
   assert.equal(translateInterfaceText("刪除此導引線", "en"), "Delete this guide");
