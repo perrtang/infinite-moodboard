@@ -10,7 +10,7 @@ export const COLLABORATION_DEFAULT_INVITE_ROLE = "viewer";
 export const LOCAL_COLLABORATION_ORIGIN = Object.freeze({ source: "local" });
 export const REMOTE_COLLABORATION_ORIGIN = Object.freeze({ source: "remote" });
 
-const BOARD_COLLECTIONS = Object.freeze(["objects", "groups", "guides", "captures"]);
+const BOARD_COLLECTIONS = Object.freeze(["objects", "groups", "guides", "guideGroups", "captures"]);
 const BOARD_META_KEYS = Object.freeze([
   "schemaVersion",
   "id",

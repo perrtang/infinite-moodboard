@@ -1357,6 +1357,255 @@ html[lang="en"] .sidebar-tabs button svg {
   min-width: 28px;
 }
 
+.guide-layer-section {
+  border-bottom: 1px solid var(--border);
+  border-top: 1px solid var(--border);
+  margin-top: 10px;
+  padding: 9px 0 11px;
+}
+
+.guide-layer-heading {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  min-height: 34px;
+}
+
+.guide-layer-heading > div:first-child {
+  align-items: center;
+  display: flex;
+  flex: 1 1 auto;
+  gap: 7px;
+  min-width: 0;
+}
+
+.guide-layer-heading strong {
+  font-size: calc(11px + var(--ui-font-offset, 0px));
+}
+
+.guide-layer-heading small {
+  background: var(--quiet-bg);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: calc(9px + var(--ui-font-offset, 0px));
+  min-width: 20px;
+  padding: 2px 6px;
+  text-align: center;
+}
+
+.guide-layer-heading .icon-button {
+  min-height: 30px;
+  min-width: 30px;
+}
+
+.guide-layer-helper {
+  color: var(--text-muted);
+  font-size: calc(9px + var(--ui-font-offset, 0px));
+  line-height: 1.45;
+  margin: 1px 0 8px;
+}
+
+.guide-layer-bulk-actions {
+  align-items: center;
+  background: rgb(var(--accent-rgb) / 0.055);
+  display: flex;
+  gap: 2px;
+  margin-bottom: 7px;
+  min-height: 36px;
+  padding: 3px 4px 3px 9px;
+}
+
+.guide-layer-bulk-actions > span {
+  color: var(--text-muted);
+  flex: 1 1 auto;
+  font-size: calc(10px + var(--ui-font-offset, 0px));
+  min-width: 0;
+}
+
+.guide-layer-bulk-actions > span strong {
+  color: var(--accent-strong);
+}
+
+.guide-layer-bulk-actions .icon-button {
+  min-height: 28px;
+  min-width: 28px;
+}
+
+.guide-layer-group-list,
+.guide-layer-list {
+  display: grid;
+  gap: 3px;
+}
+
+.guide-layer-group-list {
+  margin-bottom: 6px;
+}
+
+.guide-layer-group-row {
+  align-items: center;
+  background: rgb(var(--accent-rgb) / 0.035);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px;
+  min-height: 34px;
+}
+
+.guide-layer-group-row.is-selected {
+  background: rgb(var(--accent-rgb) / 0.11);
+}
+
+.guide-layer-group-row > button:first-child {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--text-soft);
+  cursor: pointer;
+  display: grid;
+  font: inherit;
+  gap: 7px;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  min-height: 34px;
+  padding: 0 8px;
+  text-align: left;
+}
+
+.guide-layer-group-row > button:first-child:disabled {
+  color: var(--text-muted);
+  cursor: not-allowed;
+  opacity: 0.64;
+}
+
+.guide-layer-group-row > button:first-child span {
+  font-size: calc(11px + var(--ui-font-offset, 0px));
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.guide-layer-group-row > button:first-child small {
+  color: var(--text-muted);
+  font-size: calc(9px + var(--ui-font-offset, 0px));
+}
+
+.guide-layer-row {
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 44px;
+  overflow: hidden;
+}
+
+.guide-layer-row:hover {
+  background: var(--quiet-bg);
+}
+
+.guide-layer-row.is-selected {
+  background: rgb(var(--accent-rgb) / 0.08);
+  border-color: var(--border-strong);
+  box-shadow: inset 3px 0 0 var(--accent-ui);
+}
+
+.guide-layer-row.is-locked {
+  color: var(--text-muted);
+}
+
+.guide-layer-main {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  cursor: pointer;
+  display: grid;
+  gap: 9px;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  min-height: 42px;
+  min-width: 0;
+  padding: 5px 6px;
+  text-align: left;
+}
+
+.guide-layer-main:disabled {
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.guide-layer-main > span:nth-child(2) {
+  display: grid;
+  min-width: 0;
+}
+
+.guide-layer-main strong,
+.guide-layer-main small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.guide-layer-main strong {
+  font-size: calc(11px + var(--ui-font-offset, 0px));
+}
+
+.guide-layer-main small {
+  color: var(--text-muted);
+  font-family: "SFMono-Regular", Menlo, monospace;
+  font-size: calc(9px + var(--ui-font-offset, 0px));
+  margin-top: 2px;
+}
+
+.guide-layer-orientation {
+  height: 26px;
+  position: relative;
+  width: 26px;
+}
+
+.guide-layer-orientation::before,
+.guide-layer-orientation::after {
+  background: var(--accent-ui);
+  content: "";
+  left: 50%;
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.guide-layer-orientation.is-vertical::before {
+  height: 22px;
+  width: 1px;
+}
+
+.guide-layer-orientation.is-horizontal::before {
+  height: 1px;
+  width: 22px;
+}
+
+.guide-layer-orientation::after {
+  border: 1px solid var(--accent-ui);
+  border-radius: 2px;
+  height: 5px;
+  width: 5px;
+}
+
+.guide-layer-actions {
+  align-items: center;
+  display: flex;
+  gap: 2px;
+  padding-right: 4px;
+}
+
+.guide-layer-actions .icon-button,
+.guide-layer-group-row .icon-button {
+  min-height: 30px;
+  min-width: 30px;
+}
+
+.guide-layer-empty {
+  color: var(--text-muted);
+  font-size: calc(10px + var(--ui-font-offset, 0px));
+  padding: 9px 7px 4px;
+}
+
 .layer-group-list {
   display: grid;
   gap: 3px;
@@ -8718,6 +8967,30 @@ button.status-label:hover {
   box-shadow: 0 0 0 1px var(--accent-on), 0 0 14px rgb(var(--accent-rgb) / 0.64);
 }
 
+.workspace-guide.is-selected::before {
+  box-shadow: 0 0 0 1px var(--accent-on), 0 0 0 3px rgb(var(--accent-rgb) / 0.18), 0 0 14px rgb(var(--accent-rgb) / 0.48);
+}
+
+.workspace-guide.is-selected::after {
+  background: var(--floating-bg);
+  border: 2px solid var(--accent-ui);
+  border-radius: 2px;
+  content: "";
+  height: 7px;
+  position: absolute;
+  width: 7px;
+}
+
+.workspace-guide.is-vertical.is-selected::after {
+  left: 1px;
+  top: max(28px, 8%);
+}
+
+.workspace-guide.is-horizontal.is-selected::after {
+  left: max(28px, 8%);
+  top: 1px;
+}
+
 .workspace-guide-readout {
   align-items: center;
   background: var(--floating-bg);
@@ -9992,6 +10265,21 @@ button.status-label:hover {
   .object-color-set-removals button {
     height: 44px;
     width: 44px;
+  }
+
+  .guide-layer-heading,
+  .guide-layer-group-row,
+  .guide-layer-group-row > button:first-child,
+  .guide-layer-main {
+    min-height: 44px;
+  }
+
+  .guide-layer-heading .icon-button,
+  .guide-layer-actions .icon-button,
+  .guide-layer-group-row .icon-button,
+  .guide-layer-bulk-actions .icon-button {
+    min-height: 44px;
+    min-width: 44px;
   }
 }
 

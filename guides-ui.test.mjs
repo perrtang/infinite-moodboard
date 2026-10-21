@@ -31,7 +31,7 @@ test("each guide exposes a keyboard-accessible right-click menu for lock and del
   assert.match(main, /className="guide-context-menu"/);
   assert.match(main, /guideMenu\.guide\.locked \? "解除鎖定此導引線" : "鎖定此導引線"/);
   assert.match(main, /onDeleteGuide\(guide\.id, true\)/);
-  assert.match(main, /aria-disabled=\{guidesLocked \|\| readOnly\}/);
+  assert.match(main, /aria-disabled=\{guidesLocked \|\| guide\.locked \|\| readOnly\}/);
   assert.match(main, /disabled=\{guidesLocked \|\| readOnly\}/);
   assert.match(main, /readOnly=\{cloudReadOnly\}/);
   assert.match(main, /if \(cloudReadOnly\) \{\s*announce\("目前為僅檢視；無法刪除輔助導引線。"/);
@@ -51,4 +51,35 @@ test("the ruler intersection can reposition a shared origin without moving guide
   assert.match(main, /rulerOrigin=\{board\.rulerOrigin\}/);
   assert.match(main, /guide\.position - \(guide\.axis === "x" \? origin\.x : origin\.y\)/);
   assert.match(styles, /\.ruler-origin-preview \{/);
+});
+
+test("guides use a dedicated selectable layer above ordinary object layers", () => {
+  const guideSection = main.indexOf('className="guide-layer-section"');
+  const objectBulkActions = main.indexOf('className="layer-bulk-actions"');
+  assert.ok(guideSection >= 0 && objectBulkActions > guideSection);
+  assert.match(main, /selectedGuideIds=\{selectedGuideIds\}/);
+  assert.match(main, /aria-pressed=\{selectedGuideIds\.includes\(guide\.id\)\}/);
+  assert.match(main, /selectedGuideIds\.length \? \(/);
+  assert.match(main, /onDeleteGuides\(selectedGuideIds\)/);
+  assert.match(main, /onToggleSelectedGuideGroup/);
+  assert.match(main, /<strong>\{`\$\{orientation\}導引線`\}<\/strong>/);
+  assert.match(main, /guide\.locked\)\.map\(\(guide\) => guide\.id\)/);
+  assert.match(styles, /\.guide-layer-section \{/);
+  assert.match(styles, /\.workspace-guide\.is-selected::after/);
+  assert.match(styles, /\.workspace-measurement-layer \{[\s\S]*z-index: 17;/);
+});
+
+test("dragging a selected guide previews and moves every selected guide on the same axis", () => {
+  assert.match(main, /activeSelection\.includes\(guide\.id\) && guide\.axis === guideAxis && !guide\.locked/);
+  assert.match(main, /const delta = existing \? position - primaryStartPosition : 0/);
+  assert.match(main, /members: baselines/);
+  assert.match(main, /const preview = latest\.members\.find\(\(member\) => member\.id === guide\.id\)/);
+  assert.match(main, /draggingById\.has\(guide\.id\) \? "is-dragging"/);
+});
+
+test("guide and object selection remain separate and Escape clears guides first", () => {
+  assert.match(main, /const \[selectedGuideIds, setSelectedGuideIds\] = useState\(\[\]\)/);
+  assert.match(main, /: \[id\];\s*selectedIdsRef\.current = \[\];\s*setSelectedIds\(\[\]\);\s*setKeyObjectId\(null\);\s*setTool\("select"\);\s*if \(existing\) \{/);
+  assert.match(main, /else if \(selectedGuideIdsRef\.current\.length\) \{\s*selectedGuideIdsRef\.current = \[\];\s*setSelectedGuideIds\(\[\]\);/);
+  assert.match(main, /if \(selectedGuideIdsRef\.current\.length\) \{\s*deleteGuides\(selectedGuideIdsRef\.current\);/);
 });

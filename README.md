@@ -26,6 +26,13 @@ Infinite Moodboard runs the canvas, imported media, transforms, exports, and ver
 - Optional Google Drive file storage and opt-in realtime collaboration with view/edit permission requests.
 - 3D, Drive, collaboration, and export runtimes are loaded only when used, keeping the opening bundle smaller.
 
+## v0.44.0 — guide layers release
+
+- Adds a dedicated Guides section above ordinary object layers, matching the rule that every visible workspace element must remain discoverable in Layers.
+- Supports guide multi-selection, semantic guide groups, same-axis batch movement, batch locking, ungrouping, and batch deletion without mixing guides into object transforms or exports.
+- Makes global and per-guide locks remove guides from selection while keeping explicit unlock and management actions available.
+- Preserves guide groups in `.moodboard` files and realtime collaboration, migrates older boards safely, and keeps guide selection separate from object selection.
+
 ## v0.43.0 — workspace precision release
 
 - Makes Shift-dragged guides visibly magnetic in px and mm by adapting to perceptible integer ruler marks at the current zoom; cm and inch retain integer-unit snapping.

@@ -7,6 +7,7 @@ import {
   boundsAnchorPoint,
   compactBoardStructure,
   createArtboardFromObjects,
+  createGuideGroup,
   createGroup,
   createObjectDuplicate,
   createSourceInstance,
@@ -37,6 +38,7 @@ import {
   shapePolygonPoints,
   selectionActionAnchorInViewport,
   selectionAspectLocked,
+  selectionIdsForGuide,
   selectionIdsForObject,
   selectionWorldBounds,
   snapRotationDelta,
@@ -795,6 +797,7 @@ test("import validation rejects unrelated JSON and normalizes valid boards", () 
 test("workspace guides persist in moodboard files and legacy boards receive an empty set", () => {
   const legacy = ensureBoard({ schemaVersion: 10, name: "舊檔", objects: [] });
   assert.deepEqual(legacy.guides, []);
+  assert.deepEqual(legacy.guideGroups, []);
   assert.equal(legacy.guidesLocked, false);
   assert.deepEqual(legacy.rulerOrigin, { x: 0, y: 0 });
 
@@ -811,9 +814,9 @@ test("workspace guides persist in moodboard files and legacy boards receive an e
   });
 
   assert.deepEqual(board.guides, [
-    { id: "guide-x", axis: "x", position: 128.5, locked: false },
-    { id: "guide-y", axis: "y", position: 240, locked: false },
-    { id: "guide-invalid", axis: "y", position: 0, locked: false },
+    { id: "guide-x", axis: "x", position: 128.5, locked: false, groupId: null },
+    { id: "guide-y", axis: "y", position: 240, locked: false, groupId: null },
+    { id: "guide-invalid", axis: "y", position: 0, locked: false, groupId: null },
   ]);
   assert.equal(board.guidesLocked, true);
 });
@@ -839,7 +842,65 @@ test("individual guide locks persist independently from the global guide lock", 
     guides: [{ id: "guide-locked", axis: "x", position: 72, locked: true }],
   });
   assert.equal(board.guidesLocked, false);
-  assert.deepEqual(board.guides[0], { id: "guide-locked", axis: "x", position: 72, locked: true });
+  assert.deepEqual(board.guides[0], { id: "guide-locked", axis: "x", position: 72, locked: true, groupId: null });
+});
+
+test("guide groups normalize membership and never leak into object groups", () => {
+  const board = ensureBoard({
+    schemaVersion: BOARD_SCHEMA_VERSION,
+    objects: [],
+    guides: [
+      { id: "guide-a", axis: "x", position: 10 },
+      { id: "guide-b", axis: "x", position: 20 },
+      { id: "guide-c", axis: "y", position: 30 },
+    ],
+    groups: [],
+    guideGroups: [
+      { id: "guide-group-a", name: "Columns", memberIds: ["guide-a", "guide-b", "guide-b", "missing"] },
+      { id: "guide-group-conflict", name: "Conflict", memberIds: ["guide-b", "guide-c"] },
+    ],
+  });
+
+  assert.equal(board.groups.length, 0);
+  assert.deepEqual(board.guideGroups.map((group) => ({ id: group.id, memberIds: group.memberIds })), [
+    { id: "guide-group-a", memberIds: ["guide-a", "guide-b"] },
+  ]);
+  assert.deepEqual(board.guides.map((guide) => guide.groupId), ["guide-group-a", "guide-group-a", null]);
+});
+
+test("guide selection resolves semantic groups while respecting individual and global locks", () => {
+  const group = createGuideGroup(["guide-a", "guide-b", "guide-c"], { id: "guide-group-a", name: "Grid" });
+  const board = ensureBoard({
+    schemaVersion: BOARD_SCHEMA_VERSION,
+    objects: [],
+    guides: [
+      { id: "guide-a", axis: "x", position: 10 },
+      { id: "guide-b", axis: "x", position: 20, locked: true },
+      { id: "guide-c", axis: "y", position: 30 },
+    ],
+    guideGroups: [group],
+  });
+
+  assert.deepEqual(selectionIdsForGuide(board, "guide-a"), ["guide-a", "guide-c"]);
+  assert.deepEqual(selectionIdsForGuide(board, "guide-a", { penetrate: true }), ["guide-a"]);
+  assert.deepEqual(selectionIdsForGuide(board, "guide-b"), []);
+  assert.deepEqual(selectionIdsForGuide({ ...board, guidesLocked: true }, "guide-a"), []);
+});
+
+test("compacting after guide deletion dissolves incomplete guide groups", () => {
+  const board = ensureBoard({
+    schemaVersion: BOARD_SCHEMA_VERSION,
+    objects: [],
+    guides: [
+      { id: "guide-a", axis: "x", position: 10 },
+      { id: "guide-b", axis: "x", position: 20 },
+    ],
+    guideGroups: [{ id: "guide-group-a", name: "Pair", memberIds: ["guide-a", "guide-b"] }],
+  });
+  const compacted = compactBoardStructure({ ...board, guides: board.guides.filter((guide) => guide.id !== "guide-b") });
+
+  assert.deepEqual(compacted.guideGroups, []);
+  assert.equal(compacted.guides[0].groupId, null);
 });
 
 test("legacy objects gain a stable original size and can restore it", () => {

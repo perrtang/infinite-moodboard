@@ -119,6 +119,7 @@ import {
   compactBoardStructure,
   createArtboardFromObjects,
   createBoard,
+  createGuideGroup,
   createGroup,
   createId,
   createObjectDuplicate,
@@ -154,6 +155,7 @@ import {
   shapePolygonPoints,
   selectionActionAnchorInViewport,
   selectionAspectLocked,
+  selectionIdsForGuide,
   selectionIdsForObject,
   selectionWorldBounds,
   snapRotationDelta,
@@ -494,6 +496,7 @@ const STAR_STYLE_PRESETS = [
 
 const LAYER_TYPE_FILTERS = [
   ["all", "全部"],
+  ["guide", "導引線"],
   ["artboard", "紙張"],
   ["group", "群組"],
   ["text", "文字"],
@@ -1582,6 +1585,7 @@ function WorkspaceRulers({
   guidesLocked,
   readOnly,
   guides,
+  selectedGuideIds,
   draggingGuide,
   view,
   viewportSize,
@@ -1746,9 +1750,12 @@ function WorkspaceRulers({
           : (currentIndex - 1 + items.length) % items.length;
     items[nextIndex].focus();
   };
-  const shownGuides = draggingGuide
-    ? [...guides.filter((guide) => guide.id !== draggingGuide.id), draggingGuide]
-    : guides;
+  const draggingMembers = draggingGuide?.members?.length ? draggingGuide.members : draggingGuide ? [draggingGuide] : [];
+  const draggingById = new Map(draggingMembers.map((guide) => [guide.id, guide]));
+  const shownGuides = [
+    ...guides.map((guide) => draggingById.has(guide.id) ? { ...guide, ...draggingById.get(guide.id) } : guide),
+    ...draggingMembers.filter((guide) => guide.isNew || !guides.some((item) => item.id === guide.id)),
+  ];
   const draggingGuideScreenPosition = draggingGuide
     ? (draggingGuide.axis === "x" ? view.x : view.y) + draggingGuide.position * view.zoom
     : null;
@@ -1815,10 +1822,11 @@ function WorkspaceRulers({
             const relativePosition = guide.position - (guide.axis === "x" ? origin.x : origin.y);
             return (
               <button
-                className={`workspace-guide is-${guide.axis === "x" ? "vertical" : "horizontal"} ${draggingGuide?.id === guide.id ? "is-dragging" : ""} ${guidesLocked || guide.locked || readOnly ? "is-locked" : ""}`}
+                className={`workspace-guide is-${guide.axis === "x" ? "vertical" : "horizontal"} ${draggingById.has(guide.id) ? "is-dragging" : ""} ${selectedGuideIds.includes(guide.id) ? "is-selected" : ""} ${guidesLocked || guide.locked || readOnly ? "is-locked" : ""}`}
                 style={guide.axis === "x" ? { left: screenPosition } : { top: screenPosition }}
                 type="button"
-                aria-disabled={guidesLocked || readOnly}
+                aria-disabled={guidesLocked || guide.locked || readOnly}
+                aria-pressed={selectedGuideIds.includes(guide.id)}
                 aria-label={readOnly
                   ? `${guide.axis === "x" ? "垂直" : "水平"}導引線 ${formatGuideValue(relativePosition, unit)}；目前僅檢視`
                   : guidesLocked || guide.locked
@@ -2673,8 +2681,17 @@ function MarkerComposer({ markerDraft, setMarkerDraft, onAdd, disabled = false }
 function LayersPanel({
   board,
   selectedIds,
+  selectedGuideIds,
   onSelect,
   onSelectGroup,
+  onSelectGuide,
+  onSelectGuideGroup,
+  onToggleGuideLocked,
+  onToggleGuidesLocked,
+  onLockSelectedGuides,
+  onDeleteGuides,
+  onToggleSelectedGuideGroup,
+  onUngroupGuideGroup,
   onToggleVisible,
   onSetSelectedVisibility,
   onExportSelected,
@@ -2688,6 +2705,10 @@ function LayersPanel({
   onLocate,
   layerTypeFilter,
   setLayerTypeFilter,
+  guidesVisible,
+  rulerUnit,
+  rulerOrigin,
+  readOnly,
 }) {
   const [layerDrag, setLayerDrag] = useState(null);
   const search = useListSearch("layers");
@@ -2700,6 +2721,7 @@ function LayersPanel({
         : true,
     )
     .filter((object) => {
+      if (layerTypeFilter === "guide") return false;
       if (layerTypeFilter === "all") return true;
       if (layerTypeFilter === "group") return Boolean(object.groupId);
       if (layerTypeFilter === "media") return ["image", "video"].includes(object.type);
@@ -2707,6 +2729,26 @@ function LayersPanel({
     });
   const visibleSelected = board.objects.filter((object) => selectedIds.includes(object.id) && object.visible).length;
   const groupNames = new Map((board.groups || []).map((group) => [group.id, group.name]));
+  const guideGroupNames = new Map((board.guideGroups || []).map((group) => [group.id, group.name]));
+  const showGuideSection = ["all", "guide"].includes(layerTypeFilter);
+  const filteredGuides = showGuideSection ? (board.guides || []).filter((guide) => {
+    const origin = guide.axis === "x" ? Number(rulerOrigin?.x) || 0 : Number(rulerOrigin?.y) || 0;
+    const orientation = guide.axis === "x" ? "垂直" : "水平";
+    const groupName = guide.groupId ? guideGroupNames.get(guide.groupId) || "" : "";
+    return matchesListQuery([orientation, `${orientation}導引線`, formatGuideValue(guide.position - origin, rulerUnit), groupName], query);
+  }) : [];
+  const filteredGuideGroups = showGuideSection ? (board.guideGroups || []).filter((group) => {
+    const members = (board.guides || []).filter((guide) => group.memberIds.includes(guide.id));
+    if (!members.length) return false;
+    if (!query) return true;
+    return matchesListQuery([
+      group.name,
+      ...members.flatMap((guide) => {
+        const origin = guide.axis === "x" ? Number(rulerOrigin?.x) || 0 : Number(rulerOrigin?.y) || 0;
+        return [guide.axis === "x" ? "垂直" : "水平", formatGuideValue(guide.position - origin, rulerUnit)];
+      }),
+    ], query);
+  }) : [];
   const filteredGroups = (board.groups || []).filter((group) => {
     if (!["all", "group"].includes(layerTypeFilter)) return false;
     const members = board.objects.filter((object) => group.memberIds.includes(object.id));
@@ -2714,6 +2756,11 @@ function LayersPanel({
     if (!query) return true;
     return `${group.name} ${members.map((object) => `${object.name} ${object.layerName}`).join(" ")}`.toLocaleLowerCase("zh-Hant").includes(query);
   });
+  const resultCount = objects.length + filteredGroups.length + filteredGuides.length + filteredGuideGroups.length;
+  const totalCount = board.objects.length + (board.groups || []).length + (board.guides || []).length + (board.guideGroups || []).length;
+  const selectedGuideGroup = (board.guideGroups || []).find((group) => (
+    selectedGuideIds.length === group.memberIds.length && group.memberIds.every((id) => selectedGuideIds.includes(id))
+  ));
 
   const startLayerDrag = (event, movingId) => {
     if (event.button !== 0) return;
@@ -2775,11 +2822,11 @@ function LayersPanel({
   return (
     <div className="panel-scroll layers-panel">
       <div className="panel-list-toolbar">
-        <span>{`${objects.length + filteredGroups.length} / ${board.objects.length + (board.groups || []).length}`}</span>
+        <span>{`${resultCount} / ${totalCount}`}</span>
         <ListSearchToggle
           search={search}
-          resultCount={objects.length + filteredGroups.length}
-          totalCount={board.objects.length + (board.groups || []).length}
+          resultCount={resultCount}
+          totalCount={totalCount}
           forceActive={layerTypeFilter !== "all"}
           label="搜尋或篩選圖層"
         />
@@ -2793,6 +2840,87 @@ function LayersPanel({
           ))}
         </div>
       </ListSearchField>
+      {showGuideSection ? (
+        <section className="guide-layer-section" aria-label="輔助導引線，顯示於所有物件上方">
+          <div className="guide-layer-heading">
+            <div><Ruler size={16} aria-hidden="true" /><strong>輔助導引線</strong><small>{board.guides?.length || 0}</small></div>
+            <IconButton
+              label={board.guidesLocked ? "解除鎖定所有輔助導引線" : "鎖定所有輔助導引線"}
+              active={Boolean(board.guidesLocked)}
+              aria-pressed={Boolean(board.guidesLocked)}
+              disabled={readOnly}
+              onClick={onToggleGuidesLocked}
+            >{board.guidesLocked ? <Lock size={15} /> : <Unlock size={15} />}</IconButton>
+          </div>
+          <p className="guide-layer-helper">{guidesVisible ? "固定顯示於所有物件上方，不會輸出。" : "工作區目前隱藏；仍可在這裡管理，且不會輸出。"}</p>
+          {selectedGuideIds.length ? (
+            <div className="guide-layer-bulk-actions" role="toolbar" aria-label={`${selectedGuideIds.length} 條選取導引線批次操作`}>
+              <span><strong>{selectedGuideIds.length}</strong> 條選取</span>
+              <IconButton
+                label={selectedGuideGroup ? `解散「${selectedGuideGroup.name}」` : "將選取導引線建立群組"}
+                onClick={onToggleSelectedGuideGroup}
+                disabled={readOnly || board.guidesLocked || selectedGuideIds.length < 2}
+              >{selectedGuideGroup ? <X size={15} /> : <Layers3 size={15} />}</IconButton>
+              <IconButton label="鎖定選取導引線" onClick={onLockSelectedGuides} disabled={readOnly || board.guidesLocked}><Lock size={15} /></IconButton>
+              <IconButton className="danger-icon-button" label="刪除選取導引線" onClick={() => onDeleteGuides(selectedGuideIds)} disabled={readOnly || board.guidesLocked}><Trash2 size={15} /></IconButton>
+            </div>
+          ) : null}
+          {filteredGuideGroups.length ? (
+            <div className="guide-layer-group-list" aria-label="導引線群組">
+              {filteredGuideGroups.map((group) => {
+                const members = (board.guides || []).filter((guide) => group.memberIds.includes(guide.id));
+                const selectableIds = members.filter((guide) => !guide.locked).map((guide) => guide.id);
+                const selected = selectableIds.length > 0 && selectableIds.every((id) => selectedGuideIds.includes(id));
+                const containsLocked = members.some((guide) => guide.locked);
+                return (
+                  <div className={`guide-layer-group-row ${selected ? "is-selected" : ""}`} key={group.id}>
+                    <button type="button" onClick={(event) => onSelectGuideGroup(group.id, event.shiftKey)} aria-pressed={selected} disabled={board.guidesLocked || !selectableIds.length}>
+                      <Layers3 size={15} /><span data-l10n-ignore>{group.name}</span><small>{group.memberIds.length}</small>
+                    </button>
+                    <IconButton label={`解散「${group.name}」`} onClick={() => onUngroupGuideGroup(group.id)} disabled={readOnly || board.guidesLocked || containsLocked}><X size={14} /></IconButton>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+          {filteredGuides.length ? (
+            <div className="guide-layer-list" aria-label="導引線">
+              {filteredGuides.map((guide) => {
+                const selected = selectedGuideIds.includes(guide.id);
+                const origin = guide.axis === "x" ? Number(rulerOrigin?.x) || 0 : Number(rulerOrigin?.y) || 0;
+                const orientation = guide.axis === "x" ? "垂直" : "水平";
+                const groupName = guide.groupId ? guideGroupNames.get(guide.groupId) : "";
+                const blocked = Boolean(board.guidesLocked || guide.locked);
+                return (
+                  <div className={`guide-layer-row ${selected ? "is-selected" : ""} ${blocked ? "is-locked" : ""}`} key={guide.id}>
+                    <button
+                      className="guide-layer-main"
+                      type="button"
+                      onClick={(event) => onSelectGuide(guide.id, event.shiftKey, event.metaKey || event.ctrlKey)}
+                      aria-pressed={selected}
+                      disabled={blocked}
+                    >
+                      <span className={`guide-layer-orientation is-${guide.axis === "x" ? "vertical" : "horizontal"}`} aria-hidden="true" />
+                      <span><strong>{`${orientation}導引線`}</strong><small data-l10n-ignore>{`${formatGuideValue(guide.position - origin, rulerUnit)}${groupName ? ` · ${groupName}` : ""}`}</small></span>
+                      {guide.locked || board.guidesLocked ? <Lock size={13} aria-label="已鎖定" /> : null}
+                    </button>
+                    <div className="guide-layer-actions">
+                      <IconButton
+                        label={guide.locked ? `解除鎖定${orientation}導引線` : `鎖定${orientation}導引線`}
+                        onClick={() => onToggleGuideLocked(guide)}
+                        disabled={readOnly || board.guidesLocked}
+                      >{guide.locked ? <Unlock size={14} /> : <Lock size={14} />}</IconButton>
+                      <IconButton className="danger-icon-button" label={`刪除${orientation}導引線`} onClick={() => onDeleteGuides([guide.id], true)} disabled={readOnly || board.guidesLocked}><Trash2 size={14} /></IconButton>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="guide-layer-empty"><span>{board.guides?.length ? "找不到符合的導引線" : "尚未建立導引線"}</span></div>
+          )}
+        </section>
+      ) : null}
       {selectedIds.length ? (
         <div className="layer-bulk-actions" role="toolbar" aria-label={`${selectedIds.length} 個選取物件批次操作`}>
           <span><strong>{selectedIds.length}</strong> 個選取</span>
@@ -2901,14 +3029,14 @@ function LayersPanel({
               : ""}
           </span>
         </div>
-      ) : (
+      ) : layerTypeFilter !== "guide" ? (
         <div className="panel-empty">
           <Layers3 size={24} />
           <strong>{board.objects.length ? "找不到符合的圖層" : "還沒有圖層"}</strong>
           <p>{board.objects.length ? "保留搜尋內容，調整關鍵字或清除搜尋。" : "加入文字、形狀或素材後，每個物件會自動建立自己的圖層。"}</p>
           {query ? <button type="button" className="text-button" onClick={() => search.setQuery("")}>清除搜尋</button> : null}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -6724,6 +6852,8 @@ function App() {
   ));
   const [selectedIds, setSelectedIds] = useState([]);
   const selectedIdsRef = useRef([]);
+  const [selectedGuideIds, setSelectedGuideIds] = useState([]);
+  const selectedGuideIdsRef = useRef([]);
   const [keyObjectId, setKeyObjectId] = useState(null);
   const [selectionAnchor, setSelectionAnchor] = useState("mc");
   const [groupGesture, setGroupGesture] = useState(null);
@@ -7317,6 +7447,23 @@ function App() {
   useEffect(() => { boardRef.current = board; }, [board]);
   useEffect(() => { viewRef.current = view; }, [view]);
   useEffect(() => { selectedIdsRef.current = selectedIds; }, [selectedIds]);
+  useEffect(() => { selectedGuideIdsRef.current = selectedGuideIds; }, [selectedGuideIds]);
+  useEffect(() => {
+    if (!selectedIds.length || !selectedGuideIdsRef.current.length) return;
+    selectedGuideIdsRef.current = [];
+    setSelectedGuideIds([]);
+  }, [selectedIds]);
+  useEffect(() => {
+    const selectable = new Set(board.guidesLocked
+      ? []
+      : (board.guides || []).filter((guide) => !guide.locked).map((guide) => guide.id));
+    setSelectedGuideIds((current) => {
+      const next = current.filter((id) => selectable.has(id));
+      if (next.length === current.length && next.every((id, index) => id === current[index])) return current;
+      selectedGuideIdsRef.current = next;
+      return next;
+    });
+  }, [board.guides, board.guidesLocked]);
   useEffect(() => {
     if (loadedTextFlow && !board.objects.some((object) => object.id === loadedTextFlow.sourceId)) {
       setLoadedTextFlow(null);
@@ -8608,25 +8755,80 @@ function App() {
     };
   }, []);
 
-  const deleteGuide = useCallback((guideId, explicit = false) => {
+  const commitGuideSelection = useCallback((ids) => {
+    const selectable = new Set(boardRef.current.guidesLocked
+      ? []
+      : (boardRef.current.guides || []).filter((guide) => !guide.locked).map((guide) => guide.id));
+    const next = [...new Set(ids || [])].filter((id) => selectable.has(id));
+    selectedGuideIdsRef.current = next;
+    setSelectedGuideIds(next);
+    return next;
+  }, []);
+
+  const selectGuide = useCallback((guideId, additive = false, penetrate = false) => {
+    const targetIds = selectionIdsForGuide(boardRef.current, guideId, { penetrate });
+    if (!targetIds.length) return [];
+    const current = selectedGuideIdsRef.current;
+    const next = additive
+      ? targetIds.every((id) => current.includes(id))
+        ? current.filter((id) => !targetIds.includes(id))
+        : [...new Set([...current, ...targetIds])]
+      : targetIds;
+    selectedIdsRef.current = [];
+    setSelectedIds([]);
+    setKeyObjectId(null);
+    setTool("select");
+    return commitGuideSelection(next);
+  }, [commitGuideSelection]);
+
+  const selectGuideGroup = useCallback((groupId, additive = false) => {
+    const group = (boardRef.current.guideGroups || []).find((item) => item.id === groupId);
+    if (!group || boardRef.current.guidesLocked) return;
+    const selectable = group.memberIds.filter((id) => boardRef.current.guides.some((guide) => guide.id === id && !guide.locked));
+    if (!selectable.length) return;
+    const current = selectedGuideIdsRef.current;
+    const next = additive
+      ? selectable.every((id) => current.includes(id))
+        ? current.filter((id) => !selectable.includes(id))
+        : [...new Set([...current, ...selectable])]
+      : selectable;
+    selectedIdsRef.current = [];
+    setSelectedIds([]);
+    setKeyObjectId(null);
+    setTool("select");
+    commitGuideSelection(next);
+  }, [commitGuideSelection]);
+
+  const deleteGuides = useCallback((guideIds, explicit = false) => {
     if (cloudReadOnly) {
       announce("目前為僅檢視；無法刪除輔助導引線。", "warning");
-      return;
+      return 0;
     }
     if (boardRef.current.guidesLocked) {
       announce("輔助導引線已鎖定；請先從「檔案」解除鎖定。", "info");
-      return;
+      return 0;
     }
-    const guide = boardRef.current.guides.find((item) => item.id === guideId);
-    if (!guide) return;
-    if (guide.locked && !explicit) {
+    const requested = new Set(guideIds || []);
+    const deletable = boardRef.current.guides.filter((guide) => requested.has(guide.id) && (explicit || !guide.locked));
+    if (!deletable.length && [...requested].some((id) => boardRef.current.guides.some((guide) => guide.id === id && guide.locked))) {
       announce("此導引線已鎖定；按右鍵可解除鎖定或刪除。", "info");
-      return;
+      return 0;
     }
-    applyBoard((current) => ({ ...current, guides: current.guides.filter((guide) => guide.id !== guideId) }));
+    if (!deletable.length) return 0;
+    const deleting = new Set(deletable.map((guide) => guide.id));
+    applyBoard((current) => compactBoardStructure({
+      ...current,
+      guides: current.guides.filter((guide) => !deleting.has(guide.id)),
+    }));
+    commitGuideSelection(selectedGuideIdsRef.current.filter((id) => !deleting.has(id)));
     setGuideDrag(null);
-    announce("已刪除輔助導引線", "warning");
-  }, [announce, applyBoard, cloudReadOnly]);
+    announce(deletable.length === 1 ? "已刪除輔助導引線" : `已刪除 ${deletable.length} 條輔助導引線`, "warning");
+    return deletable.length;
+  }, [announce, applyBoard, cloudReadOnly, commitGuideSelection]);
+
+  const deleteGuide = useCallback((guideId, explicit = false) => {
+    deleteGuides([guideId], explicit);
+  }, [deleteGuides]);
 
   const toggleGuideLocked = useCallback((guide) => {
     if (cloudReadOnly) {
@@ -8642,8 +8844,72 @@ function App() {
       ...current,
       guides: current.guides.map((item) => item.id === guide.id ? { ...item, locked: nextLocked } : item),
     }));
+    if (nextLocked) commitGuideSelection(selectedGuideIdsRef.current.filter((id) => id !== guide.id));
     announce(nextLocked ? "已鎖定此輔助導引線" : "已解除鎖定此輔助導引線", "success");
+  }, [announce, applyBoard, cloudReadOnly, commitGuideSelection]);
+
+  const lockSelectedGuides = useCallback(() => {
+    if (cloudReadOnly || boardRef.current.guidesLocked) return;
+    const selected = new Set(selectedGuideIdsRef.current);
+    if (!selected.size) return;
+    applyBoard((current) => ({
+      ...current,
+      guides: current.guides.map((guide) => selected.has(guide.id) ? { ...guide, locked: true } : guide),
+    }));
+    commitGuideSelection([]);
+    announce(`已鎖定 ${selected.size} 條輔助導引線`, "success");
+  }, [announce, applyBoard, cloudReadOnly, commitGuideSelection]);
+
+  const groupGuideSelection = useCallback(() => {
+    if (cloudReadOnly || boardRef.current.guidesLocked) return;
+    const ids = [...new Set(selectedGuideIdsRef.current)].filter((id) => boardRef.current.guides.some((guide) => guide.id === id && !guide.locked));
+    if (ids.length < 2) {
+      announce("至少選取 2 條未鎖定的導引線才能建立群組。", "warning");
+      return;
+    }
+    const group = createGuideGroup(ids, {
+      name: `導引線群組 ${String((boardRef.current.guideGroups?.length || 0) + 1).padStart(2, "0")}`,
+    });
+    applyBoard((current) => compactBoardStructure({
+      ...current,
+      guideGroups: [
+        ...(current.guideGroups || []).map((item) => ({ ...item, memberIds: item.memberIds.filter((id) => !ids.includes(id)) })),
+        group,
+      ],
+      guides: current.guides.map((guide) => ids.includes(guide.id) ? { ...guide, groupId: group.id } : guide),
+    }));
+    announce(`已將 ${ids.length} 條導引線建立為群組`, "success");
   }, [announce, applyBoard, cloudReadOnly]);
+
+  const ungroupGuideSelection = useCallback((explicitGroupId = null) => {
+    if (cloudReadOnly || boardRef.current.guidesLocked) return;
+    const selected = new Set(selectedGuideIdsRef.current);
+    const groupIds = explicitGroupId
+      ? [explicitGroupId]
+      : (boardRef.current.guideGroups || [])
+        .filter((group) => group.memberIds.some((id) => selected.has(id)))
+        .map((group) => group.id);
+    if (!groupIds.length) {
+      announce("目前選取沒有可解散的導引線群組。", "warning");
+      return;
+    }
+    const targets = new Set(groupIds);
+    applyBoard((current) => compactBoardStructure({
+      ...current,
+      guideGroups: (current.guideGroups || []).filter((group) => !targets.has(group.id)),
+      guides: current.guides.map((guide) => targets.has(guide.groupId) ? { ...guide, groupId: null } : guide),
+    }));
+    announce(`已解散 ${groupIds.length} 個導引線群組`, "success");
+  }, [announce, applyBoard, cloudReadOnly]);
+
+  const toggleGuideSelectionGroup = useCallback(() => {
+    const selected = selectedGuideIdsRef.current;
+    const shared = (boardRef.current.guideGroups || []).find((group) => (
+      selected.length === group.memberIds.length && group.memberIds.every((id) => selected.includes(id))
+    ));
+    if (shared) ungroupGuideSelection(shared.id);
+    else groupGuideSelection();
+  }, [groupGuideSelection, ungroupGuideSelection]);
 
   const toggleGuidesLocked = useCallback(() => {
     if (cloudReadOnly) {
@@ -8652,9 +8918,10 @@ function App() {
     }
     const nextLocked = !Boolean(boardRef.current.guidesLocked);
     setGuideDrag(null);
+    if (nextLocked) commitGuideSelection([]);
     applyBoard((current) => ({ ...current, guidesLocked: nextLocked }));
     announce(nextLocked ? "已鎖定所有輔助導引線" : "已解除鎖定所有輔助導引線", "success");
-  }, [announce, applyBoard, cloudReadOnly]);
+  }, [announce, applyBoard, cloudReadOnly, commitGuideSelection]);
 
   const setRulerOrigin = useCallback((nextOrigin) => {
     if (cloudReadOnly) {
@@ -8688,7 +8955,34 @@ function App() {
     }
     const id = existing?.id || createId("guide");
     const guideAxis = existing?.axis || axis;
-    let latest = existing || { id, axis: guideAxis, position: 0, isNew: true };
+    const currentSelection = [...selectedGuideIdsRef.current];
+    const targetIds = existing
+      ? selectionIdsForGuide(boardRef.current, existing.id, { penetrate: event.metaKey || event.ctrlKey })
+      : [id];
+    const clickWouldToggleOff = Boolean(existing && event.shiftKey && targetIds.every((targetId) => currentSelection.includes(targetId)));
+    const activeSelection = existing
+      ? event.shiftKey
+        ? clickWouldToggleOff
+          ? currentSelection
+          : [...new Set([...currentSelection, ...targetIds])]
+        : currentSelection.includes(existing.id)
+          ? currentSelection
+          : targetIds
+      : [id];
+    selectedIdsRef.current = [];
+    setSelectedIds([]);
+    setKeyObjectId(null);
+    setTool("select");
+    if (existing) {
+      commitGuideSelection(activeSelection);
+    }
+    const baselines = existing
+      ? boardRef.current.guides
+        .filter((guide) => activeSelection.includes(guide.id) && guide.axis === guideAxis && !guide.locked)
+        .map((guide) => ({ id: guide.id, axis: guide.axis, position: guide.position, locked: false, groupId: guide.groupId || null }))
+      : [{ id, axis: guideAxis, position: 0, locked: false, groupId: null }];
+    const primaryStartPosition = existing?.position || 0;
+    let latest = existing || { id, axis: guideAxis, position: 0, isNew: true, members: baselines };
     const pointerSnapshot = (pointerEvent) => ({
       clientX: Number(pointerEvent?.clientX) || 0,
       clientY: Number(pointerEvent?.clientY) || 0,
@@ -8696,6 +8990,8 @@ function App() {
     });
     let latestPointer = pointerSnapshot(event);
     let snapActive = Boolean(event.shiftKey);
+    const startPointer = { x: latestPointer.clientX, y: latestPointer.clientY };
+    let moved = false;
     let releaseGesture = () => {};
     setGuidesVisible(true);
 
@@ -8714,14 +9010,27 @@ function App() {
         snap: snapActive,
         origin,
       });
-      latest = { id, axis: guideAxis, position, isNew: !existing, snapped: snapActive };
+      const delta = existing ? position - primaryStartPosition : 0;
+      const members = baselines.map((guide) => ({
+        ...guide,
+        position: existing ? guide.position + delta : position,
+      }));
+      latest = {
+        id,
+        axis: guideAxis,
+        position,
+        isNew: !existing,
+        snapped: snapActive,
+        members,
+      };
       setGuideDrag(latest);
     };
 
     const move = (pointerEvent) => {
       latestPointer = pointerSnapshot(pointerEvent);
+      if (!moved && Math.hypot(latestPointer.clientX - startPointer.x, latestPointer.clientY - startPointer.y) >= 3) moved = true;
       if (pointerEvent.shiftKey) snapActive = true;
-      update();
+      if (moved || !existing) update();
     };
     const keyDown = (keyEvent) => {
       if (keyEvent.key !== "Shift" || snapActive) return;
@@ -8745,9 +9054,13 @@ function App() {
     const finish = (pointerEvent = latestPointer) => {
       if (Number.isFinite(pointerEvent?.clientX) && Number.isFinite(pointerEvent?.clientY)) latestPointer = pointerSnapshot(pointerEvent);
       if (pointerEvent?.shiftKey) snapActive = true;
-      update();
+      if (moved || !existing) update();
       cleanup();
       setGuideDrag(null);
+      if (existing && !moved) {
+        if (clickWouldToggleOff) commitGuideSelection(currentSelection.filter((selectedId) => !targetIds.includes(selectedId)));
+        return;
+      }
       const inside = latestPointer.clientX >= rect.left
         && latestPointer.clientX <= rect.right
         && latestPointer.clientY >= rect.top
@@ -8764,13 +9077,18 @@ function App() {
       applyBoard((current) => ({
         ...current,
         guides: existing
-          ? current.guides.map((guide) => guide.id === id ? { ...guide, axis: guideAxis, position: latest.position } : guide)
-          : [...current.guides, { id, axis: guideAxis, position: latest.position, locked: false }],
+          ? current.guides.map((guide) => {
+            const preview = latest.members.find((member) => member.id === guide.id);
+            return preview ? { ...guide, position: preview.position } : guide;
+          })
+          : [...current.guides, { id, axis: guideAxis, position: latest.position, locked: false, groupId: null }],
       }));
+      if (!existing) commitGuideSelection([id]);
       const origin = guideAxis === "x"
         ? Number(boardRef.current.rulerOrigin?.x) || 0
         : Number(boardRef.current.rulerOrigin?.y) || 0;
-      announce(`${existing ? "已移動" : "已建立"}${guideAxis === "x" ? "垂直" : "水平"}導引線：${formatGuideValue(latest.position - origin, rulerUnit)}`, "success");
+      const movedCount = existing ? latest.members.length : 1;
+      announce(`${existing && movedCount > 1 ? `已同時移動 ${movedCount} 條` : existing ? "已移動" : "已建立"}${guideAxis === "x" ? "垂直" : "水平"}導引線：${formatGuideValue(latest.position - origin, rulerUnit)}`, "success");
     };
     const cancel = () => {
       cleanup();
@@ -8780,7 +9098,7 @@ function App() {
     releaseGesture = registerPointerGesture({
       label: existing ? "移動導引線" : "建立導引線",
       affectsDocument: false,
-      hasChanges: () => true,
+      hasChanges: () => moved || !existing,
       pause: cleanup,
       cancel,
       keep: () => finish(latestPointer),
@@ -8790,7 +9108,7 @@ function App() {
     window.addEventListener("pointercancel", cancel, { once: true });
     window.addEventListener("keydown", keyDown, true);
     window.addEventListener("keyup", keyUp, true);
-  }, [announce, applyBoard, cloudReadOnly, deleteGuide, registerPointerGesture, rulerUnit, rulersVisible]);
+  }, [announce, applyBoard, cloudReadOnly, commitGuideSelection, deleteGuide, registerPointerGesture, rulerUnit, rulersVisible]);
 
   const selectObject = useCallback((id, additive = false, penetrate = false) => {
     if (loadedTextFlow) {
@@ -10025,7 +10343,13 @@ function App() {
     performDeleteObjects(objectIds);
   }, [pendingObjectDeletion, performDeleteObjects]);
 
-  const deleteSelected = useCallback(() => requestDeleteObjects(selectedIdsRef.current), [requestDeleteObjects]);
+  const deleteSelected = useCallback(() => {
+    if (selectedGuideIdsRef.current.length) {
+      deleteGuides(selectedGuideIdsRef.current);
+      return;
+    }
+    requestDeleteObjects(selectedIdsRef.current);
+  }, [deleteGuides, requestDeleteObjects]);
   const deleteLayerObject = useCallback((objectId) => requestDeleteObjects([objectId]), [requestDeleteObjects]);
   const cutSelectedObjects = useCallback(() => {
     if (!copySelectedObjects()) return;
@@ -10086,12 +10410,16 @@ function App() {
   }, [announce, applyBoard]);
 
   const toggleSelectionGroup = useCallback(() => {
+    if (selectedGuideIdsRef.current.length) {
+      toggleGuideSelectionGroup();
+      return;
+    }
     const selected = selectedIdsRef.current;
     const groups = boardRef.current.groups || [];
     const shared = groups.find((group) => selected.length === group.memberIds.length && group.memberIds.every((id) => selected.includes(id)));
     if (shared) ungroupSelection(shared.id);
     else groupSelection();
-  }, [groupSelection, ungroupSelection]);
+  }, [groupSelection, toggleGuideSelectionGroup, ungroupSelection]);
 
   const setSelectedVisibility = useCallback((visible) => {
     const selected = new Set(selectedIdsRef.current);
@@ -11436,6 +11764,7 @@ function App() {
     if (!canvasRect) return;
     const startClient = { x: event.clientX, y: event.clientY };
     const previousSelected = [...selectedIdsRef.current];
+    const previousGuideSelected = [...selectedGuideIdsRef.current];
     const previousKeyObjectId = keyObjectId;
     const initialSelected = event.shiftKey ? [...selectedIdsRef.current] : [];
     let moved = false;
@@ -11445,6 +11774,7 @@ function App() {
       const dx = moveEvent.clientX - startClient.x;
       const dy = moveEvent.clientY - startClient.y;
       if (!moved && Math.hypot(dx, dy) < 4) return;
+      if (!moved) commitGuideSelection([]);
       moved = true;
       const left = Math.min(startClient.x, moveEvent.clientX) - canvasRect.left;
       const top = Math.min(startClient.y, moveEvent.clientY) - canvasRect.top;
@@ -11477,6 +11807,7 @@ function App() {
       if (!moved && !event.shiftKey) {
         selectedIdsRef.current = [];
         setSelectedIds([]);
+        commitGuideSelection([]);
       }
       blankClickRef.current = moved ? null : { time: performance.now(), x: startClient.x, y: startClient.y };
       setMarquee(null);
@@ -11485,6 +11816,7 @@ function App() {
       cleanup();
       selectedIdsRef.current = previousSelected;
       setSelectedIds(previousSelected);
+      commitGuideSelection(previousGuideSelected);
       setKeyObjectId(previousKeyObjectId);
       setMarquee(null);
       blankClickRef.current = null;
@@ -11500,7 +11832,7 @@ function App() {
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up, { once: true });
     window.addEventListener("pointercancel", cancel, { once: true });
-  }, [filters.colors.length, filters.symbols.length, keyObjectId, loadedTextFlow, placeTextOverflow, registerPointerGesture, screenToWorld, spaceDown, startCanvasPan, tool]);
+  }, [commitGuideSelection, filters.colors.length, filters.symbols.length, keyObjectId, loadedTextFlow, placeTextOverflow, registerPointerGesture, screenToWorld, spaceDown, startCanvasPan, tool]);
 
   const zoomAround = useCallback((clientX, clientY, nextZoom) => {
     const rect = canvasRef.current?.getBoundingClientRect();
@@ -11933,6 +12265,10 @@ function App() {
         else if (tool === "3d") setTool("select");
         else if (focusMode) restoreWorkspaceChrome();
         else if (!leftPanelVisible && !rightPanelVisible) showBothPanels();
+        else if (selectedGuideIdsRef.current.length) {
+          selectedGuideIdsRef.current = [];
+          setSelectedGuideIds([]);
+        }
         else if (selectedIdsRef.current.length) {
           selectedIdsRef.current = [];
           setSelectedIds([]);
@@ -12430,8 +12766,17 @@ function App() {
         <LeftSidebar
           board={board}
           selectedIds={selectedIds}
+          selectedGuideIds={selectedGuideIds}
           onSelect={selectObject}
           onSelectGroup={selectGroup}
+          onSelectGuide={selectGuide}
+          onSelectGuideGroup={selectGuideGroup}
+          onToggleGuideLocked={toggleGuideLocked}
+          onToggleGuidesLocked={toggleGuidesLocked}
+          onLockSelectedGuides={lockSelectedGuides}
+          onDeleteGuides={deleteGuides}
+          onToggleSelectedGuideGroup={toggleGuideSelectionGroup}
+          onUngroupGuideGroup={ungroupGuideSelection}
           onToggleVisible={toggleVisibility}
           onSetSelectedVisibility={setSelectedVisibility}
           onExportSelected={() => exportObjects("selected")}
@@ -12445,6 +12790,10 @@ function App() {
           onLocate={locateObject}
           layerTypeFilter={layerTypeFilter}
           setLayerTypeFilter={setLayerTypeFilter}
+          guidesVisible={guidesVisible}
+          rulerUnit={rulerUnit}
+          rulerOrigin={board.rulerOrigin}
+          readOnly={cloudReadOnly}
           leftTab={leftTab}
           setLeftTab={changeLeftTab}
           sourceAssets={sourceAssets}
@@ -12589,6 +12938,7 @@ function App() {
                 guidesLocked={Boolean(board.guidesLocked)}
                 readOnly={cloudReadOnly}
                 guides={board.guides || []}
+                selectedGuideIds={selectedGuideIds}
                 draggingGuide={guideDrag}
                 view={view}
                 viewportSize={canvasViewportSize}

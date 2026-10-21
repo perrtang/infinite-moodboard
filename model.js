@@ -1,4 +1,4 @@
-export const BOARD_SCHEMA_VERSION = 14;
+export const BOARD_SCHEMA_VERSION = 15;
 
 export const ANCHORS = {
   tl: { x: 0, y: 0, label: "左上" },
@@ -74,6 +74,7 @@ export function createBoard(overrides = {}) {
     objects: [],
     groups: [],
     guides: [],
+    guideGroups: [],
     guidesLocked: false,
     rulerOrigin: { x: 0, y: 0 },
     captures: [],
@@ -118,6 +119,59 @@ function normalizeGuide(guide, index) {
     axis: guide?.axis === "x" ? "x" : "y",
     position: clampNumber(guide?.position, 0, -10000000, 10000000),
     locked: Boolean(guide?.locked),
+    groupId: typeof guide?.groupId === "string" && guide.groupId ? guide.groupId : null,
+  };
+}
+
+function normalizeGuideGroup(group, index, validGuideIds) {
+  const now = new Date().toISOString();
+  const memberIds = [...new Set((Array.isArray(group?.memberIds) ? group.memberIds : [])
+    .filter((id) => typeof id === "string" && validGuideIds.has(id)))];
+  return {
+    id: typeof group?.id === "string" && group.id ? group.id : createId("guide-group"),
+    name: typeof group?.name === "string" && group.name.trim()
+      ? group.name.trim()
+      : `導引線群組 ${String(index + 1).padStart(2, "0")}`,
+    memberIds,
+    createdAt: typeof group?.createdAt === "string" ? group.createdAt : now,
+    updatedAt: typeof group?.updatedAt === "string" ? group.updatedAt : now,
+  };
+}
+
+function normalizeGuideStructure(rawGuides, rawGuideGroups) {
+  const guides = (Array.isArray(rawGuides) ? rawGuides : []).map(normalizeGuide);
+  const validGuideIds = new Set(guides.map((guide) => guide.id));
+  const claimedGuideIds = new Set();
+  const guideGroups = (Array.isArray(rawGuideGroups) ? rawGuideGroups : [])
+    .map((group, index) => normalizeGuideGroup(group, index, validGuideIds))
+    .map((group) => ({
+      ...group,
+      memberIds: group.memberIds.filter((id) => {
+        if (claimedGuideIds.has(id)) return false;
+        claimedGuideIds.add(id);
+        return true;
+      }),
+    }))
+    .filter((group) => group.memberIds.length >= 2);
+  const membership = new Map();
+  guideGroups.forEach((group) => group.memberIds.forEach((id) => membership.set(id, group.id)));
+  return {
+    guides: guides.map((guide) => ({
+      ...guide,
+      groupId: membership.get(guide.id) || null,
+    })),
+    guideGroups,
+  };
+}
+
+export function createGuideGroup(memberIds, overrides = {}) {
+  const now = overrides.createdAt || new Date().toISOString();
+  return {
+    id: overrides.id || createId("guide-group"),
+    name: overrides.name || "新導引線群組",
+    memberIds: [...new Set((memberIds || []).filter((id) => typeof id === "string" && id))],
+    createdAt: now,
+    updatedAt: overrides.updatedAt || now,
   };
 }
 
@@ -468,6 +522,16 @@ export function selectionIdsForObject(board, objectId, options = {}) {
   return [objectId];
 }
 
+export function selectionIdsForGuide(board, guideId, options = {}) {
+  if (board?.guidesLocked) return [];
+  const guide = board?.guides?.find((item) => item.id === guideId);
+  if (!guide || guide.locked) return [];
+  if (options.penetrate || !guide.groupId) return [guideId];
+  const group = board?.guideGroups?.find((item) => item.id === guide.groupId);
+  if (!group?.memberIds?.length) return [guideId];
+  return group.memberIds.filter((id) => board.guides.some((item) => item.id === id && !item.locked));
+}
+
 export function selectionAspectLocked(board, objectIds = []) {
   const ids = [...new Set(objectIds)].filter((id) => typeof id === "string" && id);
   if (!ids.length) return false;
@@ -487,9 +551,12 @@ export function compactBoardStructure(board) {
     .map((group, index) => normalizeGroup(group, index, validIds))
     .filter((group) => group.memberIds.length >= 2);
   const groupIds = new Set(groups.map((group) => group.id));
+  const { guides, guideGroups } = normalizeGuideStructure(board?.guides, board?.guideGroups);
   return {
     ...board,
     groups,
+    guideGroups,
+    guides,
     objects: objects.map((object) => ({
       ...object,
       groupId: groupIds.has(object.groupId) ? object.groupId : null,
@@ -580,6 +647,7 @@ export function ensureBoard(value) {
     .map((group, index) => normalizeGroup(group, index, validObjectIds))
     .filter((group) => group.memberIds.length >= 2);
   const groupIds = new Set(groups.map((group) => group.id));
+  const { guides, guideGroups } = normalizeGuideStructure(value.guides, value.guideGroups);
   return {
     ...base,
     ...value,
@@ -599,7 +667,8 @@ export function ensureBoard(value) {
       annotationTargetIds: object.annotationTargetIds.filter((id) => validObjectIds.has(id)),
     })),
     groups,
-    guides: Array.isArray(value.guides) ? value.guides.map(normalizeGuide) : [],
+    guides,
+    guideGroups,
     guidesLocked: Boolean(value.guidesLocked),
     rulerOrigin: {
       x: finiteNumber(value.rulerOrigin?.x, 0),

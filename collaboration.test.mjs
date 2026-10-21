@@ -120,13 +120,20 @@ test("collaboration keeps global and individual guide locks with the shared boar
     ...sampleBoard(),
     guidesLocked: true,
     rulerOrigin: { x: 24, y: -12 },
-    guides: [{ id: "guide-locked", axis: "x", position: 144, locked: true }],
+    guides: [
+      { id: "guide-locked", axis: "x", position: 144, locked: true, groupId: "guide-group-a" },
+      { id: "guide-open", axis: "y", position: 240, locked: false, groupId: "guide-group-a" },
+    ],
+    guideGroups: [{ id: "guide-group-a", name: "Shared guides", memberIds: ["guide-locked", "guide-open"] }],
   };
   const document = createCollaborationDocument(board);
   const restored = readBoardFromCollaborationDocument(document, board);
   assert.equal(restored.guidesLocked, true);
   assert.deepEqual(restored.rulerOrigin, { x: 24, y: -12 });
-  assert.deepEqual(restored.guides, [{ id: "guide-locked", axis: "x", position: 144, locked: true }]);
+  assert.deepEqual(restored.guides, board.guides);
+  assert.deepEqual(restored.guideGroups.map((group) => ({ id: group.id, name: group.name, memberIds: group.memberIds })), [
+    { id: "guide-group-a", name: "Shared guides", memberIds: ["guide-locked", "guide-open"] },
+  ]);
   document.destroy();
 });
 

@@ -1,8 +1,8 @@
 {
   "product": "Infinite Moodboard",
   "channel": "stable",
-  "version": "0.43.0",
+  "version": "0.44.0",
   "releasedAt": "2026-10-21",
-  "summary": "改善工作區操作：Guide Line 的 px 與 mm 單位改用可感知的整數刻度吸附；Header 與主要工具列收斂為一致的圖示操作；Google Drive 可在重新整理後安全嘗試恢復既有授權，不儲存存取權杖。",
+  "summary": "Guide Line 現在有獨立且固定置頂的特殊圖層，可多選、群組、批次移動、鎖定與刪除；鎖定後不會被選取，且不會混入一般物件的變形或輸出。導引線群組可隨 Moodboard 與協作資料安全保存。",
   "url": "https://moodboard.petfashion.tw/"
 }

@@ -83,6 +83,9 @@ test("workspace search, ruler, and shortcut copy is localized", () => {
   assert.equal(translateInterfaceText("垂直導引線 24 px；已鎖定", "en"), "Vertical guide 24 px; locked");
   assert.equal(translateInterfaceText("水平導引線 12 mm；目前僅檢視", "en"), "Horizontal guide 12 mm; view-only");
   assert.equal(translateInterfaceText("已刪除輔助導引線", "en"), "Guide deleted");
+  assert.equal(translateInterfaceText("輔助導引線，顯示於所有物件上方", "en"), "Guides, shown above all objects");
+  assert.equal(translateInterfaceText("至少選取 2 條未鎖定的導引線才能建立群組。", "en"), "Select at least 2 unlocked guides to create a group.");
+  assert.equal(translateInterfaceText("導引線群組 01", "en"), "Guide group 01");
   assert.equal(translateInterfaceText("目前為僅檢視；無法刪除輔助導引線。", "en"), "This board is view-only. Guides cannot be deleted.");
   assert.equal(translateInterfaceText("平移工具 Shift+H（按住 Shift 可暫時選取）", "en"), "Hand tool Shift+H (hold Shift to select temporarily)");
   assert.equal(translateInterfaceText("平移工具 Shift+H（按住 Space 可暫時使用；按住 Shift 可暫時選取）；連按兩下回到 100%", "en"), "Hand tool Shift+H (hold Space to use temporarily; hold Shift to select temporarily); double-click or double-tap to return to 100%");
