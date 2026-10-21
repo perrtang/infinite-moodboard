@@ -19,3 +19,16 @@ test("Drive status remains a compact accessible action on narrow screens", () =>
   assert.match(styles, /\.topbar-cloud-status:focus-visible \{[\s\S]*outline: 2px solid var\(--accent-strong\);/);
   assert.match(styles, /\.mobile-topbar-more-button,[\s\S]*\.topbar-cloud-status \{[\s\S]*min-height: 44px;[\s\S]*min-width: 44px;/);
 });
+
+test("a confirmed upload stops the spinner before optional Drive metadata refresh", () => {
+  const syncedStateIndex = main.indexOf('const syncedAt = new Date().toISOString();');
+  const backgroundRefreshIndex = main.indexOf("void Promise.all([", syncedStateIndex);
+  assert.ok(syncedStateIndex > -1);
+  assert.ok(backgroundRefreshIndex > syncedStateIndex);
+  assert.match(main.slice(syncedStateIndex, backgroundRefreshIndex), /status: asCopy \? \(current\.conflict \? "conflict" : "ready"\) : "synced"[\s\S]*busy: false/);
+});
+
+test("autosync waits while Drive is busy and retries recoverable errors on the queued deadline", () => {
+  assert.match(main, /if \(driveSession\.status === "error"\) \{[\s\S]*currentSyncJob[\s\S]*nextAttemptAt[\s\S]*saveBoardToGoogleDrive\(\{ silent: true \}\);/);
+  assert.match(main, /if \(driveSession\.busy \|\| \["checking", "connecting", "syncing", "quota"\]\.includes\(driveSession\.status\)\) return undefined;/);
+});

@@ -11,6 +11,8 @@ const DRIVE_API_ROOT = "https://www.googleapis.com/drive/v3";
 const DRIVE_UPLOAD_ROOT = "https://www.googleapis.com/upload/drive/v3";
 const GOOGLE_IDENTITY_SCRIPT = "https://accounts.google.com/gsi/client";
 const DEFAULT_QUOTA_SAFETY_BYTES = 64 * 1024;
+const DRIVE_REQUEST_TIMEOUT_MS = 20_000;
+const DRIVE_TRANSFER_TIMEOUT_MS = 120_000;
 export const MAX_RETAINED_DRIVE_REVISIONS = 24;
 
 let identityScriptPromise;
@@ -252,6 +254,7 @@ export function driveErrorMessage(error) {
   if (["authError", "invalidCredentials"].includes(reason) || error?.status === 401) return "Google Drive 授權已失效；請重新連結後再同步。";
   if (["insufficientPermissions", "forbidden"].includes(reason) || error?.status === 403) return "目前沒有權限存取這個 Google Drive 檔案。";
   if (["rateLimitExceeded", "userRateLimitExceeded"].includes(reason) || error?.status === 429) return "Google Drive 暫時忙碌；本機版本已保留，稍後會再同步。";
+  if (error?.code === "drive/timeout") return "Google Drive 回應逾時；本機版本已保留，請稍後再試。";
   if (error?.code === "drive/offline") return "目前離線；變更已保存在這台裝置，連線後可再同步。";
   if (error?.name === "AbortError" || error?.code === "drive/cancelled") return "Google Drive 操作已取消；本機版本未受影響。";
   return error?.message || "Google Drive 暫時無法使用；畫布仍保存在這台裝置。";
@@ -358,29 +361,68 @@ function googleApiError(payload, response) {
 async function driveRequest(accessToken, url, options = {}) {
   if (!accessToken) throw new DriveApiError("Google Drive 尚未連結。", { code: "drive/authorization", status: 401 });
   if (globalThis.navigator?.onLine === false) throw new DriveApiError("目前沒有網路連線。", { code: "drive/offline" });
-  const { includeResponse = false, ...fetchOptions } = options;
-  let response;
+  const {
+    includeResponse = false,
+    responseType = "json",
+    timeoutMs = DRIVE_REQUEST_TIMEOUT_MS,
+    signal: externalSignal,
+    ...fetchOptions
+  } = options;
+  const controller = new AbortController();
+  let timedOut = false;
+  let timeoutId = null;
+  const abortFromCaller = () => {
+    if (timeoutId !== null) globalThis.clearTimeout(timeoutId);
+    controller.abort(externalSignal?.reason);
+  };
+  if (externalSignal?.aborted) abortFromCaller();
+  else externalSignal?.addEventListener("abort", abortFromCaller, { once: true });
+  if (!controller.signal.aborted) {
+    timeoutId = globalThis.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, Math.max(1, Number(timeoutMs) || DRIVE_REQUEST_TIMEOUT_MS));
+  }
   try {
-    response = await fetch(url, {
+    const response = await fetch(url, {
       ...fetchOptions,
       headers: {
         Authorization: `Bearer ${accessToken}`,
         ...(fetchOptions.headers || {}),
       },
+      signal: controller.signal,
     });
+    if (response.status === 204) return null;
+    let payload = null;
+    try {
+      payload = response.ok && responseType === "text"
+        ? await response.text()
+        : await response.json();
+    } catch (error) {
+      if (timedOut || error?.name === "AbortError") throw error;
+    }
+    if (!response.ok) throw googleApiError(payload, response);
+    return includeResponse ? { payload, response } : payload;
   } catch (error) {
+    if (timedOut) {
+      throw new DriveApiError("Google Drive 回應逾時；本機版本已保留，請稍後再試。", {
+        code: "drive/timeout",
+        reason: "timeout",
+        details: error,
+      });
+    }
     if (error?.name === "AbortError") throw error;
+    if (error instanceof DriveApiError) throw error;
     throw new DriveApiError(error?.message || "無法連線 Google Drive。", { code: "drive/network", details: error });
+  } finally {
+    if (timeoutId !== null) globalThis.clearTimeout(timeoutId);
+    externalSignal?.removeEventListener("abort", abortFromCaller);
   }
-  if (response.status === 204) return null;
-  const payload = await response.json().catch(() => null);
-  if (!response.ok) throw googleApiError(payload, response);
-  return includeResponse ? { payload, response } : payload;
 }
 
-export async function getGoogleDriveAbout(accessToken) {
+export async function getGoogleDriveAbout(accessToken, options = {}) {
   const fields = "storageQuota,user(displayName,emailAddress,photoLink)";
-  const result = await driveRequest(accessToken, `${DRIVE_API_ROOT}/about?fields=${encodeURIComponent(fields)}`);
+  const result = await driveRequest(accessToken, `${DRIVE_API_ROOT}/about?fields=${encodeURIComponent(fields)}`, options);
   return {
     quota: normalizeDriveQuota(result?.storageQuota),
     user: {
@@ -520,27 +562,20 @@ async function getGoogleDriveFileState(accessToken, fileId, { signal } = {}) {
   };
 }
 
-export async function downloadGoogleDriveMoodboard(accessToken, fileId, { revisionId = "", signal } = {}) {
-  if (!accessToken) throw new DriveApiError("Google Drive 尚未連結。", { code: "drive/authorization", status: 401 });
+export async function downloadGoogleDriveMoodboard(accessToken, fileId, {
+  revisionId = "",
+  signal,
+  timeoutMs = DRIVE_TRANSFER_TIMEOUT_MS,
+} = {}) {
   const encodedFileId = encodeURIComponent(fileId);
   const endpoint = revisionId
     ? `${DRIVE_API_ROOT}/files/${encodedFileId}/revisions/${encodeURIComponent(revisionId)}?alt=media`
     : `${DRIVE_API_ROOT}/files/${encodedFileId}?alt=media`;
-  let response;
-  try {
-    response = await fetch(endpoint, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-      signal,
-    });
-  } catch (error) {
-    if (error?.name === "AbortError") throw error;
-    throw new DriveApiError(error?.message || "無法下載 Google Drive 檔案。", { code: "drive/network", details: error });
-  }
-  if (!response.ok) {
-    const payload = await response.json().catch(() => null);
-    throw googleApiError(payload, response);
-  }
-  return response.text();
+  return driveRequest(accessToken, endpoint, {
+    signal,
+    timeoutMs,
+    responseType: "text",
+  });
 }
 
 export async function uploadGoogleDriveMoodboard(accessToken, {
@@ -618,6 +653,7 @@ export async function uploadGoogleDriveMoodboard(accessToken, {
       headers: remoteState?.etag ? { "If-Match": remoteState.etag } : undefined,
       body: form,
       signal,
+      timeoutMs: DRIVE_TRANSFER_TIMEOUT_MS,
     });
   } catch (error) {
     if (error?.code === "drive/conflict" || error?.status === 412) throw new DriveConflictError(remoteState?.file || existingFile);

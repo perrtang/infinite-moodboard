@@ -188,6 +188,7 @@ export function driveErrorMessage(error) {
   if (["authError", "invalidCredentials"].includes(reason) || error?.status === 401) return "Google Drive 授權已失效；請重新連結後再同步。";
   if (["insufficientPermissions", "forbidden"].includes(reason) || error?.status === 403) return "目前沒有權限存取這個 Google Drive 檔案。";
   if (["rateLimitExceeded", "userRateLimitExceeded"].includes(reason) || error?.status === 429) return "Google Drive 暫時忙碌；本機版本已保留，稍後會再同步。";
+  if (error?.code === "drive/timeout") return "Google Drive 回應逾時；本機版本已保留，請稍後再試。";
   if (error?.code === "drive/offline") return "目前離線；變更已保存在這台裝置，連線後可再同步。";
   if (error?.name === "AbortError" || error?.code === "drive/cancelled") return "Google Drive 操作已取消；本機版本未受影響。";
   return error?.message || "Google Drive 暫時無法使用；畫布仍保存在這台裝置。";

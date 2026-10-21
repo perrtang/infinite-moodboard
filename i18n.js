@@ -1178,6 +1178,7 @@ const EN_EXACT = Object.freeze({
   "Google Drive 授權已失效；請重新連結後再同步。": "Google Drive authorization expired. Reconnect before syncing.",
   "目前沒有權限存取這個 Google Drive 檔案。": "You do not have permission to access this Google Drive file.",
   "Google Drive 暫時忙碌；本機版本已保留，稍後會再同步。": "Google Drive is temporarily busy. The local version is safe; try syncing again later.",
+  "Google Drive 回應逾時；本機版本已保留，請稍後再試。": "Google Drive timed out. The local version is safe; try again later.",
   "目前離線；變更已保存在這台裝置，連線後可再同步。": "You are offline. Changes are saved on this device and can sync after reconnecting.",
   "Google Drive 暫時無法使用；畫布仍保存在這台裝置。": "Google Drive is temporarily unavailable. The Moodboard remains saved on this device.",
   "目前環境無法載入 Google Drive 授權。": "Google Drive authorization cannot load in this environment.",

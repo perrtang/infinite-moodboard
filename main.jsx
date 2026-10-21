@@ -10022,24 +10022,31 @@ function App() {
           updateDriveSettings((current) => linkDriveFile({ ...current, enabled: true, folderId }, snapshot, savedFile));
           setBoardPrimaryStorage(snapshot.id, "drive");
         }
-        const [postAbout, files] = await Promise.all([
-          getGoogleDriveAbout(accessToken).catch(() => about),
-          listGoogleDriveMoodboards(accessToken, folderId).catch(() => null),
-        ]);
-        assertCurrentOperation();
+        const syncedAt = new Date().toISOString();
         setDriveSession((current) => ({
           ...current,
           status: asCopy ? (current.conflict ? "conflict" : "ready") : "synced",
           connected: true,
           busy: false,
           message: asCopy ? "已儲存新的 Drive 檔案；目前編輯內容與原 Drive 檔案仍分開保留。" : `已同步 ${formatTime(savedFile.modifiedTime || new Date().toISOString())}`,
-          quota: postAbout.quota,
-          user: postAbout.user,
-          files: files || current.files,
+          quota: about.quota,
+          user: about.user,
           conflict: asCopy ? current.conflict : null,
           conflictActionError: "",
-          lastSyncedAt: asCopy ? current.lastSyncedAt : new Date().toISOString(),
+          lastSyncedAt: asCopy ? current.lastSyncedAt : syncedAt,
         }));
+        void Promise.all([
+          getGoogleDriveAbout(accessToken).catch(() => about),
+          listGoogleDriveMoodboards(accessToken, folderId).catch(() => null),
+        ]).then(([postAbout, files]) => {
+          if (operationEpoch !== driveOperationEpochRef.current) return;
+          setDriveSession((current) => ({
+            ...current,
+            quota: postAbout.quota,
+            user: postAbout.user,
+            files: files || current.files,
+          }));
+        });
         if (!asCopy) await removeSyncJob(snapshot.id);
         await refreshLocalLibrarySummary();
         if (!asCopy && boardRef.current.revision === snapshot.revision && boardRef.current.updatedAt === snapshot.updatedAt) setDirty(false);
@@ -10407,6 +10414,16 @@ function App() {
       setDriveSession((current) => ({ ...current, status: "offline", busy: false, message: "目前離線；最新變更已先保存在這台裝置。" }));
       return undefined;
     }
+    if (driveSession.status === "error") {
+      const currentSyncJob = syncJobs.find((job) => String(job.boardId || job.id) === String(board.id));
+      const retryAt = Date.parse(currentSyncJob?.nextAttemptAt || "");
+      if (!Number.isFinite(retryAt)) return undefined;
+      driveSyncTimerRef.current = window.setTimeout(() => {
+        saveBoardToGoogleDrive({ silent: true });
+      }, Math.max(0, retryAt - Date.now()));
+      return () => window.clearTimeout(driveSyncTimerRef.current);
+    }
+    if (driveSession.busy || ["checking", "connecting", "syncing", "quota"].includes(driveSession.status)) return undefined;
     if (!currentDriveAccessToken()) {
       if (["checking", "connecting"].includes(driveSession.status)) return undefined;
       setDriveSession((current) => ({ ...current, status: "authorization-required", connected: false, busy: false, message: "重新連結 Drive 後會繼續同步；本機變更不會遺失。" }));
@@ -10417,7 +10434,7 @@ function App() {
       saveBoardToGoogleDrive({ silent: true });
     }, 6000);
     return () => window.clearTimeout(driveSyncTimerRef.current);
-  }, [authReady, board.revision, board.updatedAt, currentDriveAccessToken, currentDriveLink, currentPrimaryStorageTarget, driveSession.conflict, driveSession.status, driveSettings.autoSync, driveSettings.enabled, hydrated, online, saveBoardToGoogleDrive, storagePreferences.autoSave]);
+  }, [authReady, board.id, board.revision, board.updatedAt, currentDriveAccessToken, currentDriveLink, currentPrimaryStorageTarget, driveSession.busy, driveSession.conflict, driveSession.status, driveSettings.autoSync, driveSettings.enabled, hydrated, online, saveBoardToGoogleDrive, storagePreferences.autoSave, syncJobs]);
 
   const exportBrowserHtml = useCallback(async () => {
     try {

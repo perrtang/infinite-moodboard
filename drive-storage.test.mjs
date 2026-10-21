@@ -8,6 +8,7 @@ import {
   enforceGoogleDriveRevisionRetention,
   ensureGoogleDriveFolder,
   evaluateDriveQuota,
+  getGoogleDriveAbout,
   linkDriveFile,
   listGoogleDriveRevisions,
   loadDriveState,
@@ -209,6 +210,54 @@ test("connecting to Drive can discover storage without creating a folder", async
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("Drive requests time out instead of leaving synchronization pending forever", async (t) => {
+  const originalFetch = globalThis.fetch;
+  let aborted = false;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  globalThis.fetch = async (_url, options = {}) => new Promise((_resolve, reject) => {
+    options.signal.addEventListener("abort", () => {
+      aborted = true;
+      const error = new Error("aborted");
+      error.name = "AbortError";
+      reject(error);
+    }, { once: true });
+  });
+
+  await assert.rejects(
+    getGoogleDriveAbout("token", { timeoutMs: 10 }),
+    (error) => error.code === "drive/timeout" && /本機版本已保留/.test(error.message),
+  );
+  assert.equal(aborted, true);
+});
+
+test("Drive response body parsing shares the request timeout", async (t) => {
+  const originalFetch = globalThis.fetch;
+  let aborted = false;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  globalThis.fetch = async (_url, options = {}) => ({
+    status: 200,
+    ok: true,
+    json: () => new Promise((_resolve, reject) => {
+      options.signal.addEventListener("abort", () => {
+        aborted = true;
+        const error = new Error("aborted while reading body");
+        error.name = "AbortError";
+        reject(error);
+      }, { once: true });
+    }),
+  });
+
+  await assert.rejects(
+    getGoogleDriveAbout("token", { timeoutMs: 10 }),
+    (error) => error.code === "drive/timeout" && /本機版本已保留/.test(error.message),
+  );
+  assert.equal(aborted, true);
 });
 
 test("an updated remote file stops the upload before any overwrite", async () => {
@@ -542,4 +591,52 @@ test("downloads the exact head revision when a revision id is supplied", async (
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("Drive downloads time out while waiting for the response", async (t) => {
+  const originalFetch = globalThis.fetch;
+  let aborted = false;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  globalThis.fetch = async (_url, options = {}) => new Promise((_resolve, reject) => {
+    options.signal.addEventListener("abort", () => {
+      aborted = true;
+      const error = new Error("download aborted");
+      error.name = "AbortError";
+      reject(error);
+    }, { once: true });
+  });
+
+  await assert.rejects(
+    downloadGoogleDriveMoodboard("token", "file-1", { timeoutMs: 10 }),
+    (error) => error.code === "drive/timeout",
+  );
+  assert.equal(aborted, true);
+});
+
+test("Drive downloads keep the timeout active while reading file contents", async (t) => {
+  const originalFetch = globalThis.fetch;
+  let aborted = false;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  globalThis.fetch = async (_url, options = {}) => ({
+    ok: true,
+    status: 200,
+    text: () => new Promise((_resolve, reject) => {
+      options.signal.addEventListener("abort", () => {
+        aborted = true;
+        const error = new Error("download body aborted");
+        error.name = "AbortError";
+        reject(error);
+      }, { once: true });
+    }),
+  });
+
+  await assert.rejects(
+    downloadGoogleDriveMoodboard("token", "file-1", { timeoutMs: 10 }),
+    (error) => error.code === "drive/timeout",
+  );
+  assert.equal(aborted, true);
 });

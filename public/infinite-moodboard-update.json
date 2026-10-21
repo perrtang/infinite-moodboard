@@ -1,8 +1,8 @@
 {
   "product": "Infinite Moodboard",
   "channel": "stable",
-  "version": "0.46.0",
+  "version": "0.46.1",
   "releasedAt": "2026-10-22",
-  "summary": "新增目前 Moodboard 的專屬檢視連結與明確權限說明，並加入智慧對齊、相鄰距離提示、可收合圖層與可自訂的格點／格線外觀。",
+  "summary": "修正 Google Drive 同步請求可能永久顯示處理中的問題；逾時時會停止等待、保留本機版本並提供可重試狀態。",
   "url": "https://moodboard.petfashion.tw/"
 }
