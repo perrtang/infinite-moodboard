@@ -1,8 +1,8 @@
 {
   "product": "Infinite Moodboard",
   "channel": "stable",
-  "version": "0.39.0",
+  "version": "0.40.0",
   "releasedAt": "2026-10-21",
-  "summary": "素材檢視完整取代中央 Moodboard 編輯區，提供獨立的縮放、平移、符合視窗與 100% 檢視，返回後保留原本構圖視角。",
+  "summary": "修正 Space 暫時 Hand 的工具列狀態：只切換畫布行為與游標，不再改變 Select／Hand 按鈕的選取外觀，滑鼠操作也不會殘留鍵盤焦點框。",
   "url": "https://moodboard.petfashion.tw/"
 }

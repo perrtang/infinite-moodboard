@@ -26,6 +26,12 @@ Infinite Moodboard runs the canvas, imported media, transforms, exports, and ver
 - Optional Google Drive file storage and opt-in realtime collaboration with view/edit permission requests.
 - 3D, Drive, collaboration, and export runtimes are loaded only when used, keeping the opening bundle smaller.
 
+## v0.40.0 — quiet temporary-Hand release
+
+- Keeps the selected Select or Hand tool visually unchanged while Space temporarily pans the workspace.
+- Removes pointer-created focus outlines from primary canvas tools while retaining keyboard focus for Tab navigation.
+- Lets Space keep its native activation behavior when an actionable control has keyboard focus.
+
 ## v0.39.0 — immersive source-view release
 
 - Replaces the central Moodboard editing surface with a dedicated Source workspace while inspecting imported media.

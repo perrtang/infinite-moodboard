@@ -11396,6 +11396,7 @@ function App() {
   const onPrimaryCanvasToolClick = useCallback((event, nextTool) => {
     setTool(nextTool);
     if (event.detail === 0) return;
+    event.currentTarget.blur?.();
     const now = performance.now();
     const previousActivation = canvasToolTapRef.current[nextTool];
     const isRapidSecondActivation = event.detail >= 2
@@ -11560,6 +11561,7 @@ function App() {
         }
       }
       if (event.code === "Space") {
+        if (event.target?.closest?.("button, a, [role='button']")) return;
         event.preventDefault();
         if (!event.repeat) setSpaceDown(true);
         return;
@@ -12194,7 +12196,7 @@ function App() {
               <>
                 <div className="tool-group">
                   <IconButton label="選取工具 Shift+V；連按兩下顯示全部物件" active={tool === "select"} aria-pressed={tool === "select"} onClick={(event) => onPrimaryCanvasToolClick(event, "select")}><MousePointer2 size={18} /></IconButton>
-                  <IconButton label="平移工具 Shift+H（按住 Space 可暫時使用；按住 Shift 可暫時選取）；連按兩下回到 100%" active={tool === "hand" || spaceDown} aria-pressed={tool === "hand" || spaceDown} onClick={(event) => onPrimaryCanvasToolClick(event, "hand")}><Hand size={18} /></IconButton>
+                  <IconButton label="平移工具 Shift+H（按住 Space 可暫時使用；按住 Shift 可暫時選取）；連按兩下回到 100%" active={tool === "hand"} aria-pressed={tool === "hand"} onClick={(event) => onPrimaryCanvasToolClick(event, "hand")}><Hand size={18} /></IconButton>
                   <IconButton
                     label={authReady ? "進階 3D 旋轉工具 Shift+3（拖曳選取物件旋轉）" : "進階 3D 旋轉工具 Shift+3（需要登入）"}
                     active={tool === "3d"}
