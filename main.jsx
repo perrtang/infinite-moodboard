@@ -290,13 +290,16 @@ import {
   UI_FONT_FAMILY_PRESETS,
   UI_FONT_SIZE_PRESETS,
   UI_TYPOGRAPHY_STORAGE_KEY,
+  canvasBackgroundCssVariables,
   changeCanvasBackgroundMode,
   interfaceTypographyCssVariables,
   normalizeCanvasBackground,
   normalizeInterfaceTypography,
+  resetCanvasBackgroundAppearance,
   resolveInterfaceTypography,
   toggleCanvasBackgroundVisibility,
 } from "./ui-preferences.js";
+import { resolveSmartAlignment, selectionSpacingMeasurements } from "./alignment.js";
 import {
   APP_RELEASE_DATE,
   APP_UPDATE_ATTEMPT_STORAGE_KEY,
@@ -2712,6 +2715,10 @@ function LayersPanel({
   readOnly,
 }) {
   const [layerDrag, setLayerDrag] = useState(null);
+  const [guideLayerExpanded, setGuideLayerExpanded] = useState(false);
+  const [objectLayerExpanded, setObjectLayerExpanded] = useState(true);
+  const guideLayerContentId = useId();
+  const objectLayerContentId = useId();
   const search = useListSearch("layers");
   const query = search.query.trim().toLocaleLowerCase("zh-Hant");
   const objects = [...board.objects]
@@ -2762,6 +2769,11 @@ function LayersPanel({
   const selectedGuideGroup = (board.guideGroups || []).find((group) => (
     selectedGuideIds.length === group.memberIds.length && group.memberIds.every((id) => selectedGuideIds.includes(id))
   ));
+
+  useEffect(() => {
+    if (query || layerTypeFilter === "guide") setGuideLayerExpanded(true);
+    if (query || !["all", "guide"].includes(layerTypeFilter)) setObjectLayerExpanded(true);
+  }, [layerTypeFilter, query]);
 
   const startLayerDrag = (event, movingId) => {
     if (event.button !== 0) return;
@@ -2844,7 +2856,18 @@ function LayersPanel({
       {showGuideSection ? (
         <section className="guide-layer-section" aria-label="輔助導引線，顯示於所有物件上方">
           <div className="guide-layer-heading">
-            <div><Ruler size={16} aria-hidden="true" /><strong>輔助導引線</strong><small>{board.guides?.length || 0}</small></div>
+            <button
+              className="layer-section-disclosure"
+              type="button"
+              aria-expanded={guideLayerExpanded}
+              aria-controls={guideLayerContentId}
+              onClick={() => setGuideLayerExpanded((current) => !current)}
+            >
+              <ChevronDown className={guideLayerExpanded ? "" : "is-collapsed"} size={15} aria-hidden="true" />
+              <Ruler size={16} aria-hidden="true" />
+              <strong>輔助導引線</strong>
+              <small>{board.guides?.length || 0}</small>
+            </button>
             <IconButton
               label={board.guidesLocked ? "解除鎖定所有輔助導引線" : "鎖定所有輔助導引線"}
               active={Boolean(board.guidesLocked)}
@@ -2853,21 +2876,22 @@ function LayersPanel({
               onClick={onToggleGuidesLocked}
             >{board.guidesLocked ? <Lock size={15} /> : <Unlock size={15} />}</IconButton>
           </div>
-          <p className="guide-layer-helper">{guidesVisible ? "固定顯示於所有物件上方，不會輸出。" : "工作區目前隱藏；仍可在這裡管理，且不會輸出。"}</p>
-          {selectedGuideIds.length ? (
-            <div className="guide-layer-bulk-actions" role="toolbar" aria-label={`${selectedGuideIds.length} 條選取導引線批次操作`}>
-              <span><strong>{selectedGuideIds.length}</strong> 條選取</span>
-              <IconButton
-                label={selectedGuideGroup ? `解散「${selectedGuideGroup.name}」` : "將選取導引線建立群組"}
-                onClick={onToggleSelectedGuideGroup}
-                disabled={readOnly || board.guidesLocked || selectedGuideIds.length < 2}
-              >{selectedGuideGroup ? <X size={15} /> : <Layers3 size={15} />}</IconButton>
-              <IconButton label="鎖定選取導引線" onClick={onLockSelectedGuides} disabled={readOnly || board.guidesLocked}><Lock size={15} /></IconButton>
-              <IconButton className="danger-icon-button" label="刪除選取導引線" onClick={() => onDeleteGuides(selectedGuideIds)} disabled={readOnly || board.guidesLocked}><Trash2 size={15} /></IconButton>
-            </div>
-          ) : null}
-          {filteredGuideGroups.length ? (
-            <div className="guide-layer-group-list" aria-label="導引線群組">
+          <div className="guide-layer-content" id={guideLayerContentId} hidden={!guideLayerExpanded}>
+            <p className="guide-layer-helper">{guidesVisible ? "固定顯示於所有物件上方，不會輸出。" : "工作區目前隱藏；仍可在這裡管理，且不會輸出。"}</p>
+            {selectedGuideIds.length ? (
+              <div className="guide-layer-bulk-actions" role="toolbar" aria-label={`${selectedGuideIds.length} 條選取導引線批次操作`}>
+                <span><strong>{selectedGuideIds.length}</strong> 條選取</span>
+                <IconButton
+                  label={selectedGuideGroup ? `解散「${selectedGuideGroup.name}」` : "將選取導引線建立群組"}
+                  onClick={onToggleSelectedGuideGroup}
+                  disabled={readOnly || board.guidesLocked || selectedGuideIds.length < 2}
+                >{selectedGuideGroup ? <X size={15} /> : <Layers3 size={15} />}</IconButton>
+                <IconButton label="鎖定選取導引線" onClick={onLockSelectedGuides} disabled={readOnly || board.guidesLocked}><Lock size={15} /></IconButton>
+                <IconButton className="danger-icon-button" label="刪除選取導引線" onClick={() => onDeleteGuides(selectedGuideIds)} disabled={readOnly || board.guidesLocked}><Trash2 size={15} /></IconButton>
+              </div>
+            ) : null}
+            {filteredGuideGroups.length ? (
+              <div className="guide-layer-group-list" aria-label="導引線群組">
               {filteredGuideGroups.map((group) => {
                 const members = (board.guides || []).filter((guide) => group.memberIds.includes(guide.id));
                 const selectableIds = members.filter((guide) => !guide.locked).map((guide) => guide.id);
@@ -2882,10 +2906,10 @@ function LayersPanel({
                   </div>
                 );
               })}
-            </div>
-          ) : null}
-          {filteredGuides.length ? (
-            <div className="guide-layer-list" aria-label="導引線">
+              </div>
+            ) : null}
+            {filteredGuides.length ? (
+              <div className="guide-layer-list" aria-label="導引線">
               {filteredGuides.map((guide) => {
                 const selected = selectedGuideIds.includes(guide.id);
                 const origin = guide.axis === "x" ? Number(rulerOrigin?.x) || 0 : Number(rulerOrigin?.y) || 0;
@@ -2916,40 +2940,58 @@ function LayersPanel({
                   </div>
                 );
               })}
-            </div>
-          ) : (
-            <div className="guide-layer-empty"><span>{board.guides?.length ? "找不到符合的導引線" : "尚未建立導引線"}</span></div>
-          )}
+              </div>
+            ) : (
+              <div className="guide-layer-empty"><span>{board.guides?.length ? "找不到符合的導引線" : "尚未建立導引線"}</span></div>
+            )}
+          </div>
         </section>
       ) : null}
-      {selectedIds.length ? (
-        <div className="layer-bulk-actions" role="toolbar" aria-label={`${selectedIds.length} 個選取物件批次操作`}>
-          <span><strong>{selectedIds.length}</strong> 個選取</span>
-          <IconButton label="顯示選取物件" onClick={() => onSetSelectedVisibility(true)} disabled={visibleSelected === selectedIds.length}><Eye size={15} /></IconButton>
-          <IconButton label="隱藏選取物件" onClick={() => onSetSelectedVisibility(false)} disabled={!visibleSelected}><EyeOff size={15} /></IconButton>
-          <IconButton label="批次匯出每個選取物件" onClick={onExportSelected}><Download size={15} /></IconButton>
-          <IconButton label="將選取物件輸出為一張合成圖" onClick={onOutputSelected}><ImageDown size={15} /></IconButton>
-          <IconButton className="danger-icon-button" label="批次刪除選取物件" onClick={onDeleteSelected}><Trash2 size={15} /></IconButton>
-        </div>
-      ) : null}
-      {filteredGroups.length ? (
-        <div className="layer-group-list" aria-label="群組">
-          {filteredGroups.map((group) => {
-            const selected = group.memberIds.length > 0 && group.memberIds.every((id) => selectedIds.includes(id));
-            return (
-              <div className={`layer-group-row ${selected ? "is-selected" : ""}`} key={group.id}>
-                <button type="button" onClick={(event) => onSelectGroup(group.id, event.shiftKey)} aria-pressed={selected}>
-                  <Layers3 size={16} /><span data-l10n-ignore>{group.name}</span><small>{group.memberIds.length}</small>
-                </button>
-                <IconButton label={`解散「${group.name}」`} onClick={() => onUngroup(group.id)}><X size={14} /></IconButton>
+      {layerTypeFilter !== "guide" ? (
+        <section className="object-layer-section" aria-label="一般圖層">
+          <div className="object-layer-heading">
+            <button
+              className="layer-section-disclosure"
+              type="button"
+              aria-expanded={objectLayerExpanded}
+              aria-controls={objectLayerContentId}
+              onClick={() => setObjectLayerExpanded((current) => !current)}
+            >
+              <ChevronDown className={objectLayerExpanded ? "" : "is-collapsed"} size={15} aria-hidden="true" />
+              <Layers3 size={16} aria-hidden="true" />
+              <strong>一般圖層</strong>
+              <small>{board.objects.length}</small>
+            </button>
+          </div>
+          <div className="object-layer-content" id={objectLayerContentId} hidden={!objectLayerExpanded}>
+            {selectedIds.length ? (
+              <div className="layer-bulk-actions" role="toolbar" aria-label={`${selectedIds.length} 個選取物件批次操作`}>
+                <span><strong>{selectedIds.length}</strong> 個選取</span>
+                <IconButton label="顯示選取物件" onClick={() => onSetSelectedVisibility(true)} disabled={visibleSelected === selectedIds.length}><Eye size={15} /></IconButton>
+                <IconButton label="隱藏選取物件" onClick={() => onSetSelectedVisibility(false)} disabled={!visibleSelected}><EyeOff size={15} /></IconButton>
+                <IconButton label="批次匯出每個選取物件" onClick={onExportSelected}><Download size={15} /></IconButton>
+                <IconButton label="將選取物件輸出為一張合成圖" onClick={onOutputSelected}><ImageDown size={15} /></IconButton>
+                <IconButton className="danger-icon-button" label="批次刪除選取物件" onClick={onDeleteSelected}><Trash2 size={15} /></IconButton>
               </div>
-            );
-          })}
-        </div>
-      ) : null}
-      {objects.length ? (
-        <div className="layer-list">
-          {objects.map((object) => {
+            ) : null}
+            {filteredGroups.length ? (
+              <div className="layer-group-list" aria-label="群組">
+                {filteredGroups.map((group) => {
+                  const selected = group.memberIds.length > 0 && group.memberIds.every((id) => selectedIds.includes(id));
+                  return (
+                    <div className={`layer-group-row ${selected ? "is-selected" : ""}`} key={group.id}>
+                      <button type="button" onClick={(event) => onSelectGroup(group.id, event.shiftKey)} aria-pressed={selected}>
+                        <Layers3 size={16} /><span data-l10n-ignore>{group.name}</span><small>{group.memberIds.length}</small>
+                      </button>
+                      <IconButton label={`解散「${group.name}」`} onClick={() => onUngroup(group.id)}><X size={14} /></IconButton>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+            {objects.length ? (
+              <div className="layer-list">
+                {objects.map((object) => {
             const selected = selectedIds.includes(object.id);
             const groupName = object.groupId ? groupNames.get(object.groupId) : "";
             const dropBefore = layerDrag?.targetId === object.id && layerDrag.placement === "before";
@@ -3023,20 +3065,23 @@ function LayersPanel({
                 {dropAfter ? renderPlaceholder("after") : null}
               </React.Fragment>
             );
-          })}
-          <span className="sr-only" aria-live="polite">
-            {layerDrag?.targetId
-              ? `將「${layerDrag.name}」放在「${objects.find((object) => object.id === layerDrag.targetId)?.layerName || "目標圖層"}」${layerDrag.placement === "before" ? "上方" : "下方"}`
-              : ""}
-          </span>
-        </div>
-      ) : layerTypeFilter !== "guide" ? (
-        <div className="panel-empty">
-          <Layers3 size={24} />
-          <strong>{board.objects.length ? "找不到符合的圖層" : "還沒有圖層"}</strong>
-          <p>{board.objects.length ? "保留搜尋內容，調整關鍵字或清除搜尋。" : "加入文字、形狀或素材後，每個物件會自動建立自己的圖層。"}</p>
-          {query ? <button type="button" className="text-button" onClick={() => search.setQuery("")}>清除搜尋</button> : null}
-        </div>
+                })}
+                <span className="sr-only" aria-live="polite">
+                  {layerDrag?.targetId
+                    ? `將「${layerDrag.name}」放在「${objects.find((object) => object.id === layerDrag.targetId)?.layerName || "目標圖層"}」${layerDrag.placement === "before" ? "上方" : "下方"}`
+                    : ""}
+                </span>
+              </div>
+            ) : (
+              <div className="panel-empty">
+                <Layers3 size={24} />
+                <strong>{board.objects.length ? "找不到符合的圖層" : "還沒有圖層"}</strong>
+                <p>{board.objects.length ? "保留搜尋內容，調整關鍵字或清除搜尋。" : "加入文字、形狀或素材後，每個物件會自動建立自己的圖層。"}</p>
+                {query ? <button type="button" className="text-button" onClick={() => search.setQuery("")}>清除搜尋</button> : null}
+              </div>
+            )}
+          </div>
+        </section>
       ) : null}
     </div>
   );
@@ -4593,6 +4638,74 @@ function SelectionGroupOverlay({
   );
 }
 
+function SelectionSpacingOverlay({ measurements, view, unit }) {
+  if (!measurements?.length) return null;
+  return (
+    <div className="selection-spacing-overlay" aria-hidden="true">
+      {measurements.map((measurement) => {
+        const start = {
+          x: view.x + measurement.start.x * view.zoom,
+          y: view.y + measurement.start.y * view.zoom,
+        };
+        const end = {
+          x: view.x + measurement.end.x * view.zoom,
+          y: view.y + measurement.end.y * view.zoom,
+        };
+        const horizontal = measurement.direction === "left" || measurement.direction === "right";
+        const style = horizontal
+          ? {
+              left: Math.min(start.x, end.x),
+              top: start.y,
+              width: Math.max(1, Math.abs(end.x - start.x)),
+            }
+          : {
+              left: start.x,
+              top: Math.min(start.y, end.y),
+              height: Math.max(1, Math.abs(end.y - start.y)),
+            };
+        return (
+          <div
+            className={`selection-spacing-measurement is-${horizontal ? "horizontal" : "vertical"}`}
+            style={style}
+            key={`${measurement.direction}-${measurement.objectId}`}
+          >
+            <span>{formatGuideValue(measurement.distance, unit)}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function SmartAlignmentOverlay({ guides, view }) {
+  if (!guides?.length) return null;
+  return (
+    <div className="smart-alignment-overlay" aria-hidden="true">
+      {guides.map((guide) => {
+        const vertical = guide.axis === "x";
+        const style = vertical
+          ? {
+              left: view.x + guide.position * view.zoom,
+              top: view.y + guide.start * view.zoom,
+              height: Math.max(1, (guide.end - guide.start) * view.zoom),
+            }
+          : {
+              left: view.x + guide.start * view.zoom,
+              top: view.y + guide.position * view.zoom,
+              width: Math.max(1, (guide.end - guide.start) * view.zoom),
+            };
+        return (
+          <span
+            className={`smart-alignment-guide is-${vertical ? "vertical" : "horizontal"} ${guide.snapped ? "is-snapped" : "is-preview"}`}
+            style={style}
+            key={`${guide.axis}-${guide.position}-${guide.objectId}`}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 function FilterStage({ objects, selectedIds, onSelect, onClear, filters }) {
   const [viewMode, setViewMode] = useState("grid");
   const [slideIndex, setSlideIndex] = useState(0);
@@ -5909,7 +6022,7 @@ function CollaborationModal({
   }, [initialInvite]);
 
   return (
-    <Modal title="分享與共同編輯" description="建立分享連結後，收到連結的人登入即可檢視這份 Moodboard，並可向你申請編輯。" onClose={onClose} wide>
+    <Modal title="分享與共同編輯" description="網址列只代表 App；請從這裡複製目前 Moodboard 的專屬連結。" onClose={onClose} wide>
       <section className={`cloud-collaboration-panel is-${cloud.status}`} aria-live="polite">
         {cloudConnected ? (
           <>
@@ -5922,21 +6035,21 @@ function CollaborationModal({
                 <div className="collaboration-share-summary">
                   <span className="collaboration-permission-icon" aria-hidden="true"><Share2 size={18} /></span>
                   <div>
-                    <strong id="collaboration-share-link-title">分享連結</strong>
-                    <small>任何持有連結且已登入的用戶都能檢視；編輯仍需由你核准。</small>
+                    <strong id="collaboration-share-link-title">專屬檢視連結</strong>
+                    <small>同事完成 Email 驗證登入後可檢視這份 Moodboard；只有提出申請並由你核准後才能編輯。</small>
                   </div>
                 </div>
                 <label className="collaboration-invite-field">
-                  <span>目前 Moodboard 的分享連結</span>
+                  <span>目前 Moodboard 的專屬檢視連結</span>
                   <div>
                     <input
                       value={cloud.inviteUrl || ""}
                       readOnly
                       data-l10n-ignore
-                      aria-label="目前 Moodboard 的分享連結"
+                      aria-label="目前 Moodboard 的專屬檢視連結"
                       onFocus={(event) => event.currentTarget.select()}
                     />
-                    <button className="primary-button" type="button" onClick={onCopyInvite} disabled={!cloud.inviteUrl}><Copy size={16} />複製分享連結</button>
+                    <button className="primary-button" type="button" onClick={onCopyInvite} disabled={!cloud.inviteUrl}><Copy size={16} />複製檢視連結</button>
                   </div>
                 </label>
                 <p className="collaboration-share-note"><History size={14} />分享連結自建立起 30 天內有效；已加入的成員可繼續使用。</p>
@@ -6027,7 +6140,7 @@ function CollaborationModal({
           <>
             <div className="cloud-collaboration-choice">
               <div><strong>分享目前 Moodboard</strong><small>會先建立可復原的本機版本，再上傳這一份 Moodboard 的共編資料。</small></div>
-              <button className="primary-button" type="button" onClick={onCreateRoom} disabled={cloudBusy}><Share2 size={16} />{cloud.status === "creating" ? "建立中…" : "建立分享連結"}</button>
+              <button className="primary-button" type="button" onClick={onCreateRoom} disabled={cloudBusy}><Share2 size={16} />{cloud.status === "creating" ? "建立中…" : "建立專屬檢視連結"}</button>
             </div>
             <details className="collaboration-member-management collaboration-join-options" open={Boolean(initialInvite || cloud.status === "error")}>
               <summary><Share2 size={15} />加入別人分享的 Moodboard</summary>
@@ -6050,7 +6163,7 @@ function CollaborationModal({
       </details>
       <div className="architecture-note">
         <strong>分享、儲存與隱私</strong>
-        <p>分享只會上傳目前這一份 Moodboard；Google Drive 的儲存與同步仍在「我的 Moodboards」管理，兩者不是同一個連結。網路中斷時，變更會先留在這台裝置，恢復連線後再合併。</p>
+        <p>分享只會上傳目前這一份 Moodboard；Google Drive 的儲存與同步仍在「我的 Moodboards」管理，兩者不是同一個連結。App 首頁網址不包含作品內容，也不代表編輯權限。網路中斷時，變更會先留在這台裝置，恢復連線後再合併。</p>
       </div>
     </Modal>
   );
@@ -6130,6 +6243,8 @@ function SettingsModal({
   rulerUnit,
   onSetMode,
   onSetCanvasBackground,
+  onUpdateCanvasBackground,
+  onResetCanvasBackground,
   onSetLocale,
   onSetTypography,
   onResetTypography,
@@ -6167,6 +6282,7 @@ function SettingsModal({
   const [customFontDraft, setCustomFontDraft] = useState(typography.customFamily || "");
   const providerStates = moodboardProviderStates(accountUser)
     .filter((provider) => provider.public || (enableProviderTesting && provider.testable));
+  const canvasBackgroundPreviewStyle = canvasBackgroundCssVariables(canvasBackground);
 
   useEffect(() => {
     setCustomFontDraft(typography.customFamily || "");
@@ -6517,11 +6633,60 @@ function SettingsModal({
                     onClick={() => onSetCanvasBackground(option.id)}
                     key={option.id}
                   >
-                    <span className={`canvas-background-preview is-${option.id}`} aria-hidden="true" />
+                    <span className={`canvas-background-preview is-${option.id}`} style={canvasBackgroundPreviewStyle} aria-hidden="true" />
                     <span><strong>{option.label}</strong><small>{option.detail}</small></span>
                     {canvasBackground.mode === option.id ? <Check size={15} aria-hidden="true" /> : null}
                   </button>
                 ))}
+              </div>
+              <div className="settings-canvas-appearance" aria-label="格點與格線外觀">
+                <div className="settings-canvas-appearance-row">
+                  <span className="canvas-background-preview is-dots" style={canvasBackgroundPreviewStyle} aria-hidden="true" />
+                  <span><strong>格點</strong><small>調整工作區格點的色彩與不透明度。</small></span>
+                  <input
+                    type="color"
+                    value={canvasBackground.dotsColor}
+                    onChange={(event) => onUpdateCanvasBackground({ dotsColor: event.target.value })}
+                    aria-label="格點色彩"
+                  />
+                  <span className="settings-canvas-opacity-control">
+                    <input
+                      type="range"
+                      min="0.1"
+                      max="1"
+                      step="0.05"
+                      value={canvasBackground.dotsOpacity}
+                      onChange={(event) => onUpdateCanvasBackground({ dotsOpacity: Number(event.target.value) })}
+                      aria-label="格點不透明度"
+                    />
+                    <output>{`${Math.round(canvasBackground.dotsOpacity * 100)}%`}</output>
+                  </span>
+                </div>
+                <div className="settings-canvas-appearance-row">
+                  <span className="canvas-background-preview is-lines" style={canvasBackgroundPreviewStyle} aria-hidden="true" />
+                  <span><strong>格線</strong><small>調整工作區格線的色彩與不透明度。</small></span>
+                  <input
+                    type="color"
+                    value={canvasBackground.linesColor}
+                    onChange={(event) => onUpdateCanvasBackground({ linesColor: event.target.value })}
+                    aria-label="格線色彩"
+                  />
+                  <span className="settings-canvas-opacity-control">
+                    <input
+                      type="range"
+                      min="0.1"
+                      max="1"
+                      step="0.05"
+                      value={canvasBackground.linesOpacity}
+                      onChange={(event) => onUpdateCanvasBackground({ linesOpacity: Number(event.target.value) })}
+                      aria-label="格線不透明度"
+                    />
+                    <output>{`${Math.round(canvasBackground.linesOpacity * 100)}%`}</output>
+                  </span>
+                </div>
+                <button className="quiet-button settings-canvas-reset" type="button" onClick={onResetCanvasBackground}>
+                  <RotateCcw size={15} />恢復格點與格線預設
+                </button>
               </div>
               <p className="settings-shortcut-note">格點與格線會跟隨目前的尺規單位、原點與縮放比例。</p>
               <p className="settings-shortcut-note">Shift + ' ：隱藏或顯示，重新顯示會回到上次的格點或格線。</p>
@@ -6863,6 +7028,7 @@ function App() {
   const [resizeGesture, setResizeGesture] = useState(null);
   const [textFrameGesture, setTextFrameGesture] = useState(null);
   const [micro3DGesture, setMicro3DGesture] = useState(null);
+  const [smartAlignmentGuides, setSmartAlignmentGuides] = useState([]);
   const [editingText, setEditingText] = useState(null);
   const [loadedTextFlow, setLoadedTextFlow] = useState(null);
   const [localFontOptions, setLocalFontOptions] = useState([]);
@@ -6983,11 +7149,14 @@ function App() {
     originX: board.rulerOrigin?.x,
     originY: board.rulerOrigin?.y,
   }), [board.rulerOrigin?.x, board.rulerOrigin?.y, rulerUnit, view.x, view.y, view.zoom]);
-  const canvasGridStyle = canvasBackground.mode === "hidden" ? undefined : {
-    "--canvas-grid-major-step": `${canvasGridMetrics.majorScreenStep}px`,
-    "--canvas-grid-minor-step": `${canvasGridMetrics.minorScreenStep}px`,
-    "--canvas-grid-origin-x": `${canvasGridMetrics.screenOriginX}px`,
-    "--canvas-grid-origin-y": `${canvasGridMetrics.screenOriginY}px`,
+  const canvasGridStyle = {
+    ...canvasBackgroundCssVariables(canvasBackground),
+    ...(canvasBackground.mode === "hidden" ? {} : {
+      "--canvas-grid-major-step": `${canvasGridMetrics.majorScreenStep}px`,
+      "--canvas-grid-minor-step": `${canvasGridMetrics.minorScreenStep}px`,
+      "--canvas-grid-origin-x": `${canvasGridMetrics.screenOriginX}px`,
+      "--canvas-grid-origin-y": `${canvasGridMetrics.screenOriginY}px`,
+    }),
   };
   const [guideDrag, setGuideDrag] = useState(null);
   const [leftPanelResizing, setLeftPanelResizing] = useState(false);
@@ -8242,6 +8411,15 @@ function App() {
   const setCanvasBackgroundMode = useCallback((mode) => {
     setCanvasBackground((current) => changeCanvasBackgroundMode(current, mode));
     announce({ dots: "畫布背景已切換為格點。", lines: "畫布背景已切換為格線。", hidden: "畫布輔助背景已隱藏。" }[mode]);
+  }, [announce]);
+
+  const updateCanvasBackgroundAppearance = useCallback((patch) => {
+    setCanvasBackground((current) => normalizeCanvasBackground({ ...current, ...patch }));
+  }, []);
+
+  const resetCanvasBackground = useCallback(() => {
+    setCanvasBackground((current) => resetCanvasBackgroundAppearance(current));
+    announce("格點與格線外觀已恢復預設。", "success");
   }, [announce]);
 
   const toggleCanvasBackground = useCallback(() => {
@@ -11254,25 +11432,44 @@ function App() {
     const base = boardRef.current;
     const historyBefore = captureGestureHistory();
     const initial = new Map(base.objects.filter((object) => movingIds.includes(object.id) && !object.locked).map((object) => [object.id, { x: object.pivotX, y: object.pivotY }]));
+    const movableIds = [...initial.keys()];
+    if (!movableIds.length) return;
     const startX = event.clientX;
     const startY = event.clientY;
     const zoom = viewRef.current.zoom;
     let moved = false;
     let releaseGesture = () => {};
     const move = (moveEvent) => {
-      const dx = (moveEvent.clientX - startX) / zoom;
-      const dy = (moveEvent.clientY - startY) / zoom;
-      if (!moved && Math.hypot(dx, dy) * zoom < 3) return;
+      const rawDx = (moveEvent.clientX - startX) / zoom;
+      const rawDy = (moveEvent.clientY - startY) / zoom;
+      if (!moved && Math.hypot(rawDx, rawDy) * zoom < 3) return;
       if (!moved) {
         moved = true;
         pushUndo(base);
       }
-      previewBoard({ ...base, objects: base.objects.map((object) => initial.has(object.id) ? { ...object, pivotX: initial.get(object.id).x + dx, pivotY: initial.get(object.id).y + dy } : object) });
+      const alignment = resolveSmartAlignment({
+        objects: base.objects,
+        movingIds: movableIds,
+        excludedIds: movingIds,
+        deltaX: rawDx,
+        deltaY: rawDy,
+        zoom,
+      });
+      setSmartAlignmentGuides(alignment.guides);
+      previewBoard({
+        ...base,
+        objects: base.objects.map((object) => initial.has(object.id) ? {
+          ...object,
+          pivotX: initial.get(object.id).x + alignment.deltaX,
+          pivotY: initial.get(object.id).y + alignment.deltaY,
+        } : object),
+      });
     };
     const cleanup = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
       window.removeEventListener("pointercancel", cancel);
+      setSmartAlignmentGuides([]);
       releaseGesture();
     };
     const up = () => {
@@ -11919,6 +12116,7 @@ function App() {
   }, [fitToContent, resetZoomAtCenter]);
 
   const onZoomValueClick = useCallback((event) => {
+    if (event.detail > 0) event.currentTarget.blur?.();
     const now = performance.now();
     const isRapidSecondActivation = event.detail >= 2
       || (zoomValueTapRef.current > 0 && now - zoomValueTapRef.current <= 420);
@@ -11934,6 +12132,7 @@ function App() {
   const onZoomValueKeyDown = useCallback((event) => {
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
+    if (event.repeat) return;
     zoomValueTapRef.current = 0;
     toggleViewportScale();
   }, [toggleViewportScale]);
@@ -12477,6 +12676,10 @@ function App() {
     () => board.objects.filter((object) => object.visible && selectedIds.includes(object.id)),
     [board.objects, selectedIds],
   );
+  const spacingMeasurements = useMemo(
+    () => selectionSpacingMeasurements(board.objects, selectedIds),
+    [board.objects, selectedIds],
+  );
   const compositionCount = selectedObjects.length;
   const selectedSemanticGroup = (board.groups || []).find((group) => (
     group.memberIds.length === selectedIds.length
@@ -12495,6 +12698,19 @@ function App() {
   } : undefined;
   const showSelectionActions = Boolean(
     selectionActionAnchor
+    && !inspectionActive
+    && !editingText
+    && !rotationGesture
+    && !resizeGesture
+    && !groupGesture
+    && !textFrameGesture
+    && !micro3DGesture,
+  );
+  const showSpacingMeasurements = Boolean(
+    altDown
+    && selectedObjects.length
+    && tool === "select"
+    && !spaceDown
     && !inspectionActive
     && !editingText
     && !rotationGesture
@@ -12937,7 +13153,7 @@ function App() {
 
           <div
             ref={canvasRef}
-            className={`canvas-viewport canvas-background-${canvasBackground.mode} ${dragActive ? "is-drag-active" : ""} ${sourceModeActive ? "is-source-mode" : ""} ${tool === "hand" || spaceDown ? "uses-hand" : ""} ${tool === "zoom-window" ? "uses-zoom-window" : ""} ${tool === "3d" ? "uses-3d" : ""} ${rotationGesture ? "is-rotating" : ""} ${micro3DGesture ? "is-3d-rotating" : ""} ${modifierDown ? "can-temporary-select" : ""} ${loadedTextFlow ? "is-text-flow-loaded" : ""}`}
+            className={`canvas-viewport canvas-background-${canvasBackground.mode} ${dragActive ? "is-drag-active" : ""} ${sourceModeActive ? "is-source-mode" : ""} ${tool === "hand" || spaceDown ? "uses-hand" : ""} ${tool === "zoom-window" ? "uses-zoom-window" : ""} ${tool === "zoom-window" && altDown ? "uses-zoom-window-out" : ""} ${tool === "3d" ? "uses-3d" : ""} ${rotationGesture ? "is-rotating" : ""} ${micro3DGesture ? "is-3d-rotating" : ""} ${modifierDown ? "can-temporary-select" : ""} ${loadedTextFlow ? "is-text-flow-loaded" : ""}`}
             style={canvasGridStyle}
             onPointerDownCapture={sourceModeActive ? undefined : onZoomWindowPointerDown}
             onPointerDown={sourceModeActive ? undefined : onCanvasPointerDown}
@@ -13026,6 +13242,14 @@ function App() {
                 />
               ) : null}
             </div> : null}
+
+            {!sourceModeActive && smartAlignmentGuides.length ? (
+              <SmartAlignmentOverlay guides={smartAlignmentGuides} view={view} />
+            ) : null}
+
+            {showSpacingMeasurements ? (
+              <SelectionSpacingOverlay measurements={spacingMeasurements} view={view} unit={rulerUnit} />
+            ) : null}
 
             {showSelectionActions && !cloudReadOnly ? (
               <SelectionActionBar
@@ -13290,6 +13514,8 @@ function App() {
           rulerUnit={rulerUnit}
           onSetMode={setInterfaceMode}
           onSetCanvasBackground={setCanvasBackgroundMode}
+          onUpdateCanvasBackground={updateCanvasBackgroundAppearance}
+          onResetCanvasBackground={resetCanvasBackground}
           onSetLocale={(nextLocale) => setInterfaceLocale(normalizeInterfaceLocale(nextLocale))}
           onSetTypography={updateInterfaceTypography}
           onResetTypography={resetInterfaceTypography}

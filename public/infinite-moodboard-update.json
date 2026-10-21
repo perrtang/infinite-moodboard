@@ -1,8 +1,8 @@
 {
   "product": "Infinite Moodboard",
   "channel": "stable",
-  "version": "0.45.0",
-  "releasedAt": "2026-10-21",
-  "summary": "格點與格線現在會跟隨尺規單位、原點、平移與縮放，左上尺規交叉控制也已完整置中。部署流程會讀回正式更新頻道的版號，避免舊版被誤判為最新版。",
+  "version": "0.46.0",
+  "releasedAt": "2026-10-22",
+  "summary": "新增目前 Moodboard 的專屬檢視連結與明確權限說明，並加入智慧對齊、相鄰距離提示、可收合圖層與可自訂的格點／格線外觀。",
   "url": "https://moodboard.petfashion.tw/"
 }

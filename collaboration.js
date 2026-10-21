@@ -136,9 +136,9 @@ export function normalizeCollaborationInvite(value, baseUrl = globalThis.locatio
 export function createCollaborationInviteUrl(inviteId, baseUrl = globalThis.location?.href || "https://moodboard.invalid/") {
   const normalized = normalizeCollaborationInvite(inviteId);
   if (!normalized) throw new Error("協作邀請代碼格式不正確。");
-  const url = new URL(baseUrl);
+  const source = new URL(baseUrl);
+  const url = new URL(source.pathname || "/", source.origin);
   url.searchParams.set("collab", normalized);
-  url.hash = "";
   return url.toString();
 }
 

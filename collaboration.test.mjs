@@ -25,6 +25,7 @@ import {
 import { createBoard, ensureBoard } from "./model.js";
 
 const appSource = await readFile(new URL("./main.jsx", import.meta.url), "utf8");
+const documentSource = await readFile(new URL("./index.html", import.meta.url), "utf8");
 
 function sampleBoard() {
   return ensureBoard(createBoard({
@@ -72,11 +73,18 @@ function memoryStorage() {
 test("collaboration ids and invitation links are URL safe", () => {
   const invite = collaborationId("invite", 24);
   assert.match(invite, /^invite_[A-Za-z0-9_-]{20,96}$/);
-  const url = createCollaborationInviteUrl(invite, "https://example.com/moodboard.html?theme=dark#old");
-  assert.equal(new URL(url).searchParams.get("collab"), invite);
-  assert.equal(new URL(url).hash, "");
+  const url = createCollaborationInviteUrl(invite, "https://example.com/moodboard.html?theme=dark&driveFile=secret#old");
+  const parsed = new URL(url);
+  assert.equal(parsed.pathname, "/moodboard.html");
+  assert.equal(parsed.searchParams.get("collab"), invite);
+  assert.deepEqual([...parsed.searchParams.keys()], ["collab"]);
+  assert.equal(parsed.hash, "");
   assert.equal(normalizeCollaborationInvite(url), invite);
   assert.equal(normalizeCollaborationInvite("not a valid invite"), "");
+});
+
+test("collaboration invite URLs are not exposed as cross-origin referrers", () => {
+  assert.match(documentSource, /<meta name="referrer" content="same-origin" \/>/);
 });
 
 test("collaboration updates split and combine without changing bytes", () => {
@@ -100,8 +108,9 @@ test("shared collaboration links start as view only and access request states ar
 
 test("shared Moodboard links use a link-first flow and auto-join after verified sign-in", () => {
   assert.match(appSource, /title="分享與共同編輯"/);
-  assert.match(appSource, /建立分享連結/);
-  assert.match(appSource, /複製分享連結/);
+  assert.match(appSource, /建立專屬檢視連結/);
+  assert.match(appSource, /複製檢視連結/);
+  assert.match(appSource, /網址列只代表 App/);
   assert.match(appSource, /requestAdvancedFeature\("shared-moodboard"\)/);
   assert.match(appSource, /automaticCollaborationJoinRef\.current = inviteId;\s*joinCloudCollaboration\(inviteId\);/);
 });

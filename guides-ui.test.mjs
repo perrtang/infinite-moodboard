@@ -70,8 +70,12 @@ test("the ruler intersection is optically centered and the canvas pattern follow
 
 test("guides use a dedicated selectable layer above ordinary object layers", () => {
   const guideSection = main.indexOf('className="guide-layer-section"');
-  const objectBulkActions = main.indexOf('className="layer-bulk-actions"');
-  assert.ok(guideSection >= 0 && objectBulkActions > guideSection);
+  const objectSection = main.indexOf('className="object-layer-section"');
+  assert.ok(guideSection >= 0 && objectSection > guideSection);
+  assert.match(main, /const \[guideLayerExpanded, setGuideLayerExpanded\] = useState\(false\)/);
+  assert.match(main, /const \[objectLayerExpanded, setObjectLayerExpanded\] = useState\(true\)/);
+  assert.match(main, /aria-expanded=\{guideLayerExpanded\}/);
+  assert.match(main, /aria-expanded=\{objectLayerExpanded\}/);
   assert.match(main, /selectedGuideIds=\{selectedGuideIds\}/);
   assert.match(main, /aria-pressed=\{selectedGuideIds\.includes\(guide\.id\)\}/);
   assert.match(main, /selectedGuideIds\.length \? \(/);
@@ -79,7 +83,8 @@ test("guides use a dedicated selectable layer above ordinary object layers", () 
   assert.match(main, /onToggleSelectedGuideGroup/);
   assert.match(main, /<strong>\{`\$\{orientation\}導引線`\}<\/strong>/);
   assert.match(main, /guide\.locked\)\.map\(\(guide\) => guide\.id\)/);
-  assert.match(styles, /\.guide-layer-section \{/);
+  assert.match(styles, /\.guide-layer-section,\s*\.object-layer-section \{/);
+  assert.match(styles, /\.layer-section-disclosure:focus-visible/);
   assert.match(styles, /\.workspace-guide\.is-selected::after/);
   assert.match(styles, /\.workspace-measurement-layer \{[\s\S]*z-index: 17;/);
 });

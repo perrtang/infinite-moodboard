@@ -26,6 +26,14 @@ Infinite Moodboard runs the canvas, imported media, transforms, exports, and ver
 - Optional Google Drive file storage and opt-in realtime collaboration with view/edit permission requests.
 - 3D, Drive, collaboration, and export runtimes are loaded only when used, keeping the opening bundle smaller.
 
+## v0.46.0 — focused collaboration and alignment release
+
+- Provides a dedicated link for the current Moodboard instead of treating the app homepage as a file link; verified coworkers enter as viewers and request edit access from the owner.
+- Adds smart edge/center alignment while moving objects, plus Option/Alt distance readouts to adjacent objects.
+- Makes Guides and Object layers independently collapsible, with Guides collapsed by default and Object layers open.
+- Adds configurable dot/grid colors and opacity while keeping the background aligned with the ruler unit, origin, pan, and zoom.
+- Uses native zoom-in/zoom-out cursors for Zoom Area and prevents Space from repeatedly toggling a focused zoom percentage control.
+
 ## v0.45.0 — ruler-aligned workspace release
 
 - Aligns canvas dots and grid lines with the active ruler unit, origin, pan, and zoom instead of using unrelated fixed pixel spacing.

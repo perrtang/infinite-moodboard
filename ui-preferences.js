@@ -6,6 +6,10 @@ export const CANVAS_BACKGROUND_MODES = Object.freeze(["dots", "lines", "hidden"]
 export const DEFAULT_CANVAS_BACKGROUND = Object.freeze({
   mode: "dots",
   lastVisibleMode: "dots",
+  dotsColor: "#777777",
+  dotsOpacity: 0.68,
+  linesColor: "#858585",
+  linesOpacity: 0.45,
 });
 
 export const UI_FONT_SIZE_PRESETS = Object.freeze([
@@ -53,6 +57,26 @@ function cleanCustomFamily(value) {
     .replace(/[;{}\n\r]/g, "")
     .trim()
     .slice(0, 120);
+}
+
+function normalizeHexColor(value, fallback) {
+  const compact = String(value || "").trim().toUpperCase();
+  if (/^#[0-9A-F]{6}$/.test(compact)) return compact;
+  if (/^#[0-9A-F]{3}$/.test(compact)) {
+    return `#${compact.slice(1).split("").map((character) => character.repeat(2)).join("")}`;
+  }
+  return fallback;
+}
+
+function normalizeOpacity(value, fallback) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.round(clamp(numeric, 0.1, 1) * 100) / 100;
+}
+
+function hexColorChannels(value) {
+  const normalized = normalizeHexColor(value, "#808080");
+  return [1, 3, 5].map((index) => Number.parseInt(normalized.slice(index, index + 2), 16)).join(" ");
 }
 
 export function normalizeInterfaceTypography(value = {}) {
@@ -103,6 +127,10 @@ export function normalizeCanvasBackground(value = {}) {
   return {
     mode,
     lastVisibleMode: visibleModes.has(mode) ? mode : lastVisibleMode,
+    dotsColor: normalizeHexColor(value.dotsColor, DEFAULT_CANVAS_BACKGROUND.dotsColor),
+    dotsOpacity: normalizeOpacity(value.dotsOpacity, DEFAULT_CANVAS_BACKGROUND.dotsOpacity),
+    linesColor: normalizeHexColor(value.linesColor, DEFAULT_CANVAS_BACKGROUND.linesColor),
+    linesOpacity: normalizeOpacity(value.linesOpacity, DEFAULT_CANVAS_BACKGROUND.linesOpacity),
   };
 }
 
@@ -110,9 +138,33 @@ export function changeCanvasBackgroundMode(value, mode) {
   const current = normalizeCanvasBackground(value);
   if (!CANVAS_BACKGROUND_MODES.includes(mode)) return current;
   return normalizeCanvasBackground({
+    ...current,
     mode,
     lastVisibleMode: mode === "hidden" ? current.lastVisibleMode : mode,
   });
+}
+
+export function resetCanvasBackgroundAppearance(value) {
+  const current = normalizeCanvasBackground(value);
+  return {
+    ...current,
+    dotsColor: DEFAULT_CANVAS_BACKGROUND.dotsColor,
+    dotsOpacity: DEFAULT_CANVAS_BACKGROUND.dotsOpacity,
+    linesColor: DEFAULT_CANVAS_BACKGROUND.linesColor,
+    linesOpacity: DEFAULT_CANVAS_BACKGROUND.linesOpacity,
+  };
+}
+
+export function canvasBackgroundCssVariables(value) {
+  const resolved = normalizeCanvasBackground(value);
+  return {
+    "--canvas-grid-dots-rgb": hexColorChannels(resolved.dotsColor),
+    "--canvas-grid-dots-opacity": String(resolved.dotsOpacity),
+    "--canvas-grid-dots-minor-opacity": String(Math.round(resolved.dotsOpacity * 0.56 * 1000) / 1000),
+    "--canvas-grid-lines-rgb": hexColorChannels(resolved.linesColor),
+    "--canvas-grid-lines-opacity": String(resolved.linesOpacity),
+    "--canvas-grid-lines-minor-opacity": String(Math.round(resolved.linesOpacity * 0.48 * 1000) / 1000),
+  };
 }
 
 export function toggleCanvasBackgroundVisibility(value) {

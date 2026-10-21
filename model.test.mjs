@@ -72,10 +72,12 @@ import {
 import {
   DEFAULT_CANVAS_BACKGROUND,
   DEFAULT_INTERFACE_TYPOGRAPHY,
+  canvasBackgroundCssVariables,
   changeCanvasBackgroundMode,
   interfaceTypographyCssVariables,
   normalizeCanvasBackground,
   normalizeInterfaceTypography,
+  resetCanvasBackgroundAppearance,
   resolveInterfaceTypography,
   toggleCanvasBackgroundVisibility,
 } from "./ui-preferences.js";
@@ -102,7 +104,7 @@ import {
 test("application version remains explicit and independent from board revisions", () => {
   assert.match(APP_VERSION, /^\d+\.\d+\.\d+$/);
   assert.equal(APP_VERSION_LABEL, `App v${APP_VERSION}`);
-  assert.equal(APP_RELEASE_DATE, "2026-10-21");
+  assert.equal(APP_RELEASE_DATE, "2026-10-22");
 });
 
 test("imported images keep their intrinsic pixel dimensions while videos retain a bounded preview", () => {
@@ -239,6 +241,11 @@ test("interface locale detection and language packs cover Traditional Chinese, S
   assert.equal(detectInterfaceLocale(["en-US", "zh-TW"]), "en");
   assert.equal(detectInterfaceLocale(["zh-CN", "en-US"]), "zh-Hans");
   assert.equal(translateInterfaceText("設定", "en"), "Settings");
+  assert.equal(translateInterfaceText("一般圖層", "en"), "Object layers");
+  assert.equal(translateInterfaceText("複製檢視連結", "en"), "Copy view link");
+  assert.equal(translateInterfaceText("格點不透明度", "en"), "Dot opacity");
+  assert.equal(translateInterfaceText("格點與格線外觀已恢復預設。", "en"), "Dot and grid appearance restored to defaults.");
+  assert.equal(translateInterfaceText("同事完成 Email 驗證登入後可檢視這份 Moodboard；只有提出申請並由你核准後才能編輯。", "en"), "Coworkers can view this Moodboard after completing verified email sign-in. They can edit only after requesting access and receiving your approval.");
   assert.equal(translateInterfaceText("一般設定", "en"), "General");
   assert.equal(translateInterfaceText("一般", "en"), "Regular");
   assert.equal(translateInterfaceText("選取工具 V", "zh-Hans"), "选择工具 V");
@@ -301,14 +308,37 @@ test("canvas background visibility restores the last visible grid style", () => 
   assert.deepEqual(normalizeCanvasBackground(), DEFAULT_CANVAS_BACKGROUND);
 
   const lines = changeCanvasBackgroundMode(DEFAULT_CANVAS_BACKGROUND, "lines");
-  assert.deepEqual(lines, { mode: "lines", lastVisibleMode: "lines" });
+  assert.deepEqual(lines, { ...DEFAULT_CANVAS_BACKGROUND, mode: "lines", lastVisibleMode: "lines" });
 
   const hidden = toggleCanvasBackgroundVisibility(lines);
-  assert.deepEqual(hidden, { mode: "hidden", lastVisibleMode: "lines" });
+  assert.deepEqual(hidden, { ...DEFAULT_CANVAS_BACKGROUND, mode: "hidden", lastVisibleMode: "lines" });
   assert.deepEqual(toggleCanvasBackgroundVisibility(hidden), lines);
   assert.deepEqual(normalizeCanvasBackground({ mode: "hidden", lastVisibleMode: "unknown" }), {
+    ...DEFAULT_CANVAS_BACKGROUND,
     mode: "hidden",
-    lastVisibleMode: "dots",
+  });
+});
+
+test("canvas background appearance is normalized, resettable, and exposed as safe CSS channels", () => {
+  const customized = normalizeCanvasBackground({
+    mode: "dots",
+    dotsColor: "#abc",
+    dotsOpacity: 2,
+    linesColor: "not-a-color",
+    linesOpacity: 0,
+  });
+  assert.equal(customized.dotsColor, "#AABBCC");
+  assert.equal(customized.dotsOpacity, 1);
+  assert.equal(customized.linesColor, DEFAULT_CANVAS_BACKGROUND.linesColor);
+  assert.equal(customized.linesOpacity, 0.1);
+  assert.deepEqual(resetCanvasBackgroundAppearance(customized), DEFAULT_CANVAS_BACKGROUND);
+  assert.deepEqual(canvasBackgroundCssVariables(customized), {
+    "--canvas-grid-dots-rgb": "170 187 204",
+    "--canvas-grid-dots-opacity": "1",
+    "--canvas-grid-dots-minor-opacity": "0.56",
+    "--canvas-grid-lines-rgb": "133 133 133",
+    "--canvas-grid-lines-opacity": "0.1",
+    "--canvas-grid-lines-minor-opacity": "0.048",
   });
 });
 

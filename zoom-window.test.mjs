@@ -25,6 +25,13 @@ test("Zoom Window owns object drags while Space keeps temporary Hand priority", 
   assert.match(mainSource, /selectionEnabled=\{\(tool !== "hand" \|\| modifierDown\) && tool !== "zoom-window"\}/);
   assert.match(mainSource, /zoom-window-marquee/);
   assert.match(mainSource, /zoomWindowRect\.width >= 96 && zoomWindowRect\.height >= 48/);
-  assert.match(styles, /\.canvas-viewport\.uses-zoom-window:not\(\.uses-hand\)[\s\S]*cursor: crosshair/);
+  assert.match(styles, /\.canvas-viewport\.uses-zoom-window:not\(\.uses-hand\)[\s\S]*cursor: zoom-in/);
+  assert.match(styles, /\.canvas-viewport\.uses-zoom-window-out:not\(\.uses-hand\)[\s\S]*cursor: zoom-out/);
   assert.match(styles, /\.zoom-window-marquee[\s\S]*pointer-events: none/);
+});
+
+test("pointer-selected zoom controls release focus while keyboard activation remains deliberate", () => {
+  assert.match(mainSource, /if \(event\.detail > 0\) event\.currentTarget\.blur\?\.\(\)/);
+  assert.match(mainSource, /if \(event\.repeat\) return;[\s\S]*toggleViewportScale\(\)/);
+  assert.match(mainSource, /if \(event\.target\?\.closest\?\.\("button, a, \[role='button'\]"\)\) return;/);
 });
