@@ -26,6 +26,12 @@ Infinite Moodboard runs the canvas, imported media, transforms, exports, and ver
 - Optional Google Drive file storage and opt-in realtime collaboration with view/edit permission requests.
 - 3D, Drive, collaboration, and export runtimes are loaded only when used, keeping the opening bundle smaller.
 
+## v0.37.0 — temporary Hand tool release
+
+- Hold Space from any canvas tool to temporarily activate Hand and pan from blank canvas or over an object.
+- Restore the prior tool immediately on keyup or window blur, while visibly activating the Hand control and grab cursor.
+- Leave Space untouched inside native fields, contenteditable text, and custom textbox widgets.
+
 ## v0.36.0 — global Color Set release
 
 - Adds named device-global Color Sets shared by text, shape fills, and paper colors across every Moodboard.

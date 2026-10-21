@@ -329,6 +329,7 @@ import {
   resolveGuidePosition,
   shouldConfirmEscapeCancellation,
 } from "./workspace-tools.js";
+import { isEditableShortcutEvent } from "./workspace-keyboard.js";
 import "./styles.css";
 
 const loadAssetExportRuntime = () => import("./asset-export.js");
@@ -3566,7 +3567,7 @@ function Inspector({
           <div className="inspector-empty">
             <SlidersHorizontal size={27} />
             <strong>選取一個物件開始編輯</strong>
-            <p>選取工具可操作物件；空白處拖曳可框選，雙擊第二下按住拖曳可平移畫布。平移工具中按住 Shift 可暫時選取。</p>
+            <p>選取工具可操作物件；空白處拖曳可框選，按住 Space 可暫時平移畫布，雙擊第二下按住拖曳也可平移。平移工具中按住 Shift 可暫時選取。</p>
             <dl>
               <div><dt>物件</dt><dd>{board.objects.length}</dd></div>
               <div><dt>標記</dt><dd>{board.objects.reduce((total, item) => total + item.markers.length, 0)}</dd></div>
@@ -11285,7 +11286,7 @@ function App() {
         setResizeGesture((current) => current ? { ...current, alt: true, pivotAnchor: "mc" } : current);
         setGroupGesture((current) => current?.type === "scale" ? { ...current, alt: true, pivotAnchor: "mc", pivot: boundsAnchorPoint(current.bounds, "mc") } : current);
       }
-      const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName) || document.activeElement?.isContentEditable;
+      const typing = isEditableShortcutEvent(event, document.activeElement);
       if (event.key === "Escape" && loadedTextFlow) {
         event.preventDefault();
         setLoadedTextFlow(null);
@@ -11347,7 +11348,11 @@ function App() {
           return;
         }
       }
-      if (event.code === "Space") { event.preventDefault(); setSpaceDown(true); }
+      if (event.code === "Space") {
+        event.preventDefault();
+        if (!event.repeat) setSpaceDown(true);
+        return;
+      }
       if (modifier && !event.altKey) {
         if (key === "s") { event.preventDefault(); savePreferredBoard(); return; }
         if (key === "o") { event.preventDefault(); openBoardFile(); return; }
@@ -11978,7 +11983,7 @@ function App() {
               <>
                 <div className="tool-group">
                   <IconButton label="選取工具 Shift+V；連按兩下顯示全部物件" active={tool === "select"} aria-pressed={tool === "select"} onClick={(event) => onPrimaryCanvasToolClick(event, "select")}><MousePointer2 size={18} /></IconButton>
-                  <IconButton label="平移工具 Shift+H（按住 Shift 可暫時選取）；連按兩下回到 100%" active={tool === "hand"} aria-pressed={tool === "hand"} onClick={(event) => onPrimaryCanvasToolClick(event, "hand")}><Hand size={18} /></IconButton>
+                  <IconButton label="平移工具 Shift+H（按住 Space 可暫時使用；按住 Shift 可暫時選取）；連按兩下回到 100%" active={tool === "hand" || spaceDown} aria-pressed={tool === "hand" || spaceDown} onClick={(event) => onPrimaryCanvasToolClick(event, "hand")}><Hand size={18} /></IconButton>
                   <IconButton
                     label={authReady ? "進階 3D 旋轉工具 Shift+3（拖曳選取物件旋轉）" : "進階 3D 旋轉工具 Shift+3（需要登入）"}
                     active={tool === "3d"}

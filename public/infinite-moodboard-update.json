@@ -1,8 +1,8 @@
 {
   "product": "Infinite Moodboard",
   "channel": "stable",
-  "version": "0.36.0",
+  "version": "0.37.0",
   "releasedAt": "2026-10-21",
-  "summary": "新增裝置全域 Color Set：命名、快速套用、管理、匯入與匯出，並共用於文字、形狀與紙張色彩。",
+  "summary": "新增按住 Space 暫時切換 Hand Tool：可從物件或空白處平移畫布，放開即回到原工具，且不干擾文字輸入。",
   "url": "https://moodboard.petfashion.tw/"
 }
