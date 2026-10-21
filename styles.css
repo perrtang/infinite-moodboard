@@ -7504,7 +7504,8 @@ html[lang="en"] .sidebar-tabs button svg {
 }
 
 .drive-toolbar-actions,
-.drive-conflict > div:last-child,
+.drive-conflict-actions,
+.drive-overwrite-confirmation > div:last-child,
 .drive-footer-actions,
 .settings-drive-actions {
   align-items: center;
@@ -7551,18 +7552,67 @@ html[lang="en"] .sidebar-tabs button svg {
 }
 
 .drive-conflict strong {
-  font-size: calc(11px + var(--ui-font-offset, 0px));
+  font-size: calc(13px + var(--ui-font-offset, 0px));
 }
 
 .drive-conflict p {
   color: var(--text-muted);
-  font-size: calc(9px + var(--ui-font-offset, 0px));
+  font-size: calc(13px + var(--ui-font-offset, 0px));
   line-height: 1.5;
   margin: 4px 0 0;
 }
 
-.drive-conflict > div:last-child {
+.drive-conflict-actions,
+.drive-overwrite-confirmation,
+.drive-conflict-error {
   grid-column: 2;
+}
+
+.drive-conflict-error {
+  background: color-mix(in srgb, var(--danger) 8%, var(--panel));
+  border-left: 2px solid var(--danger);
+  color: var(--text);
+  font-size: calc(13px + var(--ui-font-offset, 0px));
+  margin: 0;
+  padding: 8px 10px;
+}
+
+.drive-conflict-error strong {
+  margin-right: 4px;
+}
+
+.drive-conflict-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.drive-overwrite-trigger {
+  color: var(--danger);
+}
+
+.drive-overwrite-confirmation {
+  background: color-mix(in srgb, var(--danger) 6%, var(--panel));
+  border: 1px solid color-mix(in srgb, var(--danger) 32%, var(--line));
+  border-radius: 7px;
+  display: grid;
+  gap: 10px;
+  padding: 11px;
+}
+
+.drive-overwrite-confirmation label {
+  align-items: start;
+  cursor: pointer;
+  display: grid;
+  font-size: calc(13px + var(--ui-font-offset, 0px));
+  gap: 9px;
+  grid-template-columns: 18px minmax(0, 1fr);
+  line-height: 1.5;
+}
+
+.drive-overwrite-confirmation label input {
+  margin: 2px 0 0;
 }
 
 .drive-conflict-comparison {
@@ -7581,14 +7631,27 @@ html[lang="en"] .sidebar-tabs button svg {
 
 .drive-conflict-comparison dt {
   color: var(--text-strong);
-  font-size: calc(9px + var(--ui-font-offset, 0px));
+  font-size: calc(13px + var(--ui-font-offset, 0px));
   font-weight: 700;
 }
 
 .drive-conflict-comparison dd {
   color: var(--text-muted);
-  font-size: calc(9px + var(--ui-font-offset, 0px));
+  display: flex;
+  font-size: calc(13px + var(--ui-font-offset, 0px));
+  flex-wrap: wrap;
+  gap: 3px 8px;
   margin: 0;
+}
+
+.drive-overwrite-confirmation small {
+  color: var(--text-muted);
+  display: block;
+  font-size: calc(13px + var(--ui-font-offset, 0px));
+  margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .drive-file-list {
@@ -9796,7 +9859,8 @@ button.status-label:hover {
   }
 
   .drive-toolbar-actions button,
-  .drive-conflict > div:last-child button,
+  .drive-conflict-actions button,
+  .drive-overwrite-confirmation > div:last-child button,
   .drive-footer-actions button,
   .settings-drive-actions button {
     min-height: 44px;
@@ -9815,10 +9879,22 @@ button.status-label:hover {
     grid-template-columns: 22px minmax(0, 1fr);
   }
 
-  .drive-conflict > div:last-child {
+  .drive-conflict-actions,
+  .drive-overwrite-confirmation,
+  .drive-conflict-error {
     align-items: stretch;
-    flex-direction: column;
     grid-column: 1 / -1;
+  }
+
+  .drive-conflict-actions,
+  .drive-overwrite-confirmation > div:last-child {
+    flex-direction: column;
+  }
+
+  .drive-conflict-actions button,
+  .drive-overwrite-confirmation > div:last-child button {
+    justify-content: center;
+    width: 100%;
   }
 
   .drive-conflict-comparison {

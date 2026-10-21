@@ -141,6 +141,12 @@ test("Google Drive storage and recovery copy is localized", () => {
   assert.equal(translateInterfaceText("選擇主要儲存位置", "zh-Hans"), "选择主要保存位置");
   assert.equal(translateInterfaceText("這台裝置", "zh-Hans"), "这台设备");
   assert.equal(translateInterfaceText("中斷 Drive 連結", "zh-Hans"), "中断 Drive 连接");
+  assert.equal(translateInterfaceText("同步已暫停：選擇要保留的版本", "en"), "Sync paused: choose which version to keep");
+  assert.equal(translateInterfaceText("將 Drive 版本開成新 Moodboard", "en"), "Open the Drive version as a new Moodboard");
+  assert.equal(translateInterfaceText("儲存目前內容為新的 Drive 檔案", "en"), "Save current work as a new Drive file");
+  assert.equal(translateInterfaceText("以目前內容覆寫 Drive…", "en"), "Replace Drive with current work…");
+  assert.equal(translateInterfaceText("確認覆寫 Drive", "zh-Hans"), "确认覆盖 Drive");
+  assert.equal(translateInterfaceText("最後編輯 下午12:30", "en"), "Last edited 下午12:30");
 });
 
 test("file menu and independent paper workflow are localized", () => {

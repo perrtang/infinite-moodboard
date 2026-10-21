@@ -173,7 +173,7 @@ export function linkDriveFile(state, board, file) {
 
 export function driveErrorMessage(error) {
   const reason = error?.reason || error?.details?.error?.errors?.[0]?.reason || "";
-  if (error?.code === "drive/conflict") return "Drive 上已有較新的版本；請選擇要開啟雲端版本或另存複本。";
+  if (error?.code === "drive/conflict") return "這台裝置與 Drive 的內容不同；同步已暫停，兩份內容都已保留。";
   if (error?.code === "drive/revision") return error?.message || "無法安全建立或讀取 Google Drive 版本；目前 Moodboard 未受影響。";
   if (reason === "storageQuotaExceeded" || error?.code === "drive/quota") return "Google Drive 空間不足；畫布仍安全保存在這台裝置。";
   if (["authError", "invalidCredentials"].includes(reason) || error?.status === 401) return "Google Drive 授權已失效；請重新連結後再同步。";

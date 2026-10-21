@@ -5556,10 +5556,13 @@ function DriveLibraryModal({
   onRefresh,
   onSave,
   onSaveCopy,
+  onOverwrite,
   onSetAutoSync,
   onClose,
 }) {
   const search = useListSearch("drive-files");
+  const [showOverwriteConfirmation, setShowOverwriteConfirmation] = useState(false);
+  const [overwriteAcknowledged, setOverwriteAcknowledged] = useState(false);
   const status = driveStatusPresentation(driveSession);
   const StatusIcon = status.icon;
   const files = driveSession.files || [];
@@ -5582,6 +5585,11 @@ function DriveLibraryModal({
       ? `${formatStorageSize(quota.remaining)} 可用，共 ${formatStorageSize(quota.limit)}`
       : "連結後會在儲存前檢查可用空間。";
 
+  useEffect(() => {
+    setShowOverwriteConfirmation(false);
+    setOverwriteAcknowledged(false);
+  }, [driveSession.conflict?.version]);
+
   return (
     <Modal title="我的 Moodboards" description="在同一個檔案庫開啟這台裝置與 Infinite Moodboard 可存取的 Drive 檔案。" onClose={onClose} wide>
       <div className="drive-library">
@@ -5592,16 +5600,18 @@ function DriveLibraryModal({
             <small>{primaryStorageTarget === "drive" ? "本機只作離線、同步佇列與復原用的安全副本。" : "點擊「儲存」會更新這個瀏覽器中的主檔。"}</small>
           </div>
         </section>
-        <section className={`drive-status-panel is-${status.tone}`} aria-live="polite">
-          <span className="drive-status-icon" aria-hidden="true"><StatusIcon size={22} className={busy ? "is-spinning" : ""} /></span>
-          <div>
-            <strong>{status.label}</strong>
-            <small>{driveSession.message || quotaLabel}</small>
-          </div>
-          {driveSession.connected ? (
-            <button className="quiet-button" type="button" onClick={onRefresh} disabled={busy}><RefreshCw size={15} />重新整理</button>
-          ) : null}
-        </section>
+        {!driveSession.conflict ? (
+          <section className={`drive-status-panel is-${status.tone}`} aria-live="polite">
+            <span className="drive-status-icon" aria-hidden="true"><StatusIcon size={22} className={busy ? "is-spinning" : ""} /></span>
+            <div>
+              <strong>{status.label}</strong>
+              <small>{driveSession.message || quotaLabel}</small>
+            </div>
+            {driveSession.connected ? (
+              <button className="quiet-button" type="button" onClick={onRefresh} disabled={busy}><RefreshCw size={15} />重新整理</button>
+            ) : null}
+          </section>
+        ) : null}
 
         {!driveSession.connected ? (
           <section className="drive-permission-intro">
@@ -5614,16 +5624,18 @@ function DriveLibraryModal({
           </section>
         ) : (
           <>
-            <div className="drive-toolbar">
-              <label className="drive-auto-sync-choice">
-                <input type="checkbox" checked={driveSettings.autoSync} onChange={(event) => onSetAutoSync(event.target.checked)} />
-                <span><strong>自動同步</strong><small>停止操作後同步最新本機版本</small></span>
-              </label>
-              <div className="drive-toolbar-actions">
-                <button className="secondary-button" type="button" onClick={onSaveCopy} disabled={busy}><Copy size={15} />另存雲端複本</button>
-                <button className="primary-button" type="button" onClick={onSave} disabled={busy || quotaAssessment?.allowed === false}><CloudUpload size={16} />{currentLink ? "立即同步" : "儲存到 Drive"}</button>
+            {!driveSession.conflict ? (
+              <div className="drive-toolbar">
+                <label className="drive-auto-sync-choice">
+                  <input type="checkbox" checked={driveSettings.autoSync} onChange={(event) => onSetAutoSync(event.target.checked)} />
+                  <span><strong>自動同步</strong><small>停止操作後同步最新本機版本</small></span>
+                </label>
+                <div className="drive-toolbar-actions">
+                  <button className="secondary-button" type="button" onClick={onSaveCopy} disabled={busy}><Copy size={15} />另存雲端複本</button>
+                  <button className="primary-button" type="button" onClick={onSave} disabled={busy || quotaAssessment?.allowed === false}><CloudUpload size={16} />{currentLink ? "立即同步" : "儲存到 Drive"}</button>
+                </div>
               </div>
-            </div>
+            ) : null}
 
             {quotaAssessment?.level === "insufficient" ? (
               <p className="drive-inline-message is-error" role="alert"><AlertTriangle size={16} />空間不足以安全儲存目前約 {formatStorageSize(currentContentBytes)} 的檔案；畫布仍保存在這台裝置。</p>
@@ -5634,12 +5646,39 @@ function DriveLibraryModal({
             {driveSession.conflict ? (
               <section className="drive-conflict" role="alert">
                 <AlertTriangle size={20} aria-hidden="true" />
-                <div><strong>Drive 上已有較新的版本</strong><p>為避免覆蓋別台裝置的變更，已停止自動同步。兩邊都會保留，你可以分別開成副本後再決定。</p></div>
+                <div><strong>同步已暫停：選擇要保留的版本</strong><p>這台裝置與 Google Drive 的內容不同。兩份內容都已保留；你可以先開啟 Drive 版本檢視，或明確選擇要保留的內容。</p></div>
                 <dl className="drive-conflict-comparison">
-                  <div><dt>本機</dt><dd>{`內容 r${conflictSummary.local.revision} · ${conflictSummary.local.objectCount} 個物件 · ${formatTime(conflictSummary.local.updatedAt)}`}</dd></div>
-                  <div><dt>Drive</dt><dd>{`檔案版本 ${conflictSummary.remote.version || "—"} · ${formatStorageSize(conflictSummary.remote.size)} · ${formatTime(conflictSummary.remote.modifiedTime)}`}</dd></div>
+                  <div><dt>這台裝置</dt><dd><span>{`${conflictSummary.local.objectCount} 個物件`}</span><span>{`最後編輯 ${formatTime(conflictSummary.local.updatedAt)}`}</span></dd></div>
+                  <div><dt>Google Drive</dt><dd><span>{formatStorageSize(conflictSummary.remote.size)}</span><span>{`最後編輯 ${formatTime(conflictSummary.remote.modifiedTime)}`}</span></dd></div>
                 </dl>
-                <div><button className="secondary-button" type="button" onClick={() => onRecoverRemote(driveSession.conflict)}>Drive 版本開成新副本</button><button className="primary-button" type="button" onClick={onSaveCopy}>本機內容另存 Drive</button></div>
+                {driveSession.conflictActionError ? (
+                  <p className="drive-conflict-error" role="status"><strong>上次操作未完成：</strong>{driveSession.conflictActionError}</p>
+                ) : null}
+                <div className="drive-conflict-actions">
+                  <button className="primary-button" type="button" onClick={() => onRecoverRemote(driveSession.conflict)} disabled={busy}>將 Drive 版本開成新 Moodboard</button>
+                  <button className="secondary-button" type="button" onClick={onSaveCopy} disabled={busy}>儲存目前內容為新的 Drive 檔案</button>
+                  <button className="quiet-button drive-overwrite-trigger" type="button" onClick={() => setShowOverwriteConfirmation(true)} disabled={busy}>以目前內容覆寫 Drive…</button>
+                  <button className="text-button" type="button" onClick={onClose} disabled={busy}>稍後處理</button>
+                </div>
+                {showOverwriteConfirmation ? (
+                  <div className="drive-overwrite-confirmation" role="group" aria-label="確認覆寫 Google Drive">
+                    <div><strong>確定用目前內容取代 Drive？</strong><p>Drive 上的目前檔案會被取代；覆寫前會先保留可復原的 Drive 版本。</p><small data-l10n-ignore>{driveSession.conflict.name}</small></div>
+                    <label><input type="checkbox" checked={overwriteAcknowledged} onChange={(event) => setOverwriteAcknowledged(event.target.checked)} /><span>我已確認這台裝置的內容是要保留的版本</span></label>
+                    <div>
+                      <button className="quiet-button" type="button" onClick={() => { setShowOverwriteConfirmation(false); setOverwriteAcknowledged(false); }} disabled={busy}>取消</button>
+                      <button
+                        className="danger-button"
+                        type="button"
+                        onClick={() => onOverwrite({
+                          boardId: board.id,
+                          fileId: driveSession.conflict.id,
+                          version: driveSession.conflict.version,
+                        })}
+                        disabled={!overwriteAcknowledged || busy}
+                      ><CloudUpload size={16} />確認覆寫 Drive</button>
+                    </div>
+                  </div>
+                ) : null}
               </section>
             ) : null}
 
@@ -7519,7 +7558,7 @@ function App() {
       updateDriveSettings((current) => ({ ...current, enabled: true, folderId }));
       setDriveSession((current) => ({
         ...current,
-        status: "ready",
+        status: current.conflict ? "conflict" : "ready",
         connected: true,
         busy: false,
         message: "",
@@ -9090,6 +9129,13 @@ function App() {
       }
       cancelDriveOperations();
       const next = ensureBoard(nextBoard);
+      setDriveSession((current) => ({
+        ...current,
+        status: current.connected ? "ready" : current.status,
+        busy: false,
+        message: "",
+        conflict: null,
+      }));
       if (!storageTargetForBoard(storagePreferences, next.id)) {
         setBoardPrimaryStorage(next.id, driveSettings.links[next.id] ? "drive" : "local");
       }
@@ -9245,7 +9291,7 @@ function App() {
     setSaveState("自動儲存在這個瀏覽器；尚未指定 .moodboard 檔案");
   }, [board.id]);
 
-  const saveBoardToGoogleDrive = useCallback(({ asCopy = false, silent = false } = {}) => {
+  const saveBoardToGoogleDrive = useCallback(({ asCopy = false, silent = false, forceOverwrite = false, overwriteTarget = null } = {}) => {
     if (!authReady) {
       if (!silent) requestAdvancedFeature("drive");
       return Promise.resolve(false);
@@ -9262,7 +9308,27 @@ function App() {
     }
 
     const snapshot = boardSnapshot();
-    const content = serializeMoodboardSnapshot(snapshot);
+    const linkedFile = !asCopy ? driveSettings.links[snapshot.id] : null;
+    if (forceOverwrite) {
+      const activeConflict = driveSession.conflict;
+      const targetStillMatches = Boolean(
+        overwriteTarget?.boardId
+        && overwriteTarget?.fileId
+        && overwriteTarget?.version
+        && overwriteTarget.boardId === snapshot.id
+        && overwriteTarget.fileId === linkedFile?.fileId
+        && overwriteTarget.boardId === activeConflict?.boardId
+        && overwriteTarget.fileId === activeConflict?.id
+        && String(overwriteTarget.version) === String(activeConflict?.version),
+      );
+      if (!targetStillMatches) {
+        announce("覆寫目標已變更，因此未更新 Google Drive；請重新檢視兩份內容。", "error");
+        setShowDriveLibrary(true);
+        return Promise.resolve(false);
+      }
+    }
+    const uploadSnapshot = asCopy ? createRecoveredMoodboard(snapshot, { label: "Drive 複本" }) : snapshot;
+    const content = serializeMoodboardSnapshot(uploadSnapshot);
     const uploadBytes = contentByteLength(content);
     const timestamp = new Intl.DateTimeFormat("sv-SE", { dateStyle: "short", timeStyle: "short" })
       .format(new Date())
@@ -9271,7 +9337,6 @@ function App() {
     const filename = asCopy
       ? `${safeFilename(snapshot.name, "moodboard")}-${translateInterfaceText("複本")}-${timestamp}.moodboard`
       : `${safeFilename(snapshot.name, "moodboard")}.moodboard`;
-    const linkedFile = !asCopy ? driveSettings.links[snapshot.id] : null;
     const operationEpoch = driveOperationEpochRef.current;
     const controller = new AbortController();
     driveSaveControllerRef.current = controller;
@@ -9285,7 +9350,7 @@ function App() {
           throw error;
         }
       };
-      setDriveSession((current) => ({ ...current, status: "checking", connected: true, busy: true, message: "正在先保存本機版本，再確認 Drive 空間與遠端版本…", conflict: null }));
+      setDriveSession((current) => ({ ...current, status: "checking", connected: true, busy: true, message: "正在先保存本機版本，再確認 Drive 空間與遠端版本…", conflict: asCopy || forceOverwrite ? current.conflict : null, conflictActionError: "" }));
       try {
         const {
           ensureGoogleDriveFolder,
@@ -9300,13 +9365,15 @@ function App() {
           if (error?.name === "AbortError") throw error;
           throw new DriveApiError("本機安全副本寫入失敗，因此未開始雲端同步。", { code: "drive/local-save", details: error });
         }
-        const queuedJob = await getSyncJob(snapshot.id);
-        if (queuedJob) {
-          await updateSyncJob(snapshot.id, {
-            state: "syncing",
-            attemptCount: Number(queuedJob.attemptCount || 0) + 1,
-            lastError: "",
-          });
+        if (!asCopy) {
+          const queuedJob = await getSyncJob(snapshot.id);
+          if (queuedJob) {
+            await updateSyncJob(snapshot.id, {
+              state: "syncing",
+              attemptCount: Number(queuedJob.attemptCount || 0) + 1,
+              lastError: "",
+            });
+          }
         }
         assertCurrentOperation();
         const about = await getGoogleDriveAbout(accessToken);
@@ -9319,17 +9386,22 @@ function App() {
         assertCurrentOperation();
         setDriveSession((current) => ({ ...current, status: "syncing", connected: true, busy: true, quota: about.quota, user: about.user, message: "正在上傳最新的 `.moodboard` 工作檔…" }));
         const savedFile = await uploadGoogleDriveMoodboard(accessToken, {
-          board: snapshot,
+          board: uploadSnapshot,
           content,
           filename,
           folderId,
           existingFile: linkedFile ? { id: linkedFile.fileId } : null,
           expectedVersion: linkedFile?.version || "",
+          expectedHeadRevisionId: linkedFile?.headRevisionId || "",
+          forceOverwrite,
+          confirmedRemoteVersion: overwriteTarget?.version || "",
           signal: controller.signal,
         });
         assertCurrentOperation();
-        updateDriveSettings((current) => linkDriveFile({ ...current, enabled: true, folderId }, snapshot, savedFile));
-        if (!asCopy) setBoardPrimaryStorage(snapshot.id, "drive");
+        if (!asCopy) {
+          updateDriveSettings((current) => linkDriveFile({ ...current, enabled: true, folderId }, snapshot, savedFile));
+          setBoardPrimaryStorage(snapshot.id, "drive");
+        }
         const [postAbout, files] = await Promise.all([
           getGoogleDriveAbout(accessToken).catch(() => about),
           listGoogleDriveMoodboards(accessToken, folderId).catch(() => null),
@@ -9337,20 +9409,28 @@ function App() {
         assertCurrentOperation();
         setDriveSession((current) => ({
           ...current,
-          status: "synced",
+          status: asCopy ? (current.conflict ? "conflict" : "ready") : "synced",
           connected: true,
           busy: false,
-          message: `已同步 ${formatTime(savedFile.modifiedTime || new Date().toISOString())}`,
+          message: asCopy ? "已儲存新的 Drive 檔案；目前編輯內容與原 Drive 檔案仍分開保留。" : `已同步 ${formatTime(savedFile.modifiedTime || new Date().toISOString())}`,
           quota: postAbout.quota,
           user: postAbout.user,
           files: files || current.files,
-          conflict: null,
-          lastSyncedAt: new Date().toISOString(),
+          conflict: asCopy ? current.conflict : null,
+          conflictActionError: "",
+          lastSyncedAt: asCopy ? current.lastSyncedAt : new Date().toISOString(),
         }));
-        await removeSyncJob(snapshot.id);
+        if (!asCopy) await removeSyncJob(snapshot.id);
         await refreshLocalLibrarySummary();
-        if (boardRef.current.revision === snapshot.revision && boardRef.current.updatedAt === snapshot.updatedAt) setDirty(false);
-        if (!silent) announce(asCopy ? "已另存 Google Drive 複本。" : "Google Drive 已同步。", "success");
+        if (!asCopy && boardRef.current.revision === snapshot.revision && boardRef.current.updatedAt === snapshot.updatedAt) setDirty(false);
+        if (!silent) announce(
+          asCopy
+            ? "已儲存為新的 Drive 檔案；原檔與目前內容都已保留。"
+            : forceOverwrite
+              ? "已以目前內容更新 Drive；先前 Drive 版本可從版本紀錄復原。"
+              : "Google Drive 已同步。",
+          "success",
+        );
         return true;
       } catch (error) {
         if (operationEpoch !== driveOperationEpochRef.current || error?.name === "AbortError") return false;
@@ -9375,14 +9455,22 @@ function App() {
           });
           await refreshLocalLibrarySummary();
         }
-        setDriveSession((current) => ({
-          ...current,
-          status,
-          connected: status !== "authorization-required",
-          busy: false,
-          message: driveErrorMessage(error),
-          conflict: isConflict ? error.remoteFile : null,
-        }));
+        setDriveSession((current) => {
+          const preservesExistingConflict = Boolean((asCopy || forceOverwrite) && current.conflict);
+          return {
+            ...current,
+            status: authorizationRequired ? "authorization-required" : preservesExistingConflict ? "conflict" : status,
+            connected: status !== "authorization-required",
+            busy: false,
+            message: driveErrorMessage(error),
+            conflict: isConflict
+              ? { ...error.remoteFile, boardId: snapshot.id, fileId: linkedFile?.fileId || error.remoteFile?.id || "" }
+              : preservesExistingConflict
+                ? current.conflict
+                : null,
+            conflictActionError: preservesExistingConflict && !isConflict ? driveErrorMessage(error) : "",
+          };
+        });
         if (!silent || isConflict) {
           setShowDriveLibrary(true);
           announce(driveErrorMessage(error), status === "offline" ? "warning" : "error");
@@ -9397,7 +9485,7 @@ function App() {
     })();
     driveSavePromiseRef.current = operation;
     return operation;
-  }, [announce, authReady, boardSnapshot, currentDriveAccessToken, driveSettings.autoSync, driveSettings.folderId, driveSettings.links, persistBoardLocally, refreshLocalLibrarySummary, requestAdvancedFeature, setBoardPrimaryStorage, updateDriveSettings]);
+  }, [announce, authReady, boardSnapshot, currentDriveAccessToken, driveSession.conflict, driveSettings.autoSync, driveSettings.folderId, driveSettings.links, persistBoardLocally, refreshLocalLibrarySummary, requestAdvancedFeature, setBoardPrimaryStorage, updateDriveSettings]);
 
   const openGoogleDriveFile = useCallback(async (file) => {
     const operationEpoch = driveOperationEpochRef.current;
@@ -9691,7 +9779,7 @@ function App() {
 
   useEffect(() => {
     window.clearTimeout(driveSyncTimerRef.current);
-    if (!hydrated || !authReady || !storagePreferences.autoSave || currentPrimaryStorageTarget !== "drive" || !driveSettings.enabled || !driveSettings.autoSync || !currentDriveLink) return undefined;
+    if (!hydrated || !authReady || !storagePreferences.autoSave || currentPrimaryStorageTarget !== "drive" || !driveSettings.enabled || !driveSettings.autoSync || !currentDriveLink || driveSession.conflict) return undefined;
     const alreadySynced = currentDriveLink.syncedRevision >= board.revision
       && (!board.updatedAt || currentDriveLink.syncedUpdatedAt === board.updatedAt);
     if (alreadySynced) return undefined;
@@ -9708,7 +9796,7 @@ function App() {
       saveBoardToGoogleDrive({ silent: true });
     }, 6000);
     return () => window.clearTimeout(driveSyncTimerRef.current);
-  }, [authReady, board.revision, board.updatedAt, currentDriveAccessToken, currentDriveLink, currentPrimaryStorageTarget, driveSettings.autoSync, driveSettings.enabled, hydrated, online, saveBoardToGoogleDrive, storagePreferences.autoSave]);
+  }, [authReady, board.revision, board.updatedAt, currentDriveAccessToken, currentDriveLink, currentPrimaryStorageTarget, driveSession.conflict, driveSettings.autoSync, driveSettings.enabled, hydrated, online, saveBoardToGoogleDrive, storagePreferences.autoSave]);
 
   const exportBrowserHtml = useCallback(async () => {
     try {
@@ -12717,6 +12805,7 @@ function App() {
           onRefresh={() => refreshGoogleDrive()}
           onSave={() => saveBoardToGoogleDrive()}
           onSaveCopy={() => saveBoardToGoogleDrive({ asCopy: true })}
+          onOverwrite={(overwriteTarget) => saveBoardToGoogleDrive({ forceOverwrite: true, overwriteTarget })}
           onSetAutoSync={setDriveAutoSync}
           onClose={() => setShowDriveLibrary(false)}
         />

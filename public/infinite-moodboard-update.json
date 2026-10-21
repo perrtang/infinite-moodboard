@@ -1,8 +1,8 @@
 {
   "product": "Infinite Moodboard",
   "channel": "stable",
-  "version": "0.40.0",
+  "version": "0.41.0",
   "releasedAt": "2026-10-21",
-  "summary": "修正 Space 暫時 Hand 的工具列狀態：只切換畫布行為與游標，不再改變 Select／Hand 按鈕的選取外觀，滑鼠操作也不會殘留鍵盤焦點框。",
+  "summary": "修正 Google Drive 版本誤判並加入安全覆寫流程：同步衝突會持續暫停，覆寫前綁定畫布、檔案與遠端版本，保留可復原版本並顯示持續錯誤原因。",
   "url": "https://moodboard.petfashion.tw/"
 }

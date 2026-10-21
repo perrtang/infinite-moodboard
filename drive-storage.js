@@ -518,12 +518,27 @@ export async function uploadGoogleDriveMoodboard(accessToken, {
   folderId,
   existingFile = null,
   expectedVersion = "",
+  expectedHeadRevisionId = "",
+  forceOverwrite = false,
+  confirmedRemoteVersion = "",
   signal,
 }) {
+  if (forceOverwrite && (!existingFile?.id || !confirmedRemoteVersion)) {
+    throw new DriveApiError("覆寫目標已變更，因此未更新 Google Drive。", {
+      code: "drive/overwrite-target",
+      details: { existingFile, confirmedRemoteVersion },
+    });
+  }
   let remoteState = null;
   if (existingFile?.id) {
     remoteState = await getGoogleDriveFileState(accessToken, existingFile.id, { signal });
-    if (!expectedVersion || !remoteState.file.version || String(remoteState.file.version) !== String(expectedVersion)) {
+    const matchesExpectedVersion = Boolean(expectedVersion && remoteState.file.version
+      && String(remoteState.file.version) === String(expectedVersion));
+    const matchesExpectedHead = Boolean(expectedHeadRevisionId && remoteState.file.headRevisionId
+      && String(remoteState.file.headRevisionId) === String(expectedHeadRevisionId));
+    const matchesConfirmedOverwrite = Boolean(forceOverwrite && confirmedRemoteVersion && remoteState.file.version
+      && String(remoteState.file.version) === String(confirmedRemoteVersion));
+    if (forceOverwrite ? !matchesConfirmedOverwrite : !matchesExpectedVersion && !matchesExpectedHead) {
       throw new DriveConflictError(remoteState.file);
     }
     // Drive v3 does not expose a JSON etag field. Requiring the HTTP ETag keeps
@@ -532,13 +547,18 @@ export async function uploadGoogleDriveMoodboard(accessToken, {
     if (!remoteState.file.headRevisionId) {
       throw new DriveApiError("無法先保留目前 Drive 版本，因此已停止覆寫。", { code: "drive/revision", details: remoteState.file });
     }
+    const protectedHeadRevisionId = remoteState.file.headRevisionId;
     await enforceGoogleDriveRevisionRetention(accessToken, existingFile.id, {
       maxRetained: MAX_RETAINED_DRIVE_REVISIONS - 1,
       signal,
     });
-    await updateGoogleDriveRevisionRetention(accessToken, existingFile.id, remoteState.file.headRevisionId, true, { signal });
+    await updateGoogleDriveRevisionRetention(accessToken, existingFile.id, protectedHeadRevisionId, true, { signal });
     remoteState = await getGoogleDriveFileState(accessToken, existingFile.id, { signal });
-    if (!remoteState.file.version || String(remoteState.file.version) !== String(expectedVersion) || !remoteState.etag) {
+    // Retaining a revision changes Drive's file version even when the file
+    // contents did not change. Compare the head revision instead, then use the
+    // freshly returned ETag so our own metadata update is never misread as a
+    // cross-device edit.
+    if (!remoteState.etag || !remoteState.file.headRevisionId || remoteState.file.headRevisionId !== protectedHeadRevisionId) {
       throw new DriveConflictError(remoteState.file);
     }
   }

@@ -26,6 +26,13 @@ Infinite Moodboard runs the canvas, imported media, transforms, exports, and ver
 - Optional Google Drive file storage and opt-in realtime collaboration with view/edit permission requests.
 - 3D, Drive, collaboration, and export runtimes are loaded only when used, keeping the opening bundle smaller.
 
+## v0.41.0 — safe Drive conflict recovery release
+
+- Stops treating Drive revision-retention metadata updates as newer content.
+- Keeps auto-sync paused while a local/Drive conflict remains unresolved and shows one readable recovery panel.
+- Adds a confirmed overwrite path bound to the reviewed Moodboard, Drive file, and remote version, while retaining a recoverable Drive revision.
+- Keeps save-as-copy independent from the current Drive link and sync queue, and preserves actionable failure details until the conflict is resolved.
+
 ## v0.40.0 — quiet temporary-Hand release
 
 - Keeps the selected Select or Hand tool visually unchanged while Space temporarily pans the workspace.
