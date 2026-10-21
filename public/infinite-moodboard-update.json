@@ -1,8 +1,8 @@
 {
   "product": "Infinite Moodboard",
   "channel": "stable",
-  "version": "0.41.0",
+  "version": "0.42.0",
   "releasedAt": "2026-10-21",
-  "summary": "修正 Google Drive 版本誤判並加入安全覆寫流程：同步衝突會持續暫停，覆寫前綁定畫布、檔案與遠端版本，保留可復原版本並顯示持續錯誤原因。",
+  "summary": "新增縮放視窗：框選任意區域即可放大檢視，完成或按 Esc 後回到原工具；手機版入口收進更多選單，並保留 Space 暫時移動畫布與 Tab 鍵焦點提示。",
   "url": "https://moodboard.petfashion.tw/"
 }

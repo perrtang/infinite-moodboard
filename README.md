@@ -26,6 +26,13 @@ Infinite Moodboard runs the canvas, imported media, transforms, exports, and ver
 - Optional Google Drive file storage and opt-in realtime collaboration with view/edit permission requests.
 - 3D, Drive, collaboration, and export runtimes are loaded only when used, keeping the opening bundle smaller.
 
+## v0.42.0 — Zoom Window release
+
+- Adds a one-shot Zoom Window tool beside the desktop zoom controls and inside the mobile More menu.
+- Drag over blank canvas or objects to fit that region in the viewport without changing the Moodboard, history, or autosave state.
+- Restores the previous tool after zooming or pressing Escape, while Space retains temporary Hand priority.
+- Keeps small selection labels out of the way and preserves keyboard-only focus outlines for Tab navigation.
+
 ## v0.41.0 — safe Drive conflict recovery release
 
 - Stops treating Drive revision-retention metadata updates as newer content.
@@ -55,7 +62,7 @@ Infinite Moodboard runs the canvas, imported media, transforms, exports, and ver
 ## v0.37.0 — temporary Hand tool release
 
 - Hold Space from any canvas tool to temporarily activate Hand and pan from blank canvas or over an object.
-- Restore the prior tool immediately on keyup or window blur, while visibly activating the Hand control and grab cursor.
+- Restore the prior tool immediately on keyup or window blur, while changing only the canvas cursor and behavior—not the selected toolbar control.
 - Leave Space untouched inside native fields, contenteditable text, and custom textbox widgets.
 
 ## v0.36.0 — global Color Set release

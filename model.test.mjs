@@ -43,6 +43,7 @@ import {
   sourceAssetsFromObjects,
   upsertMarkerBySymbol,
   viewObjectInViewport,
+  viewWorldRectInViewport,
 } from "./model.js";
 import { createPortableHtml } from "./portable.js";
 import {
@@ -1190,6 +1191,34 @@ test("locating an object centers its rotated bounds and fits it inside the viewp
   assert.ok(Math.max(...screenCorners.map((point) => point.x)) <= viewport.width - 72 + 0.00001);
   assert.ok(Math.min(...screenCorners.map((point) => point.y)) >= 72 - 0.00001);
   assert.ok(Math.max(...screenCorners.map((point) => point.y)) <= viewport.height - 72 + 0.00001);
+});
+
+test("zoom window fits a normalized world rectangle inside the viewport", () => {
+  const viewport = { width: 1000, height: 700 };
+  const view = viewWorldRectInViewport(
+    { left: 500, top: 350, right: 100, bottom: 50 },
+    viewport,
+    { padding: 50, minZoom: 0.08, maxZoom: 4 },
+  );
+
+  assert.equal(view.zoom, 2);
+  assert.equal(view.x, -100);
+  assert.equal(view.y, -50);
+  assert.equal(view.x + 100 * view.zoom, 100);
+  assert.equal(view.x + 500 * view.zoom, 900);
+  assert.equal(view.y + 50 * view.zoom, 50);
+  assert.equal(view.y + 350 * view.zoom, 650);
+});
+
+test("zoom window honors zoom bounds and accepts x/y/width/height rectangles", () => {
+  assert.equal(
+    viewWorldRectInViewport({ x: 0, y: 0, width: 10, height: 10 }, { width: 1000, height: 700 }, { maxZoom: 3 }).zoom,
+    3,
+  );
+  assert.equal(
+    viewWorldRectInViewport({ left: 0, top: 0, right: 100000, bottom: 100000 }, { width: 1000, height: 700 }, { minZoom: 0.1 }).zoom,
+    0.1,
+  );
 });
 
 test("selection actions follow the visible selection edge and disappear when selection is offscreen", () => {

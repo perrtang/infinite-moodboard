@@ -160,6 +160,7 @@ import {
   stampBoard,
   upsertMarkerBySymbol,
   viewObjectInViewport,
+  viewWorldRectInViewport,
 } from "./model.js";
 import { mergeMoodboardLibrary } from "./library.js";
 import { createRecoveredMoodboard, describeDriveConflict } from "./versioning.js";
@@ -2053,6 +2054,9 @@ function MobileTopbarMoreMenu({
   onOpenChange,
   onOpenAccount,
   onOpenSettings,
+  onZoomWindow,
+  showZoomWindow,
+  zoomWindowActive,
 }) {
   const wrapperRef = useRef(null);
   const triggerRef = useRef(null);
@@ -2132,6 +2136,13 @@ function MobileTopbarMoreMenu({
           ref={menuRef}
           onKeyDown={navigateMenu}
         >
+          {showZoomWindow ? (
+            <button type="button" role="menuitem" aria-pressed={zoomWindowActive} onClick={() => activate(onZoomWindow)}>
+              <Crosshair size={18} />
+              <span>縮放視窗</span>
+              <b>{zoomWindowActive ? "使用中" : "拖曳放大區域"}</b>
+            </button>
+          ) : null}
           <button type="button" role="menuitem" onClick={() => activate(onOpenAccount)}>
             <UserRound size={18} />
             <span>帳號與隱私</span>
@@ -6730,6 +6741,7 @@ function App() {
   const [modifierDown, setModifierDown] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const [marquee, setMarquee] = useState(null);
+  const [zoomWindowRect, setZoomWindowRect] = useState(null);
   const [dragActive, setDragActive] = useState(false);
   const [shapeMenuOpen, setShapeMenuOpen] = useState(false);
   const [leftTab, setLeftTab] = useState("layers");
@@ -6895,6 +6907,7 @@ function App() {
   const doubleClickPanMovedRef = useRef(false);
   const zoomValueTapRef = useRef(0);
   const canvasToolTapRef = useRef({ select: 0, hand: 0 });
+  const zoomWindowReturnToolRef = useRef("select");
   const blankClickRef = useRef(null);
   const objectClickRef = useRef(null);
   const objectTapRef = useRef(null);
@@ -6993,6 +7006,8 @@ function App() {
       setShapeMenuOpen(false);
       setDragActive(false);
       setSpaceDown(false);
+      setZoomWindowRect(null);
+      setTool((current) => current === "zoom-window" ? zoomWindowReturnToolRef.current : current);
       setLoadedTextFlow(null);
       setEditingText(null);
     }
@@ -11498,6 +11513,103 @@ function App() {
     else resetZoomAtCenter();
   }, [fitToContent, resetZoomAtCenter]);
 
+  const finishZoomWindowTool = useCallback(() => {
+    setZoomWindowRect(null);
+    setTool((current) => current === "zoom-window" ? zoomWindowReturnToolRef.current || "select" : current);
+  }, []);
+
+  const activateZoomWindowTool = useCallback((event) => {
+    if (event?.detail > 0) event.currentTarget?.blur?.();
+    if (tool === "zoom-window") {
+      finishZoomWindowTool();
+      return;
+    }
+    zoomWindowReturnToolRef.current = tool;
+    setLoadedTextFlow(null);
+    setZoomWindowRect(null);
+    setTool("zoom-window");
+    announce("縮放視窗：拖曳框住要放大的區域；Esc 取消。", "info");
+  }, [announce, finishZoomWindowTool, tool]);
+
+  const onZoomWindowPointerDown = useCallback((event) => {
+    if (tool !== "zoom-window" || spaceDown || event.button !== 0) return;
+    if (event.target.closest("button, input, select, a, .workspace-measurement-layer, .filter-stage, .canvas-empty, .canvas-status, .export-dock, .cloud-read-only-banner")) return;
+    const canvasRect = canvasRef.current?.getBoundingClientRect();
+    if (!canvasRect) return;
+    event.preventDefault();
+    event.stopPropagation();
+
+    const canvasPoint = (pointerEvent) => ({
+      x: clamp(pointerEvent.clientX - canvasRect.left, 0, canvasRect.width),
+      y: clamp(pointerEvent.clientY - canvasRect.top, 0, canvasRect.height),
+    });
+    const start = canvasPoint(event);
+    let latest = start;
+    let moved = false;
+    let releaseGesture = () => {};
+    const updateRect = (pointerEvent) => {
+      latest = canvasPoint(pointerEvent);
+      const dx = latest.x - start.x;
+      const dy = latest.y - start.y;
+      if (!moved && Math.hypot(dx, dy) < 4) return;
+      moved = true;
+      setZoomWindowRect({
+        left: Math.min(start.x, latest.x),
+        top: Math.min(start.y, latest.y),
+        width: Math.abs(dx),
+        height: Math.abs(dy),
+      });
+    };
+    const cleanup = () => {
+      window.removeEventListener("pointermove", updateRect);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", cancel);
+      releaseGesture();
+    };
+    const cancel = () => {
+      cleanup();
+      finishZoomWindowTool();
+    };
+    const finish = (pointerEvent) => {
+      updateRect(pointerEvent);
+      cleanup();
+      const width = Math.abs(latest.x - start.x);
+      const height = Math.abs(latest.y - start.y);
+      if (width < 12 || height < 12) {
+        finishZoomWindowTool();
+        announce("請拖曳出一個較大的區域。", "warning");
+        return;
+      }
+      const startWorld = screenToWorld(canvasRect.left + start.x, canvasRect.top + start.y);
+      const endWorld = screenToWorld(canvasRect.left + latest.x, canvasRect.top + latest.y);
+      const nextView = viewWorldRectInViewport({
+        left: startWorld.x,
+        top: startWorld.y,
+        right: endWorld.x,
+        bottom: endWorld.y,
+      }, { width: canvasRect.width, height: canvasRect.height }, {
+        padding: 36,
+        minZoom: MIN_ZOOM,
+        maxZoom: MAX_ZOOM,
+      });
+      viewRef.current = nextView;
+      setView(nextView);
+      finishZoomWindowTool();
+      announce("已放大框選區域。", "success");
+    };
+    releaseGesture = registerPointerGesture({
+      label: "縮放視窗",
+      affectsDocument: false,
+      hasChanges: () => false,
+      pause: cleanup,
+      cancel,
+      keep: cleanup,
+    });
+    window.addEventListener("pointermove", updateRect);
+    window.addEventListener("pointerup", finish, { once: true });
+    window.addEventListener("pointercancel", cancel, { once: true });
+  }, [announce, finishZoomWindowTool, registerPointerGesture, screenToWorld, spaceDown, tool]);
+
   useEffect(() => {
     const paste = (event) => {
       const files = [...(event.clipboardData?.files || [])].filter((file) => file.type.startsWith("image/") || file.type.startsWith("video/") || isSvgFile(file));
@@ -11705,6 +11817,7 @@ function App() {
         else if (showCollaboration) setShowCollaboration(false);
         else if (mobilePanel) setMobilePanel(null);
         else if (filters.symbols.length || filters.colors.length) setFilters(DEFAULT_FILTERS);
+        else if (tool === "zoom-window") finishZoomWindowTool();
         else if (tool === "3d") setTool("select");
         else if (focusMode) restoreWorkspaceChrome();
         else if (!leftPanelVisible && !rightPanelVisible) showBothPanels();
@@ -11745,7 +11858,7 @@ function App() {
       window.removeEventListener("keyup", keyUp);
       window.removeEventListener("blur", blur);
     };
-  }, [announce, cancelPendingObjectDeletion, closeAdvancedFeatureGate, closeInterfaceThemes, closePreparedDownloads, copySelectedObjects, cutSelectedObjects, deleteSelected, dismissLocalFileLocation, dragActive, duplicateSelected, escapeCancellationRequest, filters.colors.length, filters.symbols.length, focusMode, isClearingLocalData, keepEscapeAdjustment, leftPanelVisible, leftTab, loadedTextFlow, mobilePanel, openBoardFile, openListSearch, pasteCopiedObjects, pendingAdvancedFeature, pendingObjectDeletion, preparedDownloads.length, redo, requestActivePointerCancellation, requestAdvancedFeature, restoreWorkspaceChrome, rightPanelVisible, savePreferredBoard, shapeMenuOpen, showAnnotationBuilder, showBothPanels, showCollaboration, showDeleteLocalData, showDriveLibrary, showGridBuilder, showInterfaceThemes, showLocalFileLocation, showSettings, showShortcuts, showStorageLocation, showVersions, toggleBothPanels, toggleCanvasBackground, toggleFocusMode, toggleGuides, toggleLeftPanel, toggleRightPanel, toggleRulers, toggleSelectionGroup, tool, undo]);
+  }, [announce, cancelPendingObjectDeletion, closeAdvancedFeatureGate, closeInterfaceThemes, closePreparedDownloads, copySelectedObjects, cutSelectedObjects, deleteSelected, dismissLocalFileLocation, dragActive, duplicateSelected, escapeCancellationRequest, filters.colors.length, filters.symbols.length, finishZoomWindowTool, focusMode, isClearingLocalData, keepEscapeAdjustment, leftPanelVisible, leftTab, loadedTextFlow, mobilePanel, openBoardFile, openListSearch, pasteCopiedObjects, pendingAdvancedFeature, pendingObjectDeletion, preparedDownloads.length, redo, requestActivePointerCancellation, requestAdvancedFeature, restoreWorkspaceChrome, rightPanelVisible, savePreferredBoard, shapeMenuOpen, showAnnotationBuilder, showBothPanels, showCollaboration, showDeleteLocalData, showDriveLibrary, showGridBuilder, showInterfaceThemes, showLocalFileLocation, showSettings, showShortcuts, showStorageLocation, showVersions, toggleBothPanels, toggleCanvasBackground, toggleFocusMode, toggleGuides, toggleLeftPanel, toggleRightPanel, toggleRulers, toggleSelectionGroup, tool, undo]);
 
   const exportObjects = useCallback(async (scopeOverride) => {
     const scope = typeof scopeOverride === "string" ? scopeOverride : exportScope;
@@ -12173,6 +12286,9 @@ function App() {
             onOpenChange={setMobileTopbarMenuOpen}
             onOpenAccount={openAccountSettings}
             onOpenSettings={openSettings}
+            onZoomWindow={activateZoomWindowTool}
+            showZoomWindow={!sourceModeActive}
+            zoomWindowActive={tool === "zoom-window"}
           />
         </div>
       </header>
@@ -12309,6 +12425,7 @@ function App() {
                 <IconButton label="建立 Grid" onClick={() => setShowGridBuilder(true)} disabled={cloudReadOnly}><LayoutGrid size={18} /></IconButton>
                 <div className="tool-divider" />
                 <div className="zoom-group">
+                  <IconButton label="縮放視窗：拖曳框住要放大的區域；Esc 取消" active={tool === "zoom-window"} aria-pressed={tool === "zoom-window"} onClick={activateZoomWindowTool}><Crosshair size={17} /></IconButton>
                   <IconButton label="縮小" onClick={() => { const rect = canvasRef.current.getBoundingClientRect(); zoomAround(rect.left + rect.width / 2, rect.top + rect.height / 2, view.zoom / 1.2); }}><ZoomOut size={17} /></IconButton>
                   <button
                     className="zoom-value"
@@ -12328,7 +12445,8 @@ function App() {
 
           <div
             ref={canvasRef}
-            className={`canvas-viewport canvas-background-${canvasBackground.mode} ${dragActive ? "is-drag-active" : ""} ${sourceModeActive ? "is-source-mode" : ""} ${tool === "hand" || spaceDown ? "uses-hand" : ""} ${tool === "3d" ? "uses-3d" : ""} ${rotationGesture ? "is-rotating" : ""} ${micro3DGesture ? "is-3d-rotating" : ""} ${modifierDown ? "can-temporary-select" : ""} ${loadedTextFlow ? "is-text-flow-loaded" : ""}`}
+            className={`canvas-viewport canvas-background-${canvasBackground.mode} ${dragActive ? "is-drag-active" : ""} ${sourceModeActive ? "is-source-mode" : ""} ${tool === "hand" || spaceDown ? "uses-hand" : ""} ${tool === "zoom-window" ? "uses-zoom-window" : ""} ${tool === "3d" ? "uses-3d" : ""} ${rotationGesture ? "is-rotating" : ""} ${micro3DGesture ? "is-3d-rotating" : ""} ${modifierDown ? "can-temporary-select" : ""} ${loadedTextFlow ? "is-text-flow-loaded" : ""}`}
+            onPointerDownCapture={sourceModeActive ? undefined : onZoomWindowPointerDown}
             onPointerDown={sourceModeActive ? undefined : onCanvasPointerDown}
             onDoubleClick={sourceModeActive ? undefined : onCanvasDoubleClick}
             onWheel={sourceModeActive ? undefined : onWheel}
@@ -12370,7 +12488,7 @@ function App() {
                   soleSelected={soleSelectedId === object.id}
                   multiSelected={selectedIds.length > 1 && selectedIds.includes(object.id)}
                   keyObject={selectedIds.length > 1 && resolvedKeyObjectId === object.id}
-                  selectionEnabled={tool !== "hand" || modifierDown}
+                  selectionEnabled={(tool !== "hand" || modifierDown) && tool !== "zoom-window"}
                   editable={!cloudReadOnly}
                   inverseZoom={1 / view.zoom}
                   onPointerDown={onObjectPointerDown}
@@ -12430,6 +12548,7 @@ function App() {
             ) : null}
 
             {marquee && !inspectionActive ? <div className="selection-marquee" style={marquee} aria-hidden="true" /> : null}
+            {zoomWindowRect && !inspectionActive ? <div className="zoom-window-marquee" style={zoomWindowRect} aria-hidden="true">{zoomWindowRect.width >= 96 && zoomWindowRect.height >= 48 ? <span>放大此區域</span> : null}</div> : null}
 
             {cloudReadOnly && !sourceModeActive ? (
               <button className="cloud-read-only-banner" type="button" onClick={() => setShowCollaboration(true)}>

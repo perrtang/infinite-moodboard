@@ -87,6 +87,10 @@ test("workspace search, ruler, and shortcut copy is localized", () => {
   assert.equal(translateInterfaceText("平移工具 Shift+H（按住 Shift 可暫時選取）", "en"), "Hand tool Shift+H (hold Shift to select temporarily)");
   assert.equal(translateInterfaceText("平移工具 Shift+H（按住 Space 可暫時使用；按住 Shift 可暫時選取）；連按兩下回到 100%", "en"), "Hand tool Shift+H (hold Space to use temporarily; hold Shift to select temporarily); double-click or double-tap to return to 100%");
   assert.equal(translateInterfaceText("平移工具 Shift+H（按住 Space 可暫時使用；按住 Shift 可暫時選取）；連按兩下回到 100%", "zh-Hans"), "平移工具 Shift+H（按住 Space 可暂时使用；按住 Shift 可暂时选择）；双击回到 100%");
+  assert.equal(translateInterfaceText("縮放視窗：拖曳框住要放大的區域；Esc 取消", "en"), "Zoom Window: drag around an area to enlarge it; Esc to cancel");
+  assert.equal(translateInterfaceText("已放大框選區域。", "en"), "The selected area is now enlarged.");
+  assert.equal(translateInterfaceText("縮放視窗", "zh-Hans"), "缩放视窗");
+  assert.equal(translateInterfaceText("拖曳放大區域", "zh-Hans"), "拖动放大区域");
   assert.equal(translateInterfaceText("搜尋快速鍵", "en"), "Search shortcuts");
   assert.equal(translateInterfaceText("顯示或隱藏兩側欄", "en"), "Show or hide both side panels");
   assert.equal(translateInterfaceText("移動畫布工具列", "en"), "Move canvas toolbar");

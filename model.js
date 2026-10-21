@@ -1187,22 +1187,25 @@ export function distributeObjectsByGap(objects, selectedIds, keyObjectId, axis) 
   });
 }
 
-export function viewObjectInViewport(object, viewport, options = {}) {
-  const padding = Math.max(0, finiteNumber(options.padding, 72));
+export function viewWorldRectInViewport(rect, viewport, options = {}) {
+  const padding = Math.max(0, finiteNumber(options.padding, 48));
   const minZoom = Math.max(0.01, finiteNumber(options.minZoom, 0.08));
   const maxZoom = Math.max(minZoom, finiteNumber(options.maxZoom, 1.5));
   const viewportWidth = Math.max(1, finiteNumber(viewport?.width, 1));
   const viewportHeight = Math.max(1, finiteNumber(viewport?.height, 1));
-  const points = objectWorldCorners(object);
-  const minX = Math.min(...points.map((point) => point.x));
-  const maxX = Math.max(...points.map((point) => point.x));
-  const minY = Math.min(...points.map((point) => point.y));
-  const maxY = Math.max(...points.map((point) => point.y));
-  const objectWidth = Math.max(1, maxX - minX);
-  const objectHeight = Math.max(1, maxY - minY);
+  const x1 = finiteNumber(rect?.left ?? rect?.x, 0);
+  const y1 = finiteNumber(rect?.top ?? rect?.y, 0);
+  const x2 = finiteNumber(rect?.right, x1 + finiteNumber(rect?.width, 1));
+  const y2 = finiteNumber(rect?.bottom, y1 + finiteNumber(rect?.height, 1));
+  const minX = Math.min(x1, x2);
+  const maxX = Math.max(x1, x2);
+  const minY = Math.min(y1, y2);
+  const maxY = Math.max(y1, y2);
+  const worldWidth = Math.max(1, maxX - minX);
+  const worldHeight = Math.max(1, maxY - minY);
   const availableWidth = Math.max(1, viewportWidth - padding * 2);
   const availableHeight = Math.max(1, viewportHeight - padding * 2);
-  const zoom = Math.min(maxZoom, Math.max(minZoom, Math.min(availableWidth / objectWidth, availableHeight / objectHeight)));
+  const zoom = Math.min(maxZoom, Math.max(minZoom, Math.min(availableWidth / worldWidth, availableHeight / worldHeight)));
   const centerX = (minX + maxX) / 2;
   const centerY = (minY + maxY) / 2;
 
@@ -1211,6 +1214,16 @@ export function viewObjectInViewport(object, viewport, options = {}) {
     x: viewportWidth / 2 - centerX * zoom,
     y: viewportHeight / 2 - centerY * zoom,
   };
+}
+
+export function viewObjectInViewport(object, viewport, options = {}) {
+  const points = objectWorldCorners(object);
+  return viewWorldRectInViewport({
+    left: Math.min(...points.map((point) => point.x)),
+    right: Math.max(...points.map((point) => point.x)),
+    top: Math.min(...points.map((point) => point.y)),
+    bottom: Math.max(...points.map((point) => point.y)),
+  }, viewport, { padding: 72, ...options });
 }
 
 export function restoreObjectSize(object) {
