@@ -26,6 +26,14 @@ Infinite Moodboard runs the canvas, imported media, transforms, exports, and ver
 - Optional Google Drive file storage and opt-in realtime collaboration with view/edit permission requests.
 - 3D, Drive, collaboration, and export runtimes are loaded only when used, keeping the opening bundle smaller.
 
+## v0.34.0 — explicit file workflow release
+
+- Consolidates open, save, save-as, browser HTML, output, sharing, versions, and about actions in one File menu.
+- Asks local-first users to choose a `.moodboard` destination through Finder or the system file picker, then autosaves to that file while retaining a browser recovery copy.
+- Shows Google Drive sync state beside Undo and Redo only when Drive is the current Moodboard's primary location.
+- Keeps papers independent from nearby objects, allows repeated paper insertion, and removes the misleading padding guide.
+- Rejects stale file-picker results after board or storage-target changes and immediately persists newly opened files for recovery.
+
 ## v0.33.0 — collision-free canvas HUD release
 
 - Places the lower-left status group and lower-right export controls in one shared responsive HUD row.

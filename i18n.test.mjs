@@ -121,6 +121,24 @@ test("Google Drive storage and recovery copy is localized", () => {
   assert.equal(translateInterfaceText("中斷 Drive 連結", "zh-Hans"), "中断 Drive 连接");
 });
 
+test("file menu and independent paper workflow are localized", () => {
+  assert.equal(translateInterfaceText("檔案", "en"), "File");
+  assert.equal(translateInterfaceText("另存為 .moodboard…", "en"), "Save a .moodboard copy…");
+  assert.equal(translateInterfaceText("匯出瀏覽器版（HTML）", "en"), "Export browser copy (HTML)");
+  assert.equal(translateInterfaceText("輸出選取合成圖…", "en"), "Output selected composition…");
+  assert.equal(translateInterfaceText("符合內容的參考邊距", "en"), "Reference padding for fitting content");
+  assert.equal(translateInterfaceText("另存為 .moodboard…", "zh-Hans"), "另存为 .moodboard…");
+});
+
+test("local file autosave choice and status are localized", () => {
+  assert.equal(translateInterfaceText("選擇本機自動儲存檔案", "en"), "Choose a local autosave file");
+  assert.equal(translateInterfaceText("選擇 Finder／檔案位置", "en"), "Choose Finder / Files location");
+  assert.equal(translateInterfaceText("主要位置：這個瀏覽器", "en"), "Primary location: this browser");
+  assert.equal(translateInterfaceText("尚未指定 .moodboard 檔案", "en"), "No .moodboard file selected");
+  assert.equal(translateInterfaceText("已自動儲存至 Campaign.moodboard · 下午02:42", "en"), "Autosaved to Campaign.moodboard · 下午02:42");
+  assert.equal(translateInterfaceText("選擇本機自動儲存檔案", "zh-Hans"), "选择本地自动保存文件");
+});
+
 test("real-time collaboration copy is localized", () => {
   assert.equal(translateInterfaceText("建立共編空間", "en"), "Create collaboration room");
   assert.equal(translateInterfaceText("分享", "en"), "Share");

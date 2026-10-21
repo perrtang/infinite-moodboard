@@ -1,8 +1,8 @@
 {
   "product": "Infinite Moodboard",
   "channel": "stable",
-  "version": "0.33.0",
+  "version": "0.34.0",
   "releasedAt": "2026-10-21",
-  "summary": "修正畫布底部狀態列、匯出列與尺規的重疊；兩側浮動列會共用可用寬度、自動避讓並在窄畫布保留必要狀態。",
+  "summary": "整合檔案選單、本機 Finder 自動儲存與 Drive 同步狀態；紙張維持獨立且可重複加入，並補強檔案切換與復原安全性。",
   "url": "https://moodboard.petfashion.tw/"
 }

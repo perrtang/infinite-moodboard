@@ -782,6 +782,52 @@ button:disabled {
   padding: 0 7px;
 }
 
+.topbar-cloud-status {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  min-height: 36px;
+  max-width: 220px;
+  padding: 0 8px;
+}
+
+.topbar-cloud-status:hover,
+.topbar-cloud-status:focus-visible {
+  background: var(--quiet-bg);
+  color: var(--text);
+}
+
+.topbar-cloud-status:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 1px;
+}
+
+.topbar-cloud-status > span {
+  font-size: calc(11px + var(--ui-font-offset, 0px));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar-cloud-status.is-working,
+.topbar-cloud-status.is-warning {
+  color: var(--warning);
+}
+
+.topbar-cloud-status.is-error {
+  color: var(--danger);
+}
+
+.topbar-cloud-status.is-success {
+  color: var(--success);
+}
+
 .account-menu-button:hover {
   background: rgb(var(--accent-rgb) / 0.08);
   color: var(--text);
@@ -847,6 +893,7 @@ button:disabled {
 .topbar-button:hover,
 .toolbar-action:hover,
 .icon-button.is-active,
+.topbar-button.is-active,
 .toolbar-action.is-active {
   background: rgb(var(--accent-rgb) / 0.08);
   color: var(--accent-strong);
@@ -905,6 +952,129 @@ button:disabled {
 .mobile-panel-button,
 .mobile-close {
   display: none;
+}
+
+.file-menu {
+  position: relative;
+}
+
+.file-menu-trigger .file-menu-chevron {
+  transition: transform 140ms ease;
+}
+
+.file-menu-trigger.is-active .file-menu-chevron {
+  transform: rotate(180deg);
+}
+
+.file-menu-popover {
+  background: var(--modal-bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  box-shadow: 0 16px 40px rgb(0 0 0 / 0.34);
+  left: 0;
+  max-height: min(680px, calc(100vh - 68px));
+  overflow: auto;
+  padding: 6px;
+  position: absolute;
+  top: calc(100% + 7px);
+  width: min(350px, calc(100vw - 16px));
+  z-index: 160;
+}
+
+.file-menu-section {
+  display: grid;
+  gap: 2px;
+  padding: 4px 0 6px;
+}
+
+.file-menu-section + .file-menu-section {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.file-menu-section-label {
+  color: var(--text-muted);
+  font-size: calc(10px + var(--ui-font-offset, 0px));
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  padding: 3px 10px 5px 44px;
+  text-transform: uppercase;
+}
+
+.file-menu-section > button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+  display: grid;
+  font: inherit;
+  gap: 10px;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  min-height: 48px;
+  padding: 6px 10px;
+  text-align: left;
+  width: 100%;
+}
+
+.file-menu-section > button:hover,
+.file-menu-section > button:focus-visible {
+  background: var(--quiet-bg);
+  outline: none;
+}
+
+.file-menu-section > button:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent-strong);
+}
+
+.file-menu-section > button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.file-menu-section > button > svg {
+  color: var(--text-muted);
+  justify-self: center;
+}
+
+.file-menu-section > button > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.file-menu-section > button strong {
+  font-size: calc(13px + var(--ui-font-offset, 0px));
+  font-weight: 650;
+}
+
+.file-menu-section > button small {
+  color: var(--text-muted);
+  font-size: calc(10px + var(--ui-font-offset, 0px));
+  line-height: 1.35;
+}
+
+.file-menu-section > button > kbd {
+  background: transparent;
+  border: 0;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: calc(10px + var(--ui-font-offset, 0px));
+  padding: 0;
+}
+
+.file-menu-section > button > b {
+  align-items: center;
+  background: var(--accent-fill);
+  border-radius: 999px;
+  color: var(--accent-on);
+  display: inline-flex;
+  font-size: calc(9px + var(--ui-font-offset, 0px));
+  height: 18px;
+  justify-content: center;
+  min-width: 18px;
+  padding: 0 5px;
 }
 
 .mobile-topbar-more {
@@ -3635,21 +3805,6 @@ html[lang="en"] .sidebar-tabs button svg {
 
 .board-object.is-artboard .object-frame {
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.24), 0 0 0 max(1px, calc(1px * var(--inverse-zoom))) rgb(var(--muted-rgb) / 0.3);
-}
-
-.board-object.is-artboard .object-frame::before {
-  border: max(1px, calc(1px * var(--inverse-zoom))) dashed rgb(var(--muted-rgb) / 0.38);
-  content: "";
-  inset: calc(var(--paper-padding, 40px) * 1);
-  pointer-events: none;
-  position: absolute;
-  opacity: 0;
-  z-index: 2;
-}
-
-.board-object.is-artboard:hover .object-frame::before,
-.board-object.is-artboard.is-selected .object-frame::before {
-  opacity: 1;
 }
 
 .canvas-video-player {
@@ -6875,6 +7030,45 @@ html[lang="en"] .sidebar-tabs button svg {
   margin-top: 1px;
 }
 
+.local-file-location-summary {
+  align-items: center;
+  background: var(--quiet-bg);
+  border-radius: 9px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 28px minmax(0, 1fr);
+  margin-top: 16px;
+  min-height: 70px;
+  padding: 12px 14px;
+}
+
+.local-file-location-summary > svg {
+  color: var(--accent-strong);
+  justify-self: center;
+}
+
+.local-file-location-summary > span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.local-file-location-summary strong {
+  color: var(--text);
+  font-size: calc(12px + var(--ui-font-offset, 0px));
+}
+
+.local-file-location-summary small {
+  color: var(--text-muted);
+  font-size: calc(9px + var(--ui-font-offset, 0px));
+  line-height: 1.5;
+}
+
+.local-file-location-summary.is-error > svg,
+.local-file-location-summary.is-error strong {
+  color: var(--danger);
+}
+
 .library-primary-location {
   align-items: center;
   background: rgb(var(--accent-rgb) / 0.07);
@@ -8398,6 +8592,15 @@ button.status-label:hover {
     display: none;
   }
 
+  .topbar-cloud-status {
+    min-width: 36px;
+    padding: 0;
+  }
+
+  .topbar-cloud-status > span {
+    display: none;
+  }
+
   .canvas-toolbar:not(.has-custom-position) {
     left: 12px;
     transform: none;
@@ -8464,13 +8667,30 @@ button.status-label:hover {
     display: none;
   }
 
+  .file-actions .file-menu-trigger {
+    display: flex;
+    min-height: 44px;
+    min-width: 44px;
+    padding: 0;
+  }
+
+  .file-menu-trigger > span,
+  .file-menu-trigger .file-menu-chevron {
+    display: none;
+  }
+
+  .file-menu-popover {
+    max-height: calc(100vh - 72px);
+  }
+
   .brand-block {
     min-width: 34px;
   }
 
   .mobile-panel-button,
   .mobile-close,
-  .mobile-topbar-more-button {
+  .mobile-topbar-more-button,
+  .topbar-cloud-status {
     display: flex;
     min-height: 44px;
     min-width: 44px;

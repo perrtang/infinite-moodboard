@@ -595,6 +595,15 @@ test("artboards wrap the selected visual bounds with predictable padding and pap
   assert.equal(artboard.pivotY, 75);
   assert.equal(artboard.paperPadding, 40);
   assert.equal(artboard.aspectLocked, false);
+  assert.equal(artboard.groupId, null);
+  assert.equal(artboard.artboardId, null);
+
+  const outerArtboard = createArtboardFromObjects([artboard], { padding: 40, id: "outer-paper" });
+  assert.deepEqual([outerArtboard.width, outerArtboard.height], [410, 290]);
+  assert.deepEqual([outerArtboard.pivotX, outerArtboard.pivotY], [125, 75]);
+  assert.equal(outerArtboard.groupId, null);
+  assert.equal(outerArtboard.artboardId, null);
+  assert.deepEqual([artboard.width, artboard.height], [330, 210]);
 
   const a4Landscape = resizeArtboardToPreset(artboard, "a4", "landscape");
   assert.deepEqual([a4Landscape.width, a4Landscape.height], [1123, 794]);

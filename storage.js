@@ -8,7 +8,12 @@ const SYNC_QUEUE_STORE = "syncQueue";
 const META_STORE = "meta";
 const CURRENT_BOARD_KEY = "current-board";
 const ACTIVE_BOARD_KEY = "active-board-id";
+const LOCAL_FILE_HANDLE_PREFIX = "local-file-handle:";
 const MAX_VERSIONS_PER_BOARD = 24;
+
+function localFileHandleKey(boardId) {
+  return `${LOCAL_FILE_HANDLE_PREFIX}${String(boardId || "")}`;
+}
 
 function requestToPromise(request) {
   return new Promise((resolve, reject) => {
@@ -135,6 +140,39 @@ export async function setActiveBoardId(boardId) {
   });
 }
 
+export async function loadLocalFileHandle(boardId) {
+  if (!boardId) return null;
+  return withDatabase(async (database) => {
+    const transaction = database.transaction(META_STORE, "readonly");
+    const record = await requestToPromise(transaction.objectStore(META_STORE).get(localFileHandleKey(boardId)));
+    return record?.handle || null;
+  });
+}
+
+export async function saveLocalFileHandle(boardId, handle) {
+  if (!boardId || !handle) throw new Error("缺少可保存的本機檔案位置。");
+  return withDatabase(async (database) => {
+    const transaction = database.transaction(META_STORE, "readwrite");
+    transaction.objectStore(META_STORE).put({
+      key: localFileHandleKey(boardId),
+      handle,
+      name: String(handle.name || ""),
+      updatedAt: new Date().toISOString(),
+    });
+    await transactionToPromise(transaction);
+    return handle;
+  });
+}
+
+export async function removeLocalFileHandle(boardId) {
+  if (!boardId) return;
+  return withDatabase(async (database) => {
+    const transaction = database.transaction(META_STORE, "readwrite");
+    transaction.objectStore(META_STORE).delete(localFileHandleKey(boardId));
+    await transactionToPromise(transaction);
+  });
+}
+
 export async function getLocalBoard(boardId) {
   if (!boardId) return null;
   return withDatabase(async (database) => {
@@ -196,6 +234,7 @@ export async function deleteLocalBoard(boardId, { deleteVersions = true } = {}) 
     const transaction = database.transaction(stores, "readwrite");
     transaction.objectStore(BOARD_STORE).delete(boardId);
     transaction.objectStore(SYNC_QUEUE_STORE).delete(boardId);
+    transaction.objectStore(META_STORE).delete(localFileHandleKey(boardId));
 
     const activeRequest = transaction.objectStore(META_STORE).get(ACTIVE_BOARD_KEY);
     activeRequest.onsuccess = () => {

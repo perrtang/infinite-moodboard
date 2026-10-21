@@ -163,15 +163,23 @@ import {
 import { mergeMoodboardLibrary } from "./library.js";
 import { createRecoveredMoodboard, describeDriveConflict } from "./versioning.js";
 import {
+  localFileWritePermission,
+  pickMoodboardLocalFile,
+  shouldWriteLocalAutosaveFile,
+  writeMoodboardToLocalFile,
+} from "./local-file.js";
+import {
   clearLocalMoodboardData,
   enqueueSync,
   getLocalLibrarySummary,
   getSyncJob,
   listLocalBoards,
+  loadLocalFileHandle,
   listSyncJobs,
   loadCurrentBoard,
   listVersions,
   removeSyncJob,
+  saveLocalFileHandle,
   saveCurrentBoard,
   saveVersion,
   updateSyncJob,
@@ -1681,13 +1689,153 @@ function AccountAvatar({ user, size = 28 }) {
   );
 }
 
+function FileMenu({
+  onOpenLibrary,
+  onOpenFile,
+  onSave,
+  onSaveAs,
+  onExportBrowser,
+  onExportObjects,
+  onOutputComposition,
+  canExportObjects,
+  canOutputComposition,
+  onOpenCollaboration,
+  onOpenVersions,
+  onOpenAbout,
+  saveTitle,
+  collaborationCount = 0,
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapperRef = useRef(null);
+  const triggerRef = useRef(null);
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const focusFrame = window.requestAnimationFrame(() => {
+      menuRef.current?.querySelector('[role="menuitem"]:not(:disabled)')?.focus();
+    });
+    const closeFromOutside = (event) => {
+      if (!wrapperRef.current?.contains(event.target)) setOpen(false);
+    };
+    const closeWithEscape = (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      setOpen(false);
+      window.requestAnimationFrame(() => triggerRef.current?.focus());
+    };
+    window.addEventListener("pointerdown", closeFromOutside);
+    window.addEventListener("keydown", closeWithEscape, true);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      window.removeEventListener("pointerdown", closeFromOutside);
+      window.removeEventListener("keydown", closeWithEscape, true);
+    };
+  }, [open]);
+
+  const activate = (callback) => {
+    setOpen(false);
+    callback();
+  };
+
+  const navigateMenu = (event) => {
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    const items = [...(menuRef.current?.querySelectorAll('[role="menuitem"]:not(:disabled)') || [])];
+    if (!items.length) return;
+    event.preventDefault();
+    const currentIndex = items.indexOf(document.activeElement);
+    const nextIndex = event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? items.length - 1
+        : event.key === "ArrowDown"
+          ? (currentIndex + 1 + items.length) % items.length
+          : (currentIndex - 1 + items.length) % items.length;
+    items[nextIndex].focus();
+  };
+
+  return (
+    <div
+      className="file-menu"
+      ref={wrapperRef}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
+      }}
+    >
+      <button
+        className={`topbar-button file-menu-trigger ${open ? "is-active" : ""}`}
+        type="button"
+        aria-label="檔案"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls="file-menu-popover"
+        ref={triggerRef}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <FileArchive size={17} />
+        <span>檔案</span>
+        <ChevronDown className="file-menu-chevron" size={14} aria-hidden="true" />
+      </button>
+      {open ? (
+        <div
+          className="file-menu-popover"
+          id="file-menu-popover"
+          role="menu"
+          aria-label="檔案"
+          ref={menuRef}
+          onKeyDown={navigateMenu}
+        >
+          <div className="file-menu-section" aria-label="檔案操作">
+            <span className="file-menu-section-label">檔案</span>
+            <button type="button" role="menuitem" onClick={() => activate(onOpenLibrary)}>
+              <FolderOpen size={17} /><span><strong>我的 Moodboards…</strong><small>本機與 Google Drive 檔案</small></span>
+            </button>
+            <button type="button" role="menuitem" onClick={() => activate(onOpenFile)}>
+              <FileUp size={17} /><span><strong>開啟 .moodboard…</strong><small>從這台裝置開啟可編輯檔案</small></span><kbd>{platformShortcutLabel("mod+o")}</kbd>
+            </button>
+            <button type="button" role="menuitem" title={saveTitle} onClick={() => activate(onSave)}>
+              <Save size={17} /><span><strong>儲存</strong><small>{saveTitle}</small></span><kbd>{platformShortcutLabel("mod+s")}</kbd>
+            </button>
+            <button type="button" role="menuitem" onClick={() => activate(onSaveAs)}>
+              <FileArchive size={17} /><span><strong>另存為 .moodboard…</strong><small>下載一份可再次編輯的副本</small></span>
+            </button>
+          </div>
+          <div className="file-menu-section" aria-label="輸出操作">
+            <span className="file-menu-section-label">輸出</span>
+            <button type="button" role="menuitem" onClick={() => activate(onExportBrowser)}>
+              <FileCode2 size={17} /><span><strong>匯出瀏覽器版（HTML）</strong><small>唯讀，可離線開啟</small></span>
+            </button>
+            <button type="button" role="menuitem" disabled={!canExportObjects} onClick={() => activate(onExportObjects)}>
+              <ImageDown size={17} /><span><strong>匯出選取素材…</strong><small>{canExportObjects ? "保留每個物件的原始內容" : "先選取至少 1 個物件"}</small></span>
+            </button>
+            <button type="button" role="menuitem" disabled={!canOutputComposition} onClick={() => activate(onOutputComposition)}>
+              <Images size={17} /><span><strong>輸出選取合成圖…</strong><small>{canOutputComposition ? "保留目前的位置、縮放與旋轉" : "先選取至少 1 個物件"}</small></span>
+            </button>
+          </div>
+          <div className="file-menu-section" aria-label="檔案管理">
+            <span className="file-menu-section-label">管理</span>
+            <button type="button" role="menuitem" onClick={() => activate(onOpenCollaboration)}>
+              <Share2 size={17} /><span><strong>分享與共同編輯</strong><small>建立連結與管理權限</small></span>{collaborationCount > 0 ? <b>{collaborationCount}</b> : null}
+            </button>
+            <button type="button" role="menuitem" onClick={() => activate(onOpenVersions)}>
+              <History size={17} /><span><strong>版本紀錄</strong><small>查看與復原內容版本</small></span>
+            </button>
+            <button type="button" role="menuitem" onClick={() => activate(onOpenAbout)}>
+              <Info size={17} /><span><strong>關於 Infinite Moodboard</strong><small>版本與更新資訊</small></span>
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function MobileTopbarMoreMenu({
   open,
   onOpenChange,
-  onOpenCollaboration,
   onOpenAccount,
   onOpenSettings,
-  collaborationCount = 0,
 }) {
   const wrapperRef = useRef(null);
   const triggerRef = useRef(null);
@@ -1767,11 +1915,6 @@ function MobileTopbarMoreMenu({
           ref={menuRef}
           onKeyDown={navigateMenu}
         >
-          <button type="button" role="menuitem" onClick={() => activate(onOpenCollaboration)}>
-            <Share2 size={18} />
-            <span>分享</span>
-            {collaborationCount > 0 ? <b>{collaborationCount}</b> : null}
-          </button>
           <button type="button" role="menuitem" onClick={() => activate(onOpenAccount)}>
             <UserRound size={18} />
             <span>帳號與隱私</span>
@@ -1786,7 +1929,7 @@ function MobileTopbarMoreMenu({
   );
 }
 
-function SelectionActionBar({ count, hasArtboard, grouped, onAddArtboard, onAddAnnotation, onGrid, onToggleGroup, onDuplicate, onDelete, style }) {
+function SelectionActionBar({ count, grouped, onAddArtboard, onAddAnnotation, onGrid, onToggleGroup, onDuplicate, onDelete, style }) {
   const selectionLabel = count > 1 ? `${count} 個選取物件` : "選取物件";
   const stopCanvasGesture = (event) => event.stopPropagation();
 
@@ -1801,7 +1944,7 @@ function SelectionActionBar({ count, hasArtboard, grouped, onAddArtboard, onAddA
       onDoubleClick={stopCanvasGesture}
       onKeyDown={stopCanvasGesture}
     >
-      <IconButton label={hasArtboard ? "選取範圍已包含紙張" : "在選取物件後方加入紙張"} onClick={onAddArtboard} disabled={hasArtboard}>
+      <IconButton label="在選取物件後方加入紙張" onClick={onAddArtboard}>
         <Square size={16} />
       </IconButton>
       <IconButton label="在選取範圍四周加入標題或說明" onClick={onAddAnnotation}>
@@ -3478,11 +3621,11 @@ function Inspector({
                   <span>紙張色彩</span>
                   <span className="color-input-row"><input type="color" value={object.fill} onChange={(event) => onUpdateObject(object.id, { fill: event.target.value })} /><code>{object.fill.toUpperCase()}</code></span>
                 </label>
-                <label><span>內容邊距</span><div className="input-with-suffix"><input type="number" min="0" max="400" value={Math.round(object.paperPadding || 0)} onChange={(event) => onUpdateObject(object.id, { paperPadding: Math.max(0, Math.min(400, Number(event.target.value) || 0)) })} /><b>px</b></div></label>
+                <label><span>符合內容的參考邊距</span><div className="input-with-suffix"><input type="number" min="0" max="400" value={Math.round(object.paperPadding || 0)} onChange={(event) => onUpdateObject(object.id, { paperPadding: Math.max(0, Math.min(400, Number(event.target.value) || 0)) })} /><b>px</b></div></label>
                 <button className="secondary-button full-width" type="button" onClick={() => onFitArtboard(object.id)}>
                   <Maximize2 size={15} /> 依目前紙上物件重新符合
                 </button>
-                <p className="section-helper">紙張與紙上物件預設互相獨立；只有主動建立群組後才會共同變形。重新符合只會計算當下視覺上放在紙上的物件，不會把它們綁定到紙張。</p>
+                <p className="section-helper">此數值只在建立或手動重新符合紙張時計算；不會顯示導引線，也不會限制、裁切或連動其它物件。只有建立群組後才會共同變形。</p>
               </section>
             ) : null}
 
@@ -3812,7 +3955,6 @@ function CanvasObject({
           width: object.width,
           height: object.height,
           transform: `perspective(${perspective}px) translateZ(${depth}px) rotateX(${tiltX}deg) rotateY(${tiltY}deg)`,
-          "--paper-padding": `${Math.max(0, Number(object.paperPadding) || 0)}px`,
         }}
       >
         {isEditingText
@@ -4940,7 +5082,7 @@ function StorageLocationModal({ currentTarget, onChoose, onClose }) {
           onClick={() => onChoose("local")}
         >
           <span className="storage-location-option-icon"><HardDrive size={22} /></span>
-          <span><strong>這台裝置</strong><small>自動儲存在這個瀏覽器；適合離線使用，不需要登入。</small></span>
+          <span><strong>這台裝置</strong><small>選擇一份 .moodboard 檔案供自動儲存；瀏覽器另保留復原副本。</small></span>
           {currentTarget === "local" ? <Check size={17} /> : <ChevronRight size={17} />}
         </button>
         <button
@@ -4956,6 +5098,40 @@ function StorageLocationModal({ currentTarget, onChoose, onClose }) {
         </button>
       </div>
       <p className="storage-location-note"><ShieldCheck size={16} />切換位置不會刪除另一端的檔案；未同步變更會先留在這台裝置。</p>
+    </Modal>
+  );
+}
+
+function LocalFileAutosaveModal({ binding, supported, onChoose, onDownload, onClose }) {
+  const needsPermission = binding.status === "permission-required";
+  const hasError = binding.status === "error";
+  return (
+    <Modal
+      title={supported ? "選擇本機自動儲存檔案" : "這個瀏覽器無法持續寫入檔案"}
+      description={supported
+        ? "基於瀏覽器安全限制，必須由你點一下按鈕，才會開啟 Finder／檔案視窗。選定後，後續變更會自動寫入該 .moodboard 檔案。"
+        : "目前仍會自動保存在這個瀏覽器，並可下載 .moodboard 備份；瀏覽器不會假裝已寫入 Finder／檔案。"}
+      onClose={onClose}
+    >
+      <div className={`local-file-location-summary ${hasError ? "is-error" : ""}`}>
+        <HardDrive size={20} />
+        <span>
+          <strong>{needsPermission && binding.name ? `重新授權「${binding.name}」` : supported ? "指定可編輯的 .moodboard 檔案" : "瀏覽器本機復原副本"}</strong>
+          <small>無論選擇哪一種方式，Infinite Moodboard 都會先保留瀏覽器內的復原副本。</small>
+        </span>
+      </div>
+      <div className="feature-dialog-actions">
+        <button className="quiet-button" type="button" onClick={onClose}>暫時只存這個瀏覽器</button>
+        {supported ? (
+          <button className="primary-button" type="button" onClick={onChoose}>
+            <FolderOpen size={16} /> {needsPermission ? "重新授權檔案" : "選擇 Finder／檔案位置"}
+          </button>
+        ) : (
+          <button className="primary-button" type="button" onClick={onDownload}>
+            <Download size={16} /> 下載 .moodboard 備份
+          </button>
+        )}
+      </div>
     </Modal>
   );
 }
@@ -5557,7 +5733,7 @@ function SettingsModal({
                 </button>
               </div>
               <button className="settings-toggle-row" type="button" aria-pressed={storagePreferences.autoSave} onClick={() => onSetAutoSave(!storagePreferences.autoSave)}>
-                <span><Save size={18} /><span><strong>自動儲存</strong><small>本機復原副本始終保留；啟用後，停止編輯時也會自動更新主要位置。</small></span></span>
+                <span><Save size={18} /><span><strong>自動儲存</strong><small>本機模式會先請你選擇 .moodboard 檔案；瀏覽器復原副本始終保留。</small></span></span>
                 <b>{storagePreferences.autoSave ? "啟用" : "停用"}</b>
               </button>
               <button className="settings-toggle-row" type="button" aria-pressed={storagePreferences.showSaveStatus} onClick={() => onSetShowSaveStatus(!storagePreferences.showSaveStatus)}>
@@ -6141,6 +6317,11 @@ function App() {
   const [showCollaboration, setShowCollaboration] = useState(false);
   const [showDriveLibrary, setShowDriveLibrary] = useState(false);
   const [showStorageLocation, setShowStorageLocation] = useState(false);
+  const [showLocalFileLocation, setShowLocalFileLocation] = useState(false);
+  const [localFileBinding, setLocalFileBinding] = useState(() => ({
+    status: typeof window !== "undefined" && window.showSaveFilePicker ? "checking" : "unsupported",
+    name: "",
+  }));
   const [showSettings, setShowSettings] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [settingsInitialSection, setSettingsInitialSection] = useState("general");
@@ -6231,6 +6412,7 @@ function App() {
   const [collaborationResume, setCollaborationResume] = useState(() => loadCollaborationResume());
   const [historySignal, setHistorySignal] = useState(0);
   const canUseDirectoryPicker = typeof window.showDirectoryPicker === "function" && navigator.webdriver !== true;
+  const canUseFileSystemPicker = typeof window.showSaveFilePicker === "function";
   const providerTestMode = import.meta.env.DEV
     && new URLSearchParams(window.location.search).get("authProviderTest") === "facebook";
   const identitySignedIn = authSession.status === "signed-in" && isMoodboardIdentityEligible(authSession.user);
@@ -6261,6 +6443,8 @@ function App() {
   const automaticCollaborationJoinRef = useRef("");
   const saveTimerRef = useRef(null);
   const localSavePromiseRef = useRef(Promise.resolve());
+  const localFileSavePromiseRef = useRef(Promise.resolve());
+  const localFilePromptDismissedRef = useRef(new Set());
   const localPersistenceGenerationRef = useRef(0);
   const driveSyncTimerRef = useRef(null);
   const toastTimerRef = useRef(null);
@@ -6873,6 +7057,33 @@ function App() {
     return write;
   }, []);
 
+  const writeBoardToBoundLocalFile = useCallback(async (snapshot, { requestPermission = false } = {}) => {
+    const handle = fileHandleRef.current;
+    if (!handle) {
+      setLocalFileBinding((current) => ["browser-only", "unsupported", "unlinked"].includes(current.status)
+        ? current
+        : { status: "unlinked", name: "" });
+      return false;
+    }
+    const previous = localFileSavePromiseRef.current.catch(() => undefined);
+    const write = previous.then(() => writeMoodboardToLocalFile(handle, snapshot, { requestPermission }));
+    localFileSavePromiseRef.current = write.catch(() => undefined);
+    try {
+      const result = await write;
+      if (boardRef.current.id === snapshot.id) {
+        setLocalFileBinding({ status: "linked", name: result.filename });
+      }
+      return true;
+    } catch (error) {
+      if (boardRef.current.id === snapshot.id) {
+        const status = error?.code === "local-file/permission-required" ? "permission-required" : "error";
+        const name = String(handle.name || "");
+        setLocalFileBinding((current) => current.status === status && current.name === name ? current : { status, name });
+      }
+      return false;
+    }
+  }, []);
+
   const refreshLocalLibrarySummary = useCallback(async () => {
     try {
       const [summary, boards, jobs] = await Promise.all([
@@ -7294,6 +7505,8 @@ function App() {
       viewRef.current = freshBoard.view;
       selectedIdsRef.current = [];
       fileHandleRef.current = null;
+      localFileSavePromiseRef.current = Promise.resolve();
+      localFilePromptDismissedRef.current.clear();
       undoRef.current = [];
       redoRef.current = [];
       setBoard(freshBoard);
@@ -7303,6 +7516,8 @@ function App() {
       setVersions([]);
       setDirty(false);
       setSaveState("已建立空白本機 Moodboard");
+      setLocalFileBinding({ status: canUseFileSystemPicker ? "unlinked" : "unsupported", name: "" });
+      setShowLocalFileLocation(false);
       setShowStorageLocation(true);
       await refreshLocalLibrarySummary();
       setShowDeleteLocalData(false);
@@ -7312,7 +7527,7 @@ function App() {
     } finally {
       setIsClearingLocalData(false);
     }
-  }, [announce, cancelDriveOperations, interfaceLocale, refreshLocalLibrarySummary]);
+  }, [announce, canUseFileSystemPicker, cancelDriveOperations, interfaceLocale, refreshLocalLibrarySummary]);
 
   const setCanvasBackgroundMode = useCallback((mode) => {
     setCanvasBackground((current) => changeCanvasBackgroundMode(current, mode));
@@ -7506,6 +7721,13 @@ function App() {
     setShowSettings(true);
   }, []);
 
+  const openAboutSettings = useCallback(() => {
+    setPreviewTheme(null);
+    setShowInterfaceThemes(false);
+    setSettingsInitialSection("about");
+    setShowSettings(true);
+  }, []);
+
   const openInterfaceThemes = useCallback(() => {
     setShowSettings(false);
     setPreviewTheme(null);
@@ -7645,6 +7867,14 @@ function App() {
       persistBoardLocally(snapshot)
         .then(async () => {
           const link = driveSettings.links[snapshot.id];
+          const localFileSaved = shouldWriteLocalAutosaveFile({
+            autoSave: storagePreferences.autoSave,
+            target: primaryTarget,
+            status: localFileBinding.status,
+            hasHandle: Boolean(fileHandleRef.current),
+          })
+            ? await writeBoardToBoundLocalFile(snapshot)
+            : false;
           if (storagePreferences.autoSave && primaryTarget === "drive" && driveSettings.enabled && driveSettings.autoSync && link) {
             await enqueueSync(snapshot, { fileId: link.fileId, expectedVersion: link.version });
           }
@@ -7653,13 +7883,18 @@ function App() {
           setSaveState(!storagePreferences.autoSave
             ? `本機復原副本已更新 · ${savedAt}；主要位置等待手動儲存`
             : primaryTarget === "local"
-              ? `已儲存在這台裝置 · ${savedAt}`
+              ? localFileSaved
+                ? `已自動儲存至 ${fileHandleRef.current?.name || ".moodboard 檔案"} · ${savedAt}`
+                : localFileBinding.status === "browser-only" || localFileBinding.status === "unsupported"
+                  ? `已自動儲存在這個瀏覽器 · ${savedAt}`
+                  : `本機復原副本已更新 · ${savedAt}；等待選擇 .moodboard 檔案`
               : primaryTarget === "drive"
                 ? `本機安全副本已更新 · ${savedAt}`
                 : `安全暫存已更新 · ${savedAt}`);
           if (
             storagePreferences.autoSave
             && primaryTarget === "local"
+            && (localFileSaved || localFileBinding.status === "browser-only" || localFileBinding.status === "unsupported")
             && boardRef.current.revision === snapshot.revision
             && boardRef.current.updatedAt === snapshot.updatedAt
           ) setDirty(false);
@@ -7669,7 +7904,7 @@ function App() {
         });
     }, 550);
     return () => window.clearTimeout(saveTimerRef.current);
-  }, [board, driveSettings.autoSync, driveSettings.enabled, driveSettings.links, hydrated, persistBoardLocally, refreshLocalLibrarySummary, storagePreferences, view]);
+  }, [board, driveSettings.autoSync, driveSettings.enabled, driveSettings.links, hydrated, localFileBinding.status, persistBoardLocally, refreshLocalLibrarySummary, storagePreferences, view, writeBoardToBoundLocalFile]);
 
   useEffect(() => {
     const flushRecoveryCopy = () => {
@@ -7944,8 +8179,21 @@ function App() {
       setFilters(DEFAULT_FILTERS);
       setSelectedCaptureId(null);
       fileHandleRef.current = handle;
+      if (handle) {
+        await saveLocalFileHandle(imported.id, handle).catch(() => undefined);
+        setLocalFileBinding({ status: "linked", name: String(handle.name || file.name || "") });
+      } else {
+        setLocalFileBinding(canUseFileSystemPicker ? { status: "unlinked", name: "" } : { status: "unsupported", name: "" });
+      }
       setBoardPrimaryStorage(imported.id, "local");
-      setDirty(false);
+      try {
+        await persistBoardLocally(imported);
+        setDirty(false);
+      } catch (error) {
+        setDirty(true);
+        announce(error?.message || "檔案已開啟，但本機復原副本尚未建立。請立即儲存。", "warning");
+        return imported;
+      }
       publishBoard(imported);
       announce(`已開啟「${imported.name}」`, "success");
       return imported;
@@ -7953,7 +8201,7 @@ function App() {
       announce(error.message || "Infinite Moodboard 檔案無法開啟。", "error");
       return null;
     }
-  }, [announce, publishBoard, pushUndo, setBoardPrimaryStorage]);
+  }, [announce, canUseFileSystemPicker, persistBoardLocally, publishBoard, pushUndo, setBoardPrimaryStorage]);
 
   const importLocalBoardFile = useCallback(async (file, handle = null) => {
     const current = { ...boardRef.current, view: viewRef.current };
@@ -8322,6 +8570,108 @@ function App() {
   const currentDriveLink = driveSettings.links[board.id] || null;
   const currentPrimaryStorageTarget = storageTargetForBoard(storagePreferences, board.id);
 
+  useEffect(() => {
+    let cancelled = false;
+    if (!hydrated) return undefined;
+    if (currentPrimaryStorageTarget !== "local") {
+      fileHandleRef.current = null;
+      setShowLocalFileLocation(false);
+      return undefined;
+    }
+    if (!canUseFileSystemPicker) {
+      fileHandleRef.current = null;
+      setLocalFileBinding({ status: "unsupported", name: "" });
+      return undefined;
+    }
+    setLocalFileBinding((current) => current.status === "linked" && fileHandleRef.current
+      ? current
+      : { status: "checking", name: "" });
+    loadLocalFileHandle(board.id)
+      .then(async (handle) => {
+        if (cancelled) return;
+        if (!handle) {
+          fileHandleRef.current = null;
+          setLocalFileBinding({ status: "unlinked", name: "" });
+          return;
+        }
+        const permission = await localFileWritePermission(handle);
+        if (cancelled) return;
+        fileHandleRef.current = handle;
+        setLocalFileBinding({
+          status: permission === "granted" ? "linked" : "permission-required",
+          name: String(handle.name || ""),
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setLocalFileBinding({ status: "error", name: "" });
+      });
+    return () => { cancelled = true; };
+  }, [board.id, canUseFileSystemPicker, currentPrimaryStorageTarget, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated || showStorageLocation || currentPrimaryStorageTarget !== "local" || !storagePreferences.autoSave) return;
+    if (!["unlinked", "permission-required", "unsupported", "error"].includes(localFileBinding.status)) return;
+    if (localFilePromptDismissedRef.current.has(board.id)) return;
+    setShowLocalFileLocation(true);
+  }, [board.id, currentPrimaryStorageTarget, hydrated, localFileBinding.status, showStorageLocation, storagePreferences.autoSave]);
+
+  const chooseLocalFileForAutosave = useCallback(async () => {
+    const snapshot = boardSnapshot();
+    const operationEpoch = storageTargetOperationEpochRef.current;
+    const operationIsCurrent = () => isCurrentStorageTargetOperation({
+      expectedEpoch: operationEpoch,
+      currentEpoch: storageTargetOperationEpochRef.current,
+      expectedBoardId: snapshot.id,
+      currentBoardId: boardRef.current.id,
+    });
+    let handle = fileHandleRef.current;
+    try {
+      if (handle) {
+        await writeMoodboardToLocalFile(handle, snapshot, { requestPermission: true });
+      } else {
+        handle = await pickMoodboardLocalFile(snapshot, window.showSaveFilePicker?.bind(window));
+      }
+      if (!operationIsCurrent()) return false;
+      fileHandleRef.current = handle;
+      await Promise.all([
+        saveLocalFileHandle(snapshot.id, handle),
+        persistBoardLocally(snapshot),
+      ]);
+      if (!operationIsCurrent()) return false;
+      setBoardPrimaryStorage(snapshot.id, "local");
+      localFilePromptDismissedRef.current.delete(snapshot.id);
+      setLocalFileBinding({ status: "linked", name: String(handle.name || "") });
+      setShowLocalFileLocation(false);
+      if (boardRef.current.id === snapshot.id
+        && boardRef.current.revision === snapshot.revision
+        && boardRef.current.updatedAt === snapshot.updatedAt) setDirty(false);
+      const savedAt = new Date().toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" });
+      setSaveState(`已儲存至 ${handle.name || ".moodboard 檔案"} · ${savedAt}`);
+      announce(`已設定「${handle.name || ".moodboard 檔案"}」為本機自動儲存位置。`, "success");
+      return true;
+    } catch (error) {
+      if (error?.name === "AbortError") return false;
+      if (!operationIsCurrent()) return false;
+      const status = error?.code === "local-file/permission-required"
+        ? "permission-required"
+        : error?.code === "local-file/unsupported"
+          ? "unsupported"
+          : "error";
+      setLocalFileBinding({ status, name: String(handle?.name || "") });
+      announce(error?.message || "無法寫入本機 .moodboard 檔案；瀏覽器復原副本仍保留。", "error");
+      return false;
+    }
+  }, [announce, boardSnapshot, persistBoardLocally, setBoardPrimaryStorage]);
+
+  const dismissLocalFileLocation = useCallback(() => {
+    localFilePromptDismissedRef.current.add(board.id);
+    setShowLocalFileLocation(false);
+    setLocalFileBinding((current) => current.status === "unsupported"
+      ? current
+      : { status: "browser-only", name: current.name });
+    setSaveState("自動儲存在這個瀏覽器；尚未指定 .moodboard 檔案");
+  }, [board.id]);
+
   const saveBoardToGoogleDrive = useCallback(({ asCopy = false, silent = false } = {}) => {
     if (!authReady) {
       if (!silent) requestAdvancedFeature("drive");
@@ -8652,15 +9002,23 @@ function App() {
       await persistBoardLocally(snapshot);
       if (!operationIsCurrent()) return false;
       setBoardPrimaryStorage(snapshot.id, "local");
+      const fileSaved = await writeBoardToBoundLocalFile(snapshot);
+      if (!operationIsCurrent()) return false;
       await refreshLocalLibrarySummary();
       if (!operationIsCurrent()) return false;
+      if (!fileSaved) {
+        setSaveState("本機復原副本已更新；等待選擇 .moodboard 檔案");
+        if (!localFilePromptDismissedRef.current.has(snapshot.id)) setShowLocalFileLocation(true);
+        if (!silent) announce("請選擇 .moodboard 檔案位置，之後才能自動寫入 Finder／檔案。", "warning");
+        return false;
+      }
       if (
         boardRef.current.revision === snapshot.revision
         && boardRef.current.updatedAt === snapshot.updatedAt
       ) setDirty(false);
       const savedAt = new Date().toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" });
-      setSaveState(`已儲存在這台裝置 · ${savedAt}`);
-      if (!silent) announce("已儲存在這台裝置。", "success");
+      setSaveState(`已儲存至 ${fileHandleRef.current?.name || ".moodboard 檔案"} · ${savedAt}`);
+      if (!silent) announce(`已儲存至「${fileHandleRef.current?.name || ".moodboard 檔案"}」。`, "success");
       return true;
     } catch (error) {
       if (error?.name !== "AbortError") {
@@ -8669,7 +9027,7 @@ function App() {
       }
       return false;
     }
-  }, [announce, boardSnapshot, persistBoardLocally, refreshLocalLibrarySummary, setBoardPrimaryStorage]);
+  }, [announce, boardSnapshot, persistBoardLocally, refreshLocalLibrarySummary, setBoardPrimaryStorage, writeBoardToBoundLocalFile]);
 
   const savePreferredBoard = useCallback(() => {
     if (!currentPrimaryStorageTarget) {
@@ -8677,6 +9035,10 @@ function App() {
       return;
     }
     if (currentPrimaryStorageTarget === "local") {
+      if (localFileBinding.status !== "linked" || !fileHandleRef.current) {
+        setShowLocalFileLocation(true);
+        return;
+      }
       saveBoardToLocalPrimary();
       return;
     }
@@ -8690,7 +9052,7 @@ function App() {
       return;
     }
     saveBoardToGoogleDrive();
-  }, [authReady, currentDriveAccessToken, currentPrimaryStorageTarget, driveSettings.enabled, requestAdvancedFeature, saveBoardToGoogleDrive, saveBoardToLocalPrimary]);
+  }, [authReady, currentDriveAccessToken, currentPrimaryStorageTarget, driveSettings.enabled, localFileBinding.status, requestAdvancedFeature, saveBoardToGoogleDrive, saveBoardToLocalPrimary]);
 
   const choosePrimaryStorageTarget = useCallback(async (target) => {
     const operationEpoch = storageTargetOperationEpochRef.current + 1;
@@ -8715,14 +9077,17 @@ function App() {
         message: "已切換到這台裝置；既有 Drive 檔案未刪除。",
         conflict: null,
       }));
-      const saved = await saveBoardToLocalPrimary();
-      if (!saved || !isCurrentStorageTargetOperation({
+      const snapshot = boardSnapshot();
+      await persistBoardLocally(snapshot);
+      if (!isCurrentStorageTargetOperation({
         expectedEpoch: operationEpoch,
         currentEpoch: storageTargetOperationEpochRef.current,
         expectedBoardId: boardId,
         currentBoardId: boardRef.current.id,
       })) return;
       await refreshLocalLibrarySummary();
+      localFilePromptDismissedRef.current.delete(boardId);
+      setShowLocalFileLocation(true);
       return;
     }
 
@@ -8733,7 +9098,7 @@ function App() {
       return;
     }
     openGoogleDriveLibrary();
-  }, [authReady, cancelDriveOperations, openGoogleDriveLibrary, refreshLocalLibrarySummary, requestAdvancedFeature, saveBoardToLocalPrimary, setBoardPrimaryStorage]);
+  }, [authReady, boardSnapshot, cancelDriveOperations, openGoogleDriveLibrary, persistBoardLocally, refreshLocalLibrarySummary, requestAdvancedFeature, setBoardPrimaryStorage]);
 
   const setAutoSavePreference = useCallback((enabled) => {
     updateStoragePreferences((current) => ({ ...current, autoSave: Boolean(enabled) }));
@@ -8970,7 +9335,7 @@ function App() {
 
   const addArtboardBehindSelection = useCallback(() => {
     const selected = new Set(selectedIdsRef.current);
-    const targets = boardRef.current.objects.filter((object) => selected.has(object.id) && object.visible && !isArtboardObject(object));
+    const targets = boardRef.current.objects.filter((object) => selected.has(object.id) && object.visible);
     if (!targets.length) {
       announce("請先選取要放到紙張上的物件。", "warning");
       return;
@@ -8988,7 +9353,7 @@ function App() {
     selectedIdsRef.current = nextSelection;
     setSelectedIds(nextSelection);
     setKeyObjectId(artboard.id);
-    announce(`已加入獨立紙張，四周保留 40px 邊距；如需連動請再建立群組。`, "success");
+    announce("已加入獨立紙張；40px 只作建立尺寸參考，如需連動請再建立群組。", "success");
   }, [announce, applyBoard]);
 
   const fitArtboardToContents = useCallback((artboardId) => {
@@ -10571,6 +10936,11 @@ function App() {
         closeInterfaceThemes();
         return;
       }
+      if (event.key === "Escape" && showLocalFileLocation) {
+        event.preventDefault();
+        dismissLocalFileLocation();
+        return;
+      }
       if (event.key === "Escape" && showStorageLocation) {
         event.preventDefault();
         setShowStorageLocation(false);
@@ -10708,7 +11078,7 @@ function App() {
       window.removeEventListener("keyup", keyUp);
       window.removeEventListener("blur", blur);
     };
-  }, [announce, cancelPendingObjectDeletion, closeAdvancedFeatureGate, closeInterfaceThemes, closePreparedDownloads, copySelectedObjects, cutSelectedObjects, deleteSelected, dragActive, duplicateSelected, escapeCancellationRequest, filters.colors.length, filters.symbols.length, focusMode, isClearingLocalData, keepEscapeAdjustment, leftPanelVisible, leftTab, loadedTextFlow, mobilePanel, openBoardFile, openListSearch, pasteCopiedObjects, pendingAdvancedFeature, pendingObjectDeletion, preparedDownloads.length, redo, requestActivePointerCancellation, requestAdvancedFeature, restoreWorkspaceChrome, rightPanelVisible, savePreferredBoard, shapeMenuOpen, showAnnotationBuilder, showBothPanels, showCollaboration, showDeleteLocalData, showDriveLibrary, showGridBuilder, showInterfaceThemes, showSettings, showShortcuts, showStorageLocation, showVersions, toggleBothPanels, toggleCanvasBackground, toggleFocusMode, toggleGuides, toggleLeftPanel, toggleRightPanel, toggleRulers, toggleSelectionGroup, tool, undo]);
+  }, [announce, cancelPendingObjectDeletion, closeAdvancedFeatureGate, closeInterfaceThemes, closePreparedDownloads, copySelectedObjects, cutSelectedObjects, deleteSelected, dismissLocalFileLocation, dragActive, duplicateSelected, escapeCancellationRequest, filters.colors.length, filters.symbols.length, focusMode, isClearingLocalData, keepEscapeAdjustment, leftPanelVisible, leftTab, loadedTextFlow, mobilePanel, openBoardFile, openListSearch, pasteCopiedObjects, pendingAdvancedFeature, pendingObjectDeletion, preparedDownloads.length, redo, requestActivePointerCancellation, requestAdvancedFeature, restoreWorkspaceChrome, rightPanelVisible, savePreferredBoard, shapeMenuOpen, showAnnotationBuilder, showBothPanels, showCollaboration, showDeleteLocalData, showDriveLibrary, showGridBuilder, showInterfaceThemes, showLocalFileLocation, showSettings, showShortcuts, showStorageLocation, showVersions, toggleBothPanels, toggleCanvasBackground, toggleFocusMode, toggleGuides, toggleLeftPanel, toggleRightPanel, toggleRulers, toggleSelectionGroup, tool, undo]);
 
   const exportObjects = useCallback(async (scopeOverride) => {
     const scope = typeof scopeOverride === "string" ? scopeOverride : exportScope;
@@ -10866,7 +11236,6 @@ function App() {
   ));
   const selectionGrouped = Boolean(selectedSemanticGroup);
   const selectionSemanticLabel = selectedSemanticGroup?.name || null;
-  const selectionHasArtboard = selectedObjects.some(isArtboardObject);
   const selectionActionBounds = selectedObjects.length ? selectionWorldBounds(selectedObjects) : null;
   const multiSelectionBounds = selectedObjects.length > 1 ? selectionWorldBounds(selectedObjects) : null;
   const selectionActionAnchor = selectionActionBounds
@@ -10970,7 +11339,13 @@ function App() {
   const effectiveLeftPanelVisible = !focusMode && leftPanelVisible;
   const effectiveRightPanelVisible = !focusMode && rightPanelVisible;
   const drivePresentation = driveStatusPresentation(driveSession);
+  const DriveStatusIcon = drivePresentation.icon;
   const driveNeedsAttention = ["offline", "quota", "conflict", "authorization-required", "error"].includes(driveSession.status);
+  const showTopbarDriveStatus = currentPrimaryStorageTarget === "drive"
+    && storagePreferences.autoSave
+    && driveSettings.enabled
+    && driveSettings.autoSync
+    && Boolean(currentDriveLink);
   const localSaveNeedsAttention = ["本機復原副本寫入失敗", "儲存失敗；變更仍留在目前分頁", "自動儲存不可用"].includes(saveState);
   const preferLocalSaveState = localSaveNeedsAttention || (!storagePreferences.autoSave && dirty);
   const topbarSaveState = currentPrimaryStorageTarget === "drive"
@@ -10980,7 +11355,13 @@ function App() {
       ? (driveSession.message || drivePresentation.label)
       : "主要位置：Google Drive")
     : currentPrimaryStorageTarget === "local"
-      ? (storagePreferences.showSaveStatus || dirty ? saveState : "主要位置：這台裝置")
+      ? (storagePreferences.showSaveStatus || dirty
+        ? saveState
+        : localFileBinding.status === "linked"
+          ? `主要位置：${localFileBinding.name || ".moodboard 檔案"}`
+          : localFileBinding.status === "browser-only" || localFileBinding.status === "unsupported"
+            ? "主要位置：這個瀏覽器"
+            : "尚未指定 .moodboard 檔案")
       : "尚未選擇主要儲存位置";
 
   return (
@@ -11019,9 +11400,30 @@ function App() {
           >
             <PanelLeft size={18} />
           </IconButton>
-          <button className="topbar-button" type="button" onClick={openGoogleDriveLibrary} title="開啟這台裝置或 Google Drive 中的 Moodboard"><FolderOpen size={17} /><span>我的 Moodboards</span></button>
-          <button className="topbar-button" type="button" onClick={savePreferredBoard} title={currentPrimaryStorageTarget === "drive" ? "儲存到 Google Drive" : currentPrimaryStorageTarget === "local" ? "儲存到這台裝置" : "選擇主要儲存位置"}><Save size={17} /><span>儲存</span></button>
-          <button className="topbar-button" type="button" onClick={exportBrowserHtml} title="匯出可用一般瀏覽器開啟的唯讀 HTML"><FileCode2 size={17} /><span>瀏覽器版</span></button>
+          <FileMenu
+            onOpenLibrary={openGoogleDriveLibrary}
+            onOpenFile={openBoardFile}
+            onSave={savePreferredBoard}
+            onSaveAs={() => saveBoardFile(true)}
+            onExportBrowser={exportBrowserHtml}
+            onExportObjects={() => exportObjects("selected")}
+            onOutputComposition={outputSelectionComposition}
+            canExportObjects={!sourceModeActive && selectedObjects.length > 0}
+            canOutputComposition={!sourceModeActive && selectedObjects.length > 0}
+            onOpenCollaboration={() => requestAdvancedFeature("collaboration")}
+            onOpenVersions={openVersionModal}
+            onOpenAbout={openAboutSettings}
+            saveTitle={currentPrimaryStorageTarget === "drive"
+              ? "儲存到 Google Drive"
+              : currentPrimaryStorageTarget === "local"
+                ? localFileBinding.status === "linked"
+                  ? `儲存到 ${localFileBinding.name || ".moodboard 檔案"}`
+                  : "選擇 .moodboard 儲存位置"
+                : "選擇主要儲存位置"}
+            collaborationCount={authReady && cloudCollaboration.roomId
+              ? Math.max(1, cloudCollaboration.peers.length)
+              : authReady && peers.length ? peers.length + 1 : 0}
+          />
         </div>
 
         <label className="board-title-field">
@@ -11036,6 +11438,19 @@ function App() {
         </label>
 
         <div className="topbar-secondary">
+          {showTopbarDriveStatus ? (
+            <button
+              className={`topbar-cloud-status is-${drivePresentation.tone}`}
+              type="button"
+              aria-label={`${drivePresentation.label}；開啟 Google Drive 檔案與同步狀態`}
+              aria-live="polite"
+              title={`${drivePresentation.label}；點一下查看 Google Drive`}
+              onClick={openGoogleDriveLibrary}
+            >
+              <DriveStatusIcon className={drivePresentation.tone === "working" ? "is-spinning" : ""} size={17} aria-hidden="true" />
+              <span>{drivePresentation.label}</span>
+            </button>
+          ) : null}
           <IconButton
             label={sourceModeActive ? "回到 Moodboard 後復原 ⌘Z" : "復原 ⌘Z"}
             onClick={undo}
@@ -11046,21 +11461,6 @@ function App() {
             onClick={redo}
             disabled={cloudReadOnly || sourceModeActive || !redoRef.current.length}
           ><Redo2 size={18} /></IconButton>
-          <button className="topbar-button" type="button" onClick={openVersionModal}><History size={17} /><span>版本</span></button>
-          <button
-            className="topbar-button collaboration-button"
-            type="button"
-            aria-label={authReady
-              ? cloudCollaboration.roomId
-                ? `分享，${Math.max(1, cloudCollaboration.peers.length)} 位成員在線`
-                : "分享目前 Moodboard"
-              : "分享，需要登入"}
-            onClick={() => requestAdvancedFeature("collaboration")}
-          >
-            <Share2 size={17} /><span>分享</span>{authReady && cloudCollaboration.roomId
-              ? <b>{Math.max(1, cloudCollaboration.peers.length)}</b>
-              : null}
-          </button>
           <button
             className="account-menu-button"
             type="button"
@@ -11101,12 +11501,8 @@ function App() {
           <MobileTopbarMoreMenu
             open={mobileTopbarMenuOpen}
             onOpenChange={setMobileTopbarMenuOpen}
-            onOpenCollaboration={() => requestAdvancedFeature("collaboration")}
             onOpenAccount={openAccountSettings}
             onOpenSettings={openSettings}
-            collaborationCount={authReady && cloudCollaboration.roomId
-              ? Math.max(1, cloudCollaboration.peers.length)
-              : authReady && peers.length ? peers.length + 1 : 0}
           />
         </div>
       </header>
@@ -11348,7 +11744,6 @@ function App() {
             {showSelectionActions && !cloudReadOnly ? (
               <SelectionActionBar
                 count={selectedObjects.length}
-                hasArtboard={selectionHasArtboard}
                 grouped={selectionGrouped}
                 onAddArtboard={addArtboardBehindSelection}
                 onAddAnnotation={() => setShowAnnotationBuilder(true)}
@@ -11545,6 +11940,19 @@ function App() {
           currentTarget={currentPrimaryStorageTarget}
           onChoose={choosePrimaryStorageTarget}
           onClose={() => setShowStorageLocation(false)}
+        />
+      ) : null}
+
+      {showLocalFileLocation && currentPrimaryStorageTarget === "local" ? (
+        <LocalFileAutosaveModal
+          binding={localFileBinding}
+          supported={canUseFileSystemPicker}
+          onChoose={chooseLocalFileForAutosave}
+          onDownload={() => {
+            saveBoardFile(true);
+            dismissLocalFileLocation();
+          }}
+          onClose={dismissLocalFileLocation}
         />
       ) : null}
 

@@ -13,9 +13,12 @@ import {
   listLocalBoards,
   listSyncJobs,
   listVersions,
+  loadLocalFileHandle,
   loadCurrentBoard,
+  removeLocalFileHandle,
   removeSyncJob,
   saveCurrentBoard,
+  saveLocalFileHandle,
   saveVersion,
   setActiveBoardId,
   updateSyncJob,
@@ -133,14 +136,31 @@ test("deleting a local board also removes its queued sync and versions", async (
   await saveCurrentBoard(current);
   await saveVersion(current, "Before delete");
   await enqueueSync(current, { fileId: "drive-remove" });
+  await saveLocalFileHandle(current.id, { kind: "file", name: "remove-me.moodboard" });
 
   await deleteLocalBoard(current.id);
 
   assert.equal(await getLocalBoard(current.id), null);
   assert.equal(await getSyncJob(current.id), null);
   assert.equal((await listVersions(current.id)).length, 0);
+  assert.equal(await loadLocalFileHandle(current.id), null);
   assert.equal(await getActiveBoardId(), "");
   assert.equal(await loadCurrentBoard(), null);
+});
+
+test("local file handles are stored per board and can be removed independently", async () => {
+  await deleteDatabase();
+  const firstHandle = { kind: "file", name: "one.moodboard" };
+  const secondHandle = { kind: "file", name: "two.moodboard" };
+  await saveLocalFileHandle("one", firstHandle);
+  await saveLocalFileHandle("two", secondHandle);
+
+  assert.deepEqual(await loadLocalFileHandle("one"), firstHandle);
+  assert.deepEqual(await loadLocalFileHandle("two"), secondHandle);
+
+  await removeLocalFileHandle("one");
+  assert.equal(await loadLocalFileHandle("one"), null);
+  assert.deepEqual(await loadLocalFileHandle("two"), secondHandle);
 });
 
 test("local library summary reports board and pending sync counts", async () => {
