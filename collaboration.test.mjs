@@ -115,6 +115,19 @@ test("collaboration document keeps assets while preserving each device viewport"
   document.destroy();
 });
 
+test("collaboration keeps global and individual guide locks with the shared board", () => {
+  const board = {
+    ...sampleBoard(),
+    guidesLocked: true,
+    guides: [{ id: "guide-locked", axis: "x", position: 144, locked: true }],
+  };
+  const document = createCollaborationDocument(board);
+  const restored = readBoardFromCollaborationDocument(document, board);
+  assert.equal(restored.guidesLocked, true);
+  assert.deepEqual(restored.guides, [{ id: "guide-locked", axis: "x", position: 144, locked: true }]);
+  document.destroy();
+});
+
 test("transforming an image does not resend its large source asset", () => {
   const board = sampleBoard();
   const document = createCollaborationDocument(board);

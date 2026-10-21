@@ -316,8 +316,8 @@ import {
   matchesListQuery,
   normalizeCanvasToolbarPosition,
   normalizeRulerUnit,
+  resolveGuidePosition,
   shouldConfirmEscapeCancellation,
-  snapGuidePosition,
 } from "./workspace-tools.js";
 import "./styles.css";
 
@@ -1560,6 +1560,8 @@ function ListSearchField({ search, placeholder, children = null }) {
 function WorkspaceRulers({
   rulersVisible,
   guidesVisible,
+  guidesLocked,
+  readOnly,
   guides,
   draggingGuide,
   view,
@@ -1567,9 +1569,13 @@ function WorkspaceRulers({
   unit,
   onUnitChange,
   onStartGuide,
+  onToggleGuideLocked,
   onDeleteGuide,
 }) {
   const [unitMenu, setUnitMenu] = useState(null);
+  const [guideMenu, setGuideMenu] = useState(null);
+  const guideMenuRef = useRef(null);
+  const guideMenuTriggerRef = useRef(null);
   const horizontalTicks = useMemo(
     () => buildRulerTicks(viewportSize.width, view.x, view.zoom, unit),
     [unit, view.x, view.zoom, viewportSize.width],
@@ -1580,34 +1586,91 @@ function WorkspaceRulers({
   );
 
   useEffect(() => {
-    if (!unitMenu) return undefined;
-    const close = () => setUnitMenu(null);
+    if (!unitMenu && !guideMenu) return undefined;
+    const focusFrame = guideMenu ? window.requestAnimationFrame(() => {
+      guideMenuRef.current?.querySelector('[role="menuitem"]:not(:disabled)')?.focus();
+    }) : null;
+    const close = () => {
+      setUnitMenu(null);
+      setGuideMenu(null);
+    };
     const closeOnEscape = (event) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      setUnitMenu(null);
+      const trigger = guideMenuTriggerRef.current;
+      close();
+      if (trigger) window.requestAnimationFrame(() => trigger.focus());
     };
     window.addEventListener("pointerdown", close);
     window.addEventListener("blur", close);
     window.addEventListener("keydown", closeOnEscape, true);
     return () => {
+      if (focusFrame) window.cancelAnimationFrame(focusFrame);
       window.removeEventListener("pointerdown", close);
       window.removeEventListener("blur", close);
       window.removeEventListener("keydown", closeOnEscape, true);
     };
-  }, [unitMenu]);
+  }, [guideMenu, unitMenu]);
 
   if (!rulersVisible && !guidesVisible && !draggingGuide) return null;
 
   const openUnitMenu = (event) => {
     event.preventDefault();
     event.stopPropagation();
+    setGuideMenu(null);
     setUnitMenu({ x: event.clientX, y: event.clientY });
+  };
+  const openGuideMenu = (event, guide, screenPosition = null) => {
+    event.preventDefault();
+    event.stopPropagation();
+    guideMenuTriggerRef.current = event.currentTarget;
+    const pointerPositionAvailable = Number.isFinite(event.clientX) && Number.isFinite(event.clientY) && (event.clientX !== 0 || event.clientY !== 0);
+    const fallbackX = guide.axis === "x" ? screenPosition : RULER_SIZE + 16;
+    const fallbackY = guide.axis === "y" ? screenPosition : RULER_SIZE + 16;
+    setUnitMenu(null);
+    setGuideMenu({
+      guide,
+      x: Math.max(8, Math.min(pointerPositionAvailable ? event.clientX : fallbackX, window.innerWidth - 224)),
+      y: Math.max(8, Math.min(pointerPositionAvailable ? event.clientY : fallbackY, window.innerHeight - 112)),
+    });
+  };
+  const activateGuideMenu = (callback) => {
+    const guide = guideMenu?.guide;
+    setGuideMenu(null);
+    if (guide) callback(guide);
+  };
+  const navigateGuideMenu = (event) => {
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+    const items = [...(guideMenuRef.current?.querySelectorAll('[role="menuitem"]:not(:disabled)') || [])];
+    if (!items.length) return;
+    event.preventDefault();
+    const currentIndex = items.indexOf(document.activeElement);
+    const nextIndex = event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? items.length - 1
+        : event.key === "ArrowDown"
+          ? (currentIndex + 1 + items.length) % items.length
+          : (currentIndex - 1 + items.length) % items.length;
+    items[nextIndex].focus();
   };
   const shownGuides = draggingGuide
     ? [...guides.filter((guide) => guide.id !== draggingGuide.id), draggingGuide]
     : guides;
+  const draggingGuideScreenPosition = draggingGuide
+    ? (draggingGuide.axis === "x" ? view.x : view.y) + draggingGuide.position * view.zoom
+    : null;
+  const rulerInset = rulersVisible ? RULER_SIZE : 0;
+  const readoutStyle = draggingGuide ? (
+    draggingGuide.axis === "x"
+      ? draggingGuideScreenPosition > viewportSize.width / 2
+        ? { right: Math.max(8, viewportSize.width - draggingGuideScreenPosition + 8), top: rulerInset + 8 }
+        : { left: Math.max(rulerInset + 8, draggingGuideScreenPosition + 8), top: rulerInset + 8 }
+      : draggingGuideScreenPosition > viewportSize.height / 2
+        ? { bottom: Math.max(8, viewportSize.height - draggingGuideScreenPosition + 8), left: rulerInset + 8 }
+        : { top: Math.max(rulerInset + 8, draggingGuideScreenPosition + 8), left: rulerInset + 8 }
+  ) : null;
 
   return (
     <div className="workspace-measurement-layer" aria-label="尺規與輔助導引線">
@@ -1617,10 +1680,10 @@ function WorkspaceRulers({
             {RULER_UNITS[unit].label}
           </button>
           <div
-            className="workspace-ruler is-horizontal"
+            className={`workspace-ruler is-horizontal ${guidesLocked || readOnly ? "is-guide-locked" : ""}`}
             role="button"
             tabIndex={0}
-            aria-label="頂部尺規；拖曳可建立水平導引線"
+            aria-label={readOnly ? "頂部尺規；目前僅檢視" : guidesLocked ? "頂部尺規；輔助導引線已鎖定" : "頂部尺規；拖曳可建立水平導引線"}
             onPointerDown={(event) => onStartGuide(event, "y")}
             onContextMenu={openUnitMenu}
           >
@@ -1631,10 +1694,10 @@ function WorkspaceRulers({
             ))}
           </div>
           <div
-            className="workspace-ruler is-vertical"
+            className={`workspace-ruler is-vertical ${guidesLocked || readOnly ? "is-guide-locked" : ""}`}
             role="button"
             tabIndex={0}
-            aria-label="左側尺規；拖曳可建立垂直導引線"
+            aria-label={readOnly ? "左側尺規；目前僅檢視" : guidesLocked ? "左側尺規；輔助導引線已鎖定" : "左側尺規；拖曳可建立垂直導引線"}
             onPointerDown={(event) => onStartGuide(event, "x")}
             onContextMenu={openUnitMenu}
           >
@@ -1652,19 +1715,33 @@ function WorkspaceRulers({
             const screenPosition = (guide.axis === "x" ? view.x : view.y) + guide.position * view.zoom;
             return (
               <button
-                className={`workspace-guide is-${guide.axis === "x" ? "vertical" : "horizontal"} ${draggingGuide?.id === guide.id ? "is-dragging" : ""}`}
+                className={`workspace-guide is-${guide.axis === "x" ? "vertical" : "horizontal"} ${draggingGuide?.id === guide.id ? "is-dragging" : ""} ${guidesLocked || guide.locked || readOnly ? "is-locked" : ""}`}
                 style={guide.axis === "x" ? { left: screenPosition } : { top: screenPosition }}
                 type="button"
-                aria-label={`${guide.axis === "x" ? "垂直" : "水平"}導引線 ${formatGuideValue(guide.position, unit)}；拖曳移動，連按兩下刪除`}
-                title="拖曳移動；連按兩下刪除"
+                aria-disabled={guidesLocked || readOnly}
+                aria-label={readOnly
+                  ? `${guide.axis === "x" ? "垂直" : "水平"}導引線 ${formatGuideValue(guide.position, unit)}；目前僅檢視`
+                  : guidesLocked || guide.locked
+                  ? `${guide.axis === "x" ? "垂直" : "水平"}導引線 ${formatGuideValue(guide.position, unit)}；已鎖定`
+                  : `${guide.axis === "x" ? "垂直" : "水平"}導引線 ${formatGuideValue(guide.position, unit)}；拖曳移動，連按兩下刪除，按右鍵更多`}
+                title={readOnly ? "目前為僅檢視；無法調整導引線" : guidesLocked ? "所有導引線已鎖定；請從「檔案」解除鎖定" : guide.locked ? "此導引線已鎖定；按右鍵解除或刪除" : "拖曳移動；連按兩下刪除；按右鍵更多"}
                 onPointerDown={(event) => onStartGuide(event, guide.axis, guide.id)}
+                onContextMenu={(event) => openGuideMenu(event, guide, screenPosition)}
+                onKeyDown={(event) => {
+                  if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+                  openGuideMenu(event, guide, screenPosition);
+                }}
                 onDoubleClick={(event) => { event.stopPropagation(); onDeleteGuide(guide.id); }}
                 key={guide.id}
-              >
-                {draggingGuide?.id === guide.id ? <span>{formatGuideValue(guide.position, unit)}</span> : null}
-              </button>
+              />
             );
           })}
+          {draggingGuide ? (
+            <div className="workspace-guide-readout" style={readoutStyle} aria-hidden="true">
+              <span>{formatGuideValue(draggingGuide.position, unit)}</span>
+              {draggingGuide.snapped ? <strong>已吸附</strong> : null}
+            </div>
+          ) : null}
         </div>
       ) : null}
       {unitMenu ? (
@@ -1674,6 +1751,25 @@ function WorkspaceRulers({
               <span>{option.label}</span>{unit === id ? <Check size={14} /> : null}
             </button>
           ))}
+        </div>
+      ) : null}
+      {guideMenu ? (
+        <div
+          className="guide-context-menu"
+          style={{ left: guideMenu.x, top: guideMenu.y }}
+          role="menu"
+          aria-label={`${guideMenu.guide.axis === "x" ? "垂直" : "水平"}導引線操作`}
+          ref={guideMenuRef}
+          onKeyDown={navigateGuideMenu}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <button type="button" role="menuitem" disabled={guidesLocked || readOnly} onClick={() => activateGuideMenu(onToggleGuideLocked)}>
+            {guideMenu.guide.locked ? <Unlock size={15} /> : <Lock size={15} />}
+            <span>{guideMenu.guide.locked ? "解除鎖定此導引線" : "鎖定此導引線"}</span>
+          </button>
+          <button className="is-danger" type="button" role="menuitem" disabled={guidesLocked || readOnly} onClick={() => activateGuideMenu((guide) => onDeleteGuide(guide.id, true))}>
+            <Trash2 size={15} /><span>刪除此導引線</span>
+          </button>
         </div>
       ) : null}
     </div>
@@ -1700,8 +1796,11 @@ function FileMenu({
   canExportObjects,
   canOutputComposition,
   onOpenCollaboration,
+  onToggleGuidesLocked,
   onOpenVersions,
   onOpenAbout,
+  guidesLocked = false,
+  guideControlsDisabled = false,
   saveTitle,
   collaborationCount = 0,
 }) {
@@ -1817,6 +1916,19 @@ function FileMenu({
             <span className="file-menu-section-label">管理</span>
             <button type="button" role="menuitem" onClick={() => activate(onOpenCollaboration)}>
               <Share2 size={17} /><span><strong>分享與共同編輯</strong><small>建立連結與管理權限</small></span>{collaborationCount > 0 ? <b>{collaborationCount}</b> : null}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              aria-label={guidesLocked ? "解除鎖定所有輔助導引線" : "鎖定所有輔助導引線"}
+              disabled={guideControlsDisabled}
+              onClick={() => activate(onToggleGuidesLocked)}
+            >
+              {guidesLocked ? <Unlock size={17} /> : <Lock size={17} />}
+              <span>
+                <strong>{guidesLocked ? "解除鎖定所有輔助導引線" : "鎖定所有輔助導引線"}</strong>
+                <small>{guideControlsDisabled ? "回到 Moodboard 後調整" : guidesLocked ? "允許新增、移動與刪除" : "防止新增、移動與刪除"}</small>
+              </span>
             </button>
             <button type="button" role="menuitem" onClick={() => activate(onOpenVersions)}>
               <History size={17} /><span><strong>版本紀錄</strong><small>查看與復原內容版本</small></span>
@@ -7990,56 +8102,137 @@ function App() {
     };
   }, []);
 
-  const deleteGuide = useCallback((guideId) => {
-    if (!boardRef.current.guides.some((guide) => guide.id === guideId)) return;
+  const deleteGuide = useCallback((guideId, explicit = false) => {
+    if (cloudReadOnly) {
+      announce("目前為僅檢視；無法刪除輔助導引線。", "warning");
+      return;
+    }
+    if (boardRef.current.guidesLocked) {
+      announce("輔助導引線已鎖定；請先從「檔案」解除鎖定。", "info");
+      return;
+    }
+    const guide = boardRef.current.guides.find((item) => item.id === guideId);
+    if (!guide) return;
+    if (guide.locked && !explicit) {
+      announce("此導引線已鎖定；按右鍵可解除鎖定或刪除。", "info");
+      return;
+    }
     applyBoard((current) => ({ ...current, guides: current.guides.filter((guide) => guide.id !== guideId) }));
     setGuideDrag(null);
     announce("已刪除輔助導引線", "warning");
-  }, [announce, applyBoard]);
+  }, [announce, applyBoard, cloudReadOnly]);
+
+  const toggleGuideLocked = useCallback((guide) => {
+    if (cloudReadOnly) {
+      announce("目前為僅檢視；無法變更輔助導引線狀態。", "warning");
+      return;
+    }
+    if (boardRef.current.guidesLocked) {
+      announce("所有輔助導引線已鎖定；請先從「檔案」解除鎖定。", "info");
+      return;
+    }
+    const nextLocked = !Boolean(guide.locked);
+    applyBoard((current) => ({
+      ...current,
+      guides: current.guides.map((item) => item.id === guide.id ? { ...item, locked: nextLocked } : item),
+    }));
+    announce(nextLocked ? "已鎖定此輔助導引線" : "已解除鎖定此輔助導引線", "success");
+  }, [announce, applyBoard, cloudReadOnly]);
+
+  const toggleGuidesLocked = useCallback(() => {
+    if (cloudReadOnly) {
+      announce("目前為僅檢視；無法變更輔助導引線狀態。", "warning");
+      return;
+    }
+    const nextLocked = !Boolean(boardRef.current.guidesLocked);
+    setGuideDrag(null);
+    applyBoard((current) => ({ ...current, guidesLocked: nextLocked }));
+    announce(nextLocked ? "已鎖定所有輔助導引線" : "已解除鎖定所有輔助導引線", "success");
+  }, [announce, applyBoard, cloudReadOnly]);
 
   const startGuideDrag = useCallback((event, axis, guideId = null) => {
     if (cloudReadOnly) return;
     if (event.button !== 0) return;
+    if (boardRef.current.guidesLocked) {
+      event.preventDefault();
+      event.stopPropagation();
+      announce("輔助導引線已鎖定；請先從「檔案」解除鎖定。", "info");
+      return;
+    }
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
     event.preventDefault();
     event.stopPropagation();
     const existing = boardRef.current.guides.find((guide) => guide.id === guideId);
+    if (existing?.locked) {
+      announce("此導引線已鎖定；按右鍵可解除鎖定或刪除。", "info");
+      return;
+    }
     const id = existing?.id || createId("guide");
     const guideAxis = existing?.axis || axis;
     let latest = existing || { id, axis: guideAxis, position: 0, isNew: true };
+    const pointerSnapshot = (pointerEvent) => ({
+      clientX: Number(pointerEvent?.clientX) || 0,
+      clientY: Number(pointerEvent?.clientY) || 0,
+      shiftKey: Boolean(pointerEvent?.shiftKey),
+    });
+    let latestPointer = pointerSnapshot(event);
+    let snapActive = Boolean(event.shiftKey);
     let releaseGesture = () => {};
     setGuidesVisible(true);
 
-    const update = (pointerEvent) => {
+    const update = () => {
       const currentView = viewRef.current;
-      const localPosition = guideAxis === "x"
-        ? pointerEvent.clientX - rect.left
-        : pointerEvent.clientY - rect.top;
       const viewOffset = guideAxis === "x" ? currentView.x : currentView.y;
-      let position = (localPosition - viewOffset) / currentView.zoom;
-      if (pointerEvent.shiftKey) position = snapGuidePosition(position, rulerUnit);
-      latest = { id, axis: guideAxis, position, isNew: !existing };
+      const position = resolveGuidePosition({
+        clientPosition: guideAxis === "x" ? latestPointer.clientX : latestPointer.clientY,
+        canvasStart: guideAxis === "x" ? rect.left : rect.top,
+        viewOffset,
+        zoom: currentView.zoom,
+        unit: rulerUnit,
+        snap: snapActive,
+      });
+      latest = { id, axis: guideAxis, position, isNew: !existing, snapped: snapActive };
       setGuideDrag(latest);
     };
 
+    const move = (pointerEvent) => {
+      latestPointer = pointerSnapshot(pointerEvent);
+      if (pointerEvent.shiftKey) snapActive = true;
+      update();
+    };
+    const keyDown = (keyEvent) => {
+      if (keyEvent.key !== "Shift" || snapActive) return;
+      snapActive = true;
+      update();
+    };
+    const keyUp = (keyEvent) => {
+      if (keyEvent.key !== "Shift" || !snapActive) return;
+      snapActive = false;
+      update();
+    };
+
     const cleanup = () => {
-      window.removeEventListener("pointermove", update);
+      window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", finish);
       window.removeEventListener("pointercancel", cancel);
+      window.removeEventListener("keydown", keyDown, true);
+      window.removeEventListener("keyup", keyUp, true);
       releaseGesture();
     };
-    const finish = (pointerEvent) => {
-      update(pointerEvent);
+    const finish = (pointerEvent = latestPointer) => {
+      if (Number.isFinite(pointerEvent?.clientX) && Number.isFinite(pointerEvent?.clientY)) latestPointer = pointerSnapshot(pointerEvent);
+      if (pointerEvent?.shiftKey) snapActive = true;
+      update();
       cleanup();
       setGuideDrag(null);
-      const inside = pointerEvent.clientX >= rect.left
-        && pointerEvent.clientX <= rect.right
-        && pointerEvent.clientY >= rect.top
-        && pointerEvent.clientY <= rect.bottom;
+      const inside = latestPointer.clientX >= rect.left
+        && latestPointer.clientX <= rect.right
+        && latestPointer.clientY >= rect.top
+        && latestPointer.clientY <= rect.bottom;
       const droppedOnOriginRuler = rulersVisible && (
-        (guideAxis === "x" && pointerEvent.clientX - rect.left <= RULER_SIZE)
-        || (guideAxis === "y" && pointerEvent.clientY - rect.top <= RULER_SIZE)
+        (guideAxis === "x" && latestPointer.clientX - rect.left <= RULER_SIZE)
+        || (guideAxis === "y" && latestPointer.clientY - rect.top <= RULER_SIZE)
       );
       if (!inside) return;
       if (droppedOnOriginRuler) {
@@ -8049,8 +8242,8 @@ function App() {
       applyBoard((current) => ({
         ...current,
         guides: existing
-          ? current.guides.map((guide) => guide.id === id ? { id, axis: guideAxis, position: latest.position } : guide)
-          : [...current.guides, { id, axis: guideAxis, position: latest.position }],
+          ? current.guides.map((guide) => guide.id === id ? { ...guide, axis: guideAxis, position: latest.position } : guide)
+          : [...current.guides, { id, axis: guideAxis, position: latest.position, locked: false }],
       }));
       announce(`${existing ? "已移動" : "已建立"}${guideAxis === "x" ? "垂直" : "水平"}導引線：${formatGuideValue(latest.position, rulerUnit)}`, "success");
     };
@@ -8058,18 +8251,20 @@ function App() {
       cleanup();
       setGuideDrag(null);
     };
-    update(event);
+    update();
     releaseGesture = registerPointerGesture({
       label: existing ? "移動導引線" : "建立導引線",
       affectsDocument: false,
       hasChanges: () => true,
       pause: cleanup,
       cancel,
-      keep: finish,
+      keep: () => finish(latestPointer),
     });
-    window.addEventListener("pointermove", update);
+    window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", finish, { once: true });
     window.addEventListener("pointercancel", cancel, { once: true });
+    window.addEventListener("keydown", keyDown, true);
+    window.addEventListener("keyup", keyUp, true);
   }, [announce, applyBoard, cloudReadOnly, deleteGuide, registerPointerGesture, rulerUnit, rulersVisible]);
 
   const selectObject = useCallback((id, additive = false, penetrate = false) => {
@@ -11411,8 +11606,11 @@ function App() {
             canExportObjects={!sourceModeActive && selectedObjects.length > 0}
             canOutputComposition={!sourceModeActive && selectedObjects.length > 0}
             onOpenCollaboration={() => requestAdvancedFeature("collaboration")}
+            onToggleGuidesLocked={toggleGuidesLocked}
             onOpenVersions={openVersionModal}
             onOpenAbout={openAboutSettings}
+            guidesLocked={Boolean(board.guidesLocked)}
+            guideControlsDisabled={cloudReadOnly || sourceModeActive}
             saveTitle={currentPrimaryStorageTarget === "drive"
               ? "儲存到 Google Drive"
               : currentPrimaryStorageTarget === "local"
@@ -11671,6 +11869,8 @@ function App() {
               <WorkspaceRulers
                 rulersVisible={rulersVisible}
                 guidesVisible={guidesVisible}
+                guidesLocked={Boolean(board.guidesLocked)}
+                readOnly={cloudReadOnly}
                 guides={board.guides || []}
                 draggingGuide={guideDrag}
                 view={view}
@@ -11678,6 +11878,7 @@ function App() {
                 unit={rulerUnit}
                 onUnitChange={changeRulerUnit}
                 onStartGuide={startGuideDrag}
+                onToggleGuideLocked={toggleGuideLocked}
                 onDeleteGuide={deleteGuide}
               />
             ) : null}
@@ -11687,7 +11888,6 @@ function App() {
               aria-hidden={inspectionActive}
               inert={inspectionActive ? true : undefined}
             >
-              <div className="world-origin" />
               {board.objects.filter((object) => object.visible).map((object) => (
                 <CanvasObject
                   key={object.id}

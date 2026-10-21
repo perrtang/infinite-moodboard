@@ -18,6 +18,7 @@ const BOARD_META_KEYS = Object.freeze([
   "createdAt",
   "updatedAt",
   "revision",
+  "guidesLocked",
   "lastComposition",
 ]);
 

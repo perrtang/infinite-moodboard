@@ -794,11 +794,13 @@ test("import validation rejects unrelated JSON and normalizes valid boards", () 
 test("workspace guides persist in moodboard files and legacy boards receive an empty set", () => {
   const legacy = ensureBoard({ schemaVersion: 10, name: "舊檔", objects: [] });
   assert.deepEqual(legacy.guides, []);
+  assert.equal(legacy.guidesLocked, false);
 
   const board = ensureBoard({
     schemaVersion: 11,
     name: "導引線測試",
     objects: [],
+    guidesLocked: true,
     guides: [
       { id: "guide-x", axis: "x", position: 128.5 },
       { id: "guide-y", axis: "y", position: 240 },
@@ -807,10 +809,23 @@ test("workspace guides persist in moodboard files and legacy boards receive an e
   });
 
   assert.deepEqual(board.guides, [
-    { id: "guide-x", axis: "x", position: 128.5 },
-    { id: "guide-y", axis: "y", position: 240 },
-    { id: "guide-invalid", axis: "y", position: 0 },
+    { id: "guide-x", axis: "x", position: 128.5, locked: false },
+    { id: "guide-y", axis: "y", position: 240, locked: false },
+    { id: "guide-invalid", axis: "y", position: 0, locked: false },
   ]);
+  assert.equal(board.guidesLocked, true);
+});
+
+test("individual guide locks persist independently from the global guide lock", () => {
+  const board = ensureBoard({
+    schemaVersion: BOARD_SCHEMA_VERSION,
+    name: "個別導引線鎖定",
+    objects: [],
+    guidesLocked: false,
+    guides: [{ id: "guide-locked", axis: "x", position: 72, locked: true }],
+  });
+  assert.equal(board.guidesLocked, false);
+  assert.deepEqual(board.guides[0], { id: "guide-locked", axis: "x", position: 72, locked: true });
 });
 
 test("legacy objects gain a stable original size and can restore it", () => {

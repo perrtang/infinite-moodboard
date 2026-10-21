@@ -26,6 +26,13 @@ Infinite Moodboard runs the canvas, imported media, transforms, exports, and ver
 - Optional Google Drive file storage and opt-in realtime collaboration with view/edit permission requests.
 - 3D, Drive, collaboration, and export runtimes are loaded only when used, keeping the opening bundle smaller.
 
+## v0.35.0 — guide control release
+
+- Keeps the guide position readout fully visible while dragging and shows when Shift snapping is active.
+- Snaps guides to integer marks in the selected ruler unit, including when Shift is pressed after dragging begins.
+- Adds persistent all-guide locking in File plus per-guide right-click lock, unlock, and explicit delete actions.
+- Synchronizes global and individual guide locks in shared boards and removes the unexplained canvas-origin corner artifact.
+
 ## v0.34.0 — explicit file workflow release
 
 - Consolidates open, save, save-as, browser HTML, output, sharing, versions, and about actions in one File menu.

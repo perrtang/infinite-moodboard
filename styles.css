@@ -3723,16 +3723,6 @@ html[lang="en"] .sidebar-tabs button svg {
   pointer-events: none;
 }
 
-.world-origin {
-  border-left: 1px solid rgb(var(--accent-rgb) / 0.28);
-  border-top: 1px solid rgb(var(--accent-rgb) / 0.28);
-  height: 9px;
-  left: -4px;
-  position: absolute;
-  top: -4px;
-  width: 9px;
-}
-
 .board-object {
   height: 0;
   position: absolute;
@@ -8184,7 +8174,8 @@ button.status-label:hover {
 .ruler-corner,
 .workspace-ruler,
 .workspace-guide,
-.ruler-unit-menu {
+.ruler-unit-menu,
+.guide-context-menu {
   pointer-events: auto;
 }
 
@@ -8232,6 +8223,10 @@ button.status-label:hover {
   left: 0;
   top: 22px;
   width: 22px;
+}
+
+.workspace-ruler.is-guide-locked {
+  cursor: not-allowed;
 }
 
 .workspace-ruler > span {
@@ -8288,12 +8283,22 @@ button.status-label:hover {
 }
 
 .workspace-guide {
+  appearance: none;
   background: transparent;
   border: 0;
   color: var(--accent-strong);
   margin: 0;
   padding: 0;
   position: absolute;
+}
+
+.workspace-guide.is-locked {
+  cursor: not-allowed;
+}
+
+.workspace-guide.is-locked::before {
+  box-shadow: none;
+  opacity: 0.72;
 }
 
 .workspace-guide::before {
@@ -8333,30 +8338,42 @@ button.status-label:hover {
   top: 5px;
 }
 
+.workspace-guide.is-vertical.is-locked,
+.workspace-guide.is-horizontal.is-locked {
+  cursor: not-allowed;
+}
+
 .workspace-guide.is-dragging::before {
   box-shadow: 0 0 0 1px var(--accent-on), 0 0 14px rgb(var(--accent-rgb) / 0.64);
 }
 
-.workspace-guide > span {
+.workspace-guide-readout {
+  align-items: center;
   background: var(--floating-bg);
   border-radius: 4px;
   box-shadow: 0 0 0 1px var(--border-strong);
   color: var(--accent-strong);
+  display: flex;
   font-family: "SFMono-Regular", Menlo, monospace;
   font-size: calc(9px + var(--ui-font-offset, 0px));
-  left: 9px;
+  gap: 6px;
+  max-width: min(190px, calc(100% - 16px));
+  pointer-events: none;
   padding: 4px 6px;
   position: absolute;
-  top: 9px;
   white-space: nowrap;
+  z-index: 4;
 }
 
-.workspace-guide.is-horizontal > span {
-  left: 30px;
-  top: 9px;
+.workspace-guide-readout strong {
+  color: var(--accent-on);
+  font-family: var(--ui-font-family);
+  font-size: calc(9px + var(--ui-font-offset, 0px));
+  font-weight: 700;
 }
 
-.ruler-unit-menu {
+.ruler-unit-menu,
+.guide-context-menu {
   background: var(--modal-bg);
   border: 1px solid var(--border-strong);
   border-radius: 7px;
@@ -8369,7 +8386,12 @@ button.status-label:hover {
   z-index: 200;
 }
 
-.ruler-unit-menu button {
+.guide-context-menu {
+  min-width: 216px;
+}
+
+.ruler-unit-menu button,
+.guide-context-menu button {
   align-items: center;
   background: transparent;
   border: 0;
@@ -8383,9 +8405,26 @@ button.status-label:hover {
 }
 
 .ruler-unit-menu button:hover,
-.ruler-unit-menu button.is-active {
+.ruler-unit-menu button.is-active,
+.guide-context-menu button:hover,
+.guide-context-menu button:focus-visible {
   background: rgb(var(--accent-rgb) / 0.08);
   color: var(--text);
+}
+
+.guide-context-menu button {
+  gap: 9px;
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.guide-context-menu button.is-danger {
+  color: var(--danger);
+}
+
+.guide-context-menu button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
 }
 
 /* Focus mode keeps one small, recoverable escape hatch. */

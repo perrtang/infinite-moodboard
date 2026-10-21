@@ -8,6 +8,7 @@ import {
   normalizeCanvasToolbarPosition,
   normalizeRulerUnit,
   pixelsToUnit,
+  resolveGuidePosition,
   shouldConfirmEscapeCancellation,
   snapGuidePosition,
   unitToPixels,
@@ -25,6 +26,23 @@ test("guide snapping follows integer marks in the active unit", () => {
   assert.equal(snapGuidePosition(41.4, "px"), 41);
   assert.equal(snapGuidePosition(77, "in"), 96);
   assert.ok(Math.abs(snapGuidePosition(40, "cm") - unitToPixels(1, "cm")) < 0.0001);
+});
+
+test("guide pointer positions use canvas pan and zoom before optional Shift snapping", () => {
+  assert.equal(resolveGuidePosition({
+    clientPosition: 245,
+    canvasStart: 5,
+    viewOffset: 40,
+    zoom: 2,
+  }), 100);
+  assert.equal(resolveGuidePosition({
+    clientPosition: 123.4,
+    canvasStart: 10,
+    viewOffset: 20,
+    zoom: 1,
+    unit: "px",
+    snap: true,
+  }), 93);
 });
 
 test("ruler ticks adapt to zoom and always expose major labels", () => {

@@ -28,6 +28,23 @@ export function snapGuidePosition(value, unit = "px") {
   return unitToPixels(Math.round(pixelsToUnit(value, unit)), unit);
 }
 
+export function resolveGuidePosition({
+  clientPosition,
+  canvasStart = 0,
+  viewOffset = 0,
+  zoom = 1,
+  unit = "px",
+  snap = false,
+} = {}) {
+  const safeZoom = Math.max(0.01, Number(zoom) || 1);
+  const position = (
+    (Number(clientPosition) || 0)
+    - (Number(canvasStart) || 0)
+    - (Number(viewOffset) || 0)
+  ) / safeZoom;
+  return snap ? snapGuidePosition(position, unit) : position;
+}
+
 export function formatGuideValue(value, unit = "px") {
   const resolvedUnit = normalizeRulerUnit(unit);
   const resolved = RULER_UNITS[resolvedUnit];

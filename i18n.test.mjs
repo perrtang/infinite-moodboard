@@ -66,6 +66,15 @@ test("object color library controls and feedback are localized", () => {
 test("workspace search, ruler, and shortcut copy is localized", () => {
   assert.equal(translateInterfaceText("搜尋或篩選圖層", "en"), "Search or filter layers");
   assert.equal(translateInterfaceText("尺規與輔助導引線", "en"), "Rulers and guides");
+  assert.equal(translateInterfaceText("鎖定所有輔助導引線", "en"), "Lock all guides");
+  assert.equal(translateInterfaceText("解除鎖定所有輔助導引線", "en"), "Unlock all guides");
+  assert.equal(translateInterfaceText("已吸附", "en"), "Snapped");
+  assert.equal(translateInterfaceText("鎖定此導引線", "en"), "Lock this guide");
+  assert.equal(translateInterfaceText("刪除此導引線", "en"), "Delete this guide");
+  assert.equal(translateInterfaceText("垂直導引線 24 px；已鎖定", "en"), "Vertical guide 24 px; locked");
+  assert.equal(translateInterfaceText("水平導引線 12 mm；目前僅檢視", "en"), "Horizontal guide 12 mm; view-only");
+  assert.equal(translateInterfaceText("已刪除輔助導引線", "en"), "Guide deleted");
+  assert.equal(translateInterfaceText("目前為僅檢視；無法刪除輔助導引線。", "en"), "This board is view-only. Guides cannot be deleted.");
   assert.equal(translateInterfaceText("平移工具 Shift+H（按住 Shift 可暫時選取）", "en"), "Hand tool Shift+H (hold Shift to select temporarily)");
   assert.equal(translateInterfaceText("搜尋快速鍵", "en"), "Search shortcuts");
   assert.equal(translateInterfaceText("顯示或隱藏兩側欄", "en"), "Show or hide both side panels");

@@ -12,6 +12,8 @@ test("file menu consolidates file, output, and management actions", () => {
   assert.match(main, /匯出選取素材…/);
   assert.match(main, /輸出選取合成圖…/);
   assert.match(main, /分享與共同編輯/);
+  assert.match(main, /鎖定所有輔助導引線/);
+  assert.match(main, /解除鎖定所有輔助導引線/);
   assert.match(main, /版本紀錄/);
   assert.match(main, /關於 Infinite Moodboard/);
   assert.match(main, /const \{ createPortableHtml \} = await loadPortableRuntime\(\)/);
@@ -26,6 +28,7 @@ test("file menu supports keyboard navigation, escape recovery, and disabled outp
   assert.match(main, /event\.stopImmediatePropagation\(\)/);
   assert.match(main, /disabled=\{!canExportObjects\}/);
   assert.match(main, /disabled=\{!canOutputComposition\}/);
+  assert.match(main, /guideControlsDisabled=\{cloudReadOnly \|\| sourceModeActive\}/);
 });
 
 test("header keeps the file menu visible on mobile without restoring scattered file actions", () => {
