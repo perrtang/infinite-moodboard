@@ -26,6 +26,13 @@ Infinite Moodboard runs the canvas, imported media, transforms, exports, and ver
 - Optional Google Drive file storage and opt-in realtime collaboration with view/edit permission requests.
 - 3D, Drive, collaboration, and export runtimes are loaded only when used, keeping the opening bundle smaller.
 
+## v0.43.0 — workspace precision release
+
+- Makes Shift-dragged guides visibly magnetic in px and mm by adapting to perceptible integer ruler marks at the current zoom; cm and inch retain integer-unit snapping.
+- Keeps only the centered Moodboard filename as visible Header text while preserving accessible tooltips and live Drive status.
+- Reorganizes the primary toolbar with icon-only creation tools, Zoom Area beside Hand, Option/Alt inverse zooming, and plain minus/plus zoom steps.
+- Restores an already granted Google Drive session silently after refresh for the same signed-in PETFASHION account without persisting OAuth access tokens.
+
 ## v0.42.0 — Zoom Window release
 
 - Adds a one-shot Zoom Window tool beside the desktop zoom controls and inside the mobile More menu.

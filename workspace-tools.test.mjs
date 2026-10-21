@@ -4,6 +4,7 @@ import {
   buildRulerTicks,
   clampCanvasToolbarPosition,
   formatGuideValue,
+  guideSnapIncrement,
   matchesListQuery,
   normalizeCanvasToolbarPosition,
   normalizeRulerUnit,
@@ -22,8 +23,14 @@ test("ruler units convert at CSS 96 PPI and reject unknown units", () => {
   assert.equal(formatGuideValue(96, "in"), "1 inch");
 });
 
-test("guide snapping follows integer marks in the active unit", () => {
-  assert.equal(snapGuidePosition(41.4, "px"), 41);
+test("guide snapping uses perceptible integer marks in the active unit", () => {
+  assert.equal(guideSnapIncrement("px", 0.56), 20);
+  assert.equal(guideSnapIncrement("mm", 0.56), 5);
+  assert.equal(guideSnapIncrement("cm", 0.56), 1);
+  assert.equal(guideSnapIncrement("in", 0.56), 1);
+  assert.ok(guideSnapIncrement("px", 0.56) * unitToPixels(1, "px") * 0.56 >= 8);
+  assert.ok(guideSnapIncrement("mm", 0.56) * unitToPixels(1, "mm") * 0.56 >= 8);
+  assert.equal(snapGuidePosition(41.4, "px"), 40);
   assert.equal(snapGuidePosition(77, "in"), 96);
   assert.ok(Math.abs(snapGuidePosition(40, "cm") - unitToPixels(1, "cm")) < 0.0001);
 });
@@ -42,7 +49,7 @@ test("guide pointer positions use canvas pan and zoom before optional Shift snap
     zoom: 1,
     unit: "px",
     snap: true,
-  }), 93);
+  }), 90);
   assert.equal(resolveGuidePosition({
     clientPosition: 123.4,
     canvasStart: 10,
@@ -51,7 +58,16 @@ test("guide pointer positions use canvas pan and zoom before optional Shift snap
     unit: "px",
     snap: true,
     origin: 20.5,
-  }), 93.5);
+  }), 90.5);
+  assert.ok(Math.abs(resolveGuidePosition({
+    clientPosition: 171,
+    canvasStart: 10,
+    viewOffset: 20,
+    zoom: 0.56,
+    unit: "mm",
+    snap: true,
+    origin: 12,
+  }) - (12 + unitToPixels(65, "mm"))) < 0.0001);
 });
 
 test("ruler ticks adapt to zoom and always expose major labels", () => {

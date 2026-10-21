@@ -14,7 +14,8 @@ test("Drive autosync status appears immediately before undo and only for an acti
 });
 
 test("Drive status remains a compact accessible action on narrow screens", () => {
-  assert.match(styles, /\.topbar-cloud-status \{[\s\S]*min-height: 36px;[\s\S]*max-width: 220px;/);
+  assert.match(styles, /\.topbar-cloud-status \{[\s\S]*max-width: 36px;[\s\S]*min-height: 36px;[\s\S]*min-width: 36px;/);
+  assert.match(main, /<span className="sr-only">\{drivePresentation\.label\}<\/span>/);
   assert.match(styles, /\.topbar-cloud-status:focus-visible \{[\s\S]*outline: 2px solid var\(--accent-strong\);/);
   assert.match(styles, /\.mobile-topbar-more-button,[\s\S]*\.topbar-cloud-status \{[\s\S]*min-height: 44px;[\s\S]*min-width: 44px;/);
 });

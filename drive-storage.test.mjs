@@ -17,6 +17,7 @@ import {
   normalizeDriveQuota,
   normalizeDriveRevision,
   normalizeGoogleDriveTokenResponse,
+  requestGoogleDriveToken,
   saveDriveState,
   serializeMoodboardSnapshot,
   unlinkDriveFile,
@@ -97,7 +98,11 @@ test("quota evaluation keeps a safety margin and blocks unsafe uploads", () => {
 test("Drive file links stay device-local and preserve sync metadata", () => {
   const storage = memoryStorage();
   const board = { id: "board-1", revision: 7, updatedAt: "2026-10-20T01:02:03.000Z" };
-  let state = linkDriveFile(loadDriveState(storage), board, {
+  let state = linkDriveFile({
+    ...loadDriveState(storage),
+    connectionOwnerUid: "petfashion-user-1",
+    connectionEmail: "person@example.com",
+  }, board, {
     id: "drive-1",
     name: "研究.moodboard",
     version: "12",
@@ -110,8 +115,50 @@ test("Drive file links stay device-local and preserve sync metadata", () => {
   assert.equal(state.links[board.id].fileId, "drive-1");
   assert.equal(state.links[board.id].syncedRevision, 7);
   assert.equal(state.links[board.id].size, 2048);
+  assert.equal(state.connectionOwnerUid, "petfashion-user-1");
+  assert.equal(state.connectionEmail, "person@example.com");
   state = unlinkDriveFile(state, board.id);
   assert.equal(state.links[board.id], undefined);
+});
+
+test("Drive can silently restore a granted session without persisting the access token", async (t) => {
+  const previousGoogle = globalThis.google;
+  let tokenConfig = null;
+  let requestOptions = null;
+  t.after(() => {
+    if (previousGoogle === undefined) delete globalThis.google;
+    else globalThis.google = previousGoogle;
+  });
+  globalThis.google = {
+    accounts: {
+      oauth2: {
+        initTokenClient(config) {
+          tokenConfig = config;
+          return {
+            requestAccessToken(options) {
+              requestOptions = options;
+              queueMicrotask(() => config.callback({
+                access_token: "silent-token",
+                expires_in: 3600,
+                scope: "https://www.googleapis.com/auth/drive.file",
+              }));
+            },
+          };
+        },
+      },
+    },
+  };
+
+  const token = await requestGoogleDriveToken({
+    loginHint: "person@example.com",
+    prompt: "none",
+    timeoutMs: 1000,
+  });
+
+  assert.equal(token.accessToken, "silent-token");
+  assert.equal(tokenConfig.login_hint, "person@example.com");
+  assert.equal(requestOptions.prompt, "none");
+  assert.equal(requestOptions.login_hint, "person@example.com");
 });
 
 test("normalizes Drive files and maps recoverable errors", () => {

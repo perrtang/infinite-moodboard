@@ -168,6 +168,8 @@ function defaultDriveState() {
     enabled: false,
     autoSync: true,
     folderId: "",
+    connectionOwnerUid: "",
+    connectionEmail: "",
     links: {},
   };
 }
@@ -193,6 +195,8 @@ export function normalizeDriveState(value) {
     enabled: value.enabled === true,
     autoSync: value.autoSync !== false,
     folderId: String(value.folderId || ""),
+    connectionOwnerUid: String(value.connectionOwnerUid || ""),
+    connectionEmail: String(value.connectionEmail || ""),
     links,
   };
 }
@@ -282,7 +286,7 @@ function loadIdentityScript() {
   return identityScriptPromise;
 }
 
-export async function requestGoogleDriveToken({ loginHint = "" } = {}) {
+export async function requestGoogleDriveToken({ loginHint = "", prompt = "", timeoutMs = 12_000 } = {}) {
   if (!isGoogleDriveConfigured()) {
     throw new DriveApiError("Google Drive OAuth 尚未設定完成。", { code: "drive/unconfigured" });
   }
@@ -291,24 +295,52 @@ export async function requestGoogleDriveToken({ loginHint = "" } = {}) {
   }
   await loadIdentityScript();
   return new Promise((resolve, reject) => {
-    const tokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: GOOGLE_DRIVE_CLIENT_ID,
-      scope: GOOGLE_DRIVE_SCOPE,
-      hint: loginHint || undefined,
-      callback: (response) => {
-        try {
-          resolve(normalizeGoogleDriveTokenResponse(response));
-        } catch (error) {
-          reject(error);
-        }
-      },
-      error_callback: (response) => reject(new DriveApiError(response?.message || "Google Drive 授權視窗已關閉。", {
-        code: "drive/authorization",
-        reason: response?.type || "popupClosed",
-        details: response,
-      })),
-    });
-    tokenClient.requestAccessToken({ prompt: "", include_granted_scopes: false });
+    let settled = false;
+    let timeoutId = null;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      if (timeoutId !== null) globalThis.clearTimeout(timeoutId);
+      callback(value);
+    };
+    timeoutId = globalThis.setTimeout(() => {
+      finish(reject, new DriveApiError(
+        prompt === "none" ? "無法在背景恢復 Google Drive 授權。" : "Google Drive 授權逾時，請再試一次。",
+        { code: "drive/authorization", reason: "timeout" },
+      ));
+    }, Math.max(1_000, Number(timeoutMs) || 12_000));
+    try {
+      const tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: GOOGLE_DRIVE_CLIENT_ID,
+        scope: GOOGLE_DRIVE_SCOPE,
+        login_hint: loginHint || undefined,
+        callback: (response) => {
+          try {
+            finish(resolve, normalizeGoogleDriveTokenResponse(response));
+          } catch (error) {
+            finish(reject, error);
+          }
+        },
+        error_callback: (response) => finish(reject, new DriveApiError(
+          response?.message || (prompt === "none" ? "無法在背景恢復 Google Drive 授權。" : "Google Drive 授權視窗已關閉。"),
+          {
+            code: "drive/authorization",
+            reason: response?.type || "popupClosed",
+            details: response,
+          },
+        )),
+      });
+      tokenClient.requestAccessToken({
+        prompt: prompt === "none" ? "none" : "",
+        include_granted_scopes: false,
+        login_hint: loginHint || undefined,
+      });
+    } catch (error) {
+      finish(reject, error instanceof DriveApiError ? error : new DriveApiError(
+        error?.message || "Google Drive 授權無法啟動。",
+        { code: "drive/authorization", reason: "requestFailed", details: error },
+      ));
+    }
   });
 }
 

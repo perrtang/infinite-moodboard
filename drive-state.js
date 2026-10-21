@@ -107,7 +107,14 @@ export function normalizeDriveFile(file = {}) {
 }
 
 function defaultDriveState() {
-  return { enabled: false, autoSync: true, folderId: "", links: {} };
+  return {
+    enabled: false,
+    autoSync: true,
+    folderId: "",
+    connectionOwnerUid: "",
+    connectionEmail: "",
+    links: {},
+  };
 }
 
 export function normalizeDriveState(value) {
@@ -131,6 +138,8 @@ export function normalizeDriveState(value) {
     enabled: value.enabled === true,
     autoSync: value.autoSync !== false,
     folderId: String(value.folderId || ""),
+    connectionOwnerUid: String(value.connectionOwnerUid || ""),
+    connectionEmail: String(value.connectionEmail || ""),
     links,
   };
 }

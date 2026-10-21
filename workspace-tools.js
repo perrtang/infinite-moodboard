@@ -7,6 +7,8 @@ export const RULER_UNITS = Object.freeze({
 
 const UNIT_IDS = new Set(Object.keys(RULER_UNITS));
 const MAJOR_STEPS = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
+const GUIDE_SNAP_STEPS = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
+const GUIDE_MINIMUM_SCREEN_STEP = 8;
 
 export function normalizeRulerUnit(value) {
   return UNIT_IDS.has(value) ? value : "px";
@@ -24,8 +26,18 @@ export function pixelsToUnit(value, unit = "px") {
   return (Number.isFinite(number) ? number : 0) / resolved.pixelsPerUnit;
 }
 
-export function snapGuidePosition(value, unit = "px") {
-  return unitToPixels(Math.round(pixelsToUnit(value, unit)), unit);
+export function guideSnapIncrement(unit = "px", zoom = 1, minimumScreenStep = GUIDE_MINIMUM_SCREEN_STEP) {
+  const resolvedUnit = normalizeRulerUnit(unit);
+  const safeZoom = Math.max(0.01, Number(zoom) || 1);
+  const screenPixelsPerUnit = RULER_UNITS[resolvedUnit].pixelsPerUnit * safeZoom;
+  const requiredUnits = Math.max(1, Math.ceil(Math.max(1, Number(minimumScreenStep) || 0) / screenPixelsPerUnit));
+  return GUIDE_SNAP_STEPS.find((step) => step >= requiredUnits) || GUIDE_SNAP_STEPS.at(-1);
+}
+
+export function snapGuidePosition(value, unit = "px", { zoom = 1, minimumScreenStep } = {}) {
+  const increment = guideSnapIncrement(unit, zoom, minimumScreenStep);
+  const units = pixelsToUnit(value, unit);
+  return unitToPixels(Math.round(units / increment) * increment, unit);
 }
 
 export function resolveGuidePosition({
@@ -44,7 +56,7 @@ export function resolveGuidePosition({
     - (Number(viewOffset) || 0)
   ) / safeZoom;
   const safeOrigin = Number(origin) || 0;
-  return snap ? safeOrigin + snapGuidePosition(position - safeOrigin, unit) : position;
+  return snap ? safeOrigin + snapGuidePosition(position - safeOrigin, unit, { zoom: safeZoom }) : position;
 }
 
 export function formatGuideValue(value, unit = "px") {

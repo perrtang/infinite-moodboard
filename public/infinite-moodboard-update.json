@@ -1,8 +1,8 @@
 {
   "product": "Infinite Moodboard",
   "channel": "stable",
-  "version": "0.42.0",
+  "version": "0.43.0",
   "releasedAt": "2026-10-21",
-  "summary": "新增縮放視窗：框選任意區域即可放大檢視，完成或按 Esc 後回到原工具；手機版入口收進更多選單，並保留 Space 暫時移動畫布與 Tab 鍵焦點提示。",
+  "summary": "改善工作區操作：Guide Line 的 px 與 mm 單位改用可感知的整數刻度吸附；Header 與主要工具列收斂為一致的圖示操作；Google Drive 可在重新整理後安全嘗試恢復既有授權，不儲存存取權杖。",
   "url": "https://moodboard.petfashion.tw/"
 }

@@ -59,6 +59,7 @@ import {
   LogOut,
   Mail,
   Maximize2,
+  Minus,
   Minimize2,
   Monitor,
   Moon,
@@ -1972,6 +1973,7 @@ function FileMenu({
         className={`topbar-button file-menu-trigger ${open ? "is-active" : ""}`}
         type="button"
         aria-label="檔案"
+        title="檔案"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls="file-menu-popover"
@@ -1979,8 +1981,6 @@ function FileMenu({
         onClick={() => setOpen((current) => !current)}
       >
         <FileArchive size={17} />
-        <span>檔案</span>
-        <ChevronDown className="file-menu-chevron" size={14} aria-hidden="true" />
       </button>
       {open ? (
         <div
@@ -2057,6 +2057,7 @@ function MobileTopbarMoreMenu({
   onZoomWindow,
   showZoomWindow,
   zoomWindowActive,
+  zoomWindowZoomOut,
 }) {
   const wrapperRef = useRef(null);
   const triggerRef = useRef(null);
@@ -2138,9 +2139,9 @@ function MobileTopbarMoreMenu({
         >
           {showZoomWindow ? (
             <button type="button" role="menuitem" aria-pressed={zoomWindowActive} onClick={() => activate(onZoomWindow)}>
-              <Crosshair size={18} />
+              {zoomWindowZoomOut ? <ZoomOut size={18} /> : <ZoomIn size={18} />}
               <span>縮放視窗</span>
-              <b>{zoomWindowActive ? "使用中" : "拖曳放大區域"}</b>
+              <b>{zoomWindowActive ? "使用中" : zoomWindowZoomOut ? "拖曳縮小區域" : "拖曳放大區域"}</b>
             </button>
           ) : null}
           <button type="button" role="menuitem" onClick={() => activate(onOpenAccount)}>
@@ -2503,13 +2504,13 @@ function InsertToolbar({ open, disabled = false, onToggle, onAddText, onAddShape
   return (
     <div className="insert-tools" role="group" aria-label="加入物件">
       <button className="toolbar-action insert-tool" type="button" aria-label="加入文字" title="加入文字" onClick={onAddText} disabled={disabled}>
-        <Type size={17} /><span className="insert-tool-label">文字</span>
+        <Type size={17} />
       </button>
       <button className="toolbar-action insert-tool" type="button" aria-label="加入圖片" title="從本機加入圖片" onClick={onChooseImage} disabled={disabled}>
-        <ImagePlus size={17} /><span className="insert-tool-label">圖片</span>
+        <ImagePlus size={17} />
       </button>
       <button className="toolbar-action insert-tool" type="button" aria-label="加入影片" title="從本機加入影片" onClick={onChooseVideo} disabled={disabled}>
-        <Video size={17} /><span className="insert-tool-label">影片</span>
+        <Video size={17} />
       </button>
       <div className="insert-menu-wrap">
         <button
@@ -2522,7 +2523,7 @@ function InsertToolbar({ open, disabled = false, onToggle, onAddText, onAddShape
           onClick={onToggle}
           disabled={disabled}
         >
-          <Shapes size={17} /><span className="insert-tool-label">形狀</span><ChevronDown className="insert-tool-chevron" size={13} />
+          <Shapes size={17} />
         </button>
         {open ? (
           <div className="insert-menu shape-menu" role="menu" aria-label="選擇形狀">
@@ -6738,6 +6739,7 @@ function App() {
     : { status: "unsupported", message: "此瀏覽器不支援讀取本機字體，仍可使用內建字體。" });
   const [tool, setTool] = useState("select");
   const [spaceDown, setSpaceDown] = useState(false);
+  const [altDown, setAltDown] = useState(false);
   const [modifierDown, setModifierDown] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const [marquee, setMarquee] = useState(null);
@@ -6794,10 +6796,10 @@ function App() {
   const [driveSettings, setDriveSettings] = useState(initialDriveSettingsRef.current);
   const [storagePreferences, setStoragePreferences] = useState(initialStoragePreferencesRef.current);
   const [driveSession, setDriveSession] = useState(() => ({
-    status: initialDriveSettingsRef.current.enabled ? "authorization-required" : "disconnected",
+    status: initialDriveSettingsRef.current.enabled ? "checking" : "disconnected",
     connected: false,
-    busy: false,
-    message: initialDriveSettingsRef.current.enabled ? "重新連結後會繼續同步本機變更。" : "",
+    busy: initialDriveSettingsRef.current.enabled,
+    message: initialDriveSettingsRef.current.enabled ? "正在恢復 Google Drive 連線…" : "",
     user: null,
     quota: null,
     files: [],
@@ -6880,6 +6882,7 @@ function App() {
   const objectColorSetsInputRef = useRef(null);
   const fileHandleRef = useRef(null);
   const driveTokenRef = useRef(null);
+  const driveRestoreAttemptRef = useRef("");
   const driveOperationEpochRef = useRef(0);
   const storageTargetOperationEpochRef = useRef(0);
   const driveSaveControllerRef = useRef(null);
@@ -6908,6 +6911,7 @@ function App() {
   const zoomValueTapRef = useRef(0);
   const canvasToolTapRef = useRef({ select: 0, hand: 0 });
   const zoomWindowReturnToolRef = useRef("select");
+  const altDownRef = useRef(false);
   const blankClickRef = useRef(null);
   const objectClickRef = useRef(null);
   const objectTapRef = useRef(null);
@@ -7554,7 +7558,7 @@ function App() {
     }
   }, []);
 
-  const refreshGoogleDrive = useCallback(async (providedToken = "", providedFolderId = "") => {
+  const refreshGoogleDrive = useCallback(async (providedToken = "", providedFolderId = "", { resetLinks = false } = {}) => {
     const operationEpoch = driveOperationEpochRef.current;
     const accessToken = providedToken || currentDriveAccessToken();
     if (!accessToken) {
@@ -7570,7 +7574,14 @@ function App() {
         listGoogleDriveMoodboards(accessToken, folderId),
       ]);
       if (operationEpoch !== driveOperationEpochRef.current) return null;
-      updateDriveSettings((current) => ({ ...current, enabled: true, folderId }));
+      updateDriveSettings((current) => ({
+        ...current,
+        enabled: true,
+        folderId,
+        connectionOwnerUid: String(authSession.user?.uid || current.connectionOwnerUid || ""),
+        connectionEmail: String(about.user?.emailAddress || authSession.user?.email || current.connectionEmail || ""),
+        links: resetLinks ? {} : current.links,
+      }));
       setDriveSession((current) => ({
         ...current,
         status: current.conflict ? "conflict" : "ready",
@@ -7595,7 +7606,7 @@ function App() {
       }));
       return null;
     }
-  }, [currentDriveAccessToken, driveSettings.folderId, updateDriveSettings]);
+  }, [authSession.user?.email, authSession.user?.uid, currentDriveAccessToken, driveSettings.folderId, updateDriveSettings]);
 
   const connectGoogleDrive = useCallback(async () => {
     if (!authReady) {
@@ -7605,13 +7616,23 @@ function App() {
       return null;
     }
     const operationEpoch = driveOperationEpochRef.current;
+    const connectionOwnerUid = String(authSession.user?.uid || "");
+    const ownerChanged = Boolean(
+      driveSettings.connectionOwnerUid
+      && connectionOwnerUid
+      && driveSettings.connectionOwnerUid !== connectionOwnerUid
+    );
     setDriveSession((current) => ({ ...current, status: "connecting", busy: true, message: "Google 會另外詢問 Drive 檔案權限。" }));
     try {
       const { requestGoogleDriveToken } = await loadDriveRuntime();
       const token = await requestGoogleDriveToken({ loginHint: authSession.user?.email || "" });
       if (operationEpoch !== driveOperationEpochRef.current) return null;
       driveTokenRef.current = token;
-      const result = await refreshGoogleDrive(token.accessToken, driveSettings.folderId);
+      const result = await refreshGoogleDrive(
+        token.accessToken,
+        ownerChanged ? "" : driveSettings.folderId,
+        { resetLinks: ownerChanged },
+      );
       if (result) announce("Google Drive 已連結；尚未主動儲存前不會上傳畫布。", "success");
       return result;
     } catch (error) {
@@ -7628,11 +7649,12 @@ function App() {
       announce(driveErrorMessage(error), "error");
       return null;
     }
-  }, [announce, authReady, authSession.user?.email, driveSettings.folderId, refreshGoogleDrive]);
+  }, [announce, authReady, authSession.user?.email, authSession.user?.uid, driveSettings.connectionOwnerUid, driveSettings.folderId, refreshGoogleDrive]);
 
   const disconnectGoogleDrive = useCallback(() => {
     cancelDriveOperations();
     driveTokenRef.current = null;
+    driveRestoreAttemptRef.current = "";
     window.clearTimeout(driveSyncTimerRef.current);
     updateDriveSettings((current) => ({ ...current, enabled: false }));
     setDriveSession({
@@ -7648,6 +7670,75 @@ function App() {
     });
     announce("已中斷這個分頁的 Google Drive；雲端檔案、本機畫布與 PETFASHION 登入都未受影響。", "success");
   }, [announce, cancelDriveOperations, updateDriveSettings]);
+
+  useEffect(() => {
+    if (!authReady || !driveSettings.enabled || !online || currentDriveAccessToken()) return undefined;
+    const connectionOwnerUid = String(authSession.user?.uid || "");
+    if (!connectionOwnerUid) return undefined;
+    if (driveSettings.connectionOwnerUid && driveSettings.connectionOwnerUid !== connectionOwnerUid) {
+      setDriveSession((current) => ({
+        ...current,
+        status: "authorization-required",
+        connected: false,
+        busy: false,
+        message: "這台裝置的 Drive 連結屬於另一個 PETFASHION 帳號；請手動重新連結。",
+      }));
+      return undefined;
+    }
+
+    const attemptKey = `${connectionOwnerUid}:${driveSettings.connectionOwnerUid || "legacy"}`;
+    if (driveRestoreAttemptRef.current === attemptKey) return undefined;
+    driveRestoreAttemptRef.current = attemptKey;
+    const operationEpoch = driveOperationEpochRef.current;
+    let active = true;
+    setDriveSession((current) => ({
+      ...current,
+      status: "checking",
+      connected: false,
+      busy: true,
+      message: "正在恢復 Google Drive 連線…",
+    }));
+
+    const restoreDriveConnection = async () => {
+      try {
+        const { requestGoogleDriveToken } = await loadDriveRuntime();
+        const token = await requestGoogleDriveToken({
+          loginHint: authSession.user?.email || driveSettings.connectionEmail || "",
+          prompt: "none",
+          timeoutMs: 8_000,
+        });
+        if (!active || operationEpoch !== driveOperationEpochRef.current) return;
+        driveTokenRef.current = token;
+        await refreshGoogleDrive(token.accessToken, driveSettings.folderId);
+      } catch (error) {
+        if (!active || operationEpoch !== driveOperationEpochRef.current || error?.name === "AbortError") return;
+        const authorizationRequired = isGoogleDriveAuthorizationError(error);
+        if (authorizationRequired) driveTokenRef.current = null;
+        setDriveSession((current) => ({
+          ...current,
+          status: authorizationRequired ? "authorization-required" : error?.code === "drive/offline" ? "offline" : "error",
+          connected: false,
+          busy: false,
+          message: authorizationRequired
+            ? "無法在背景恢復 Google Drive；點一下重新連結，本機變更仍安全保留。"
+            : driveErrorMessage(error),
+        }));
+      }
+    };
+    restoreDriveConnection();
+    return () => { active = false; };
+  }, [
+    authReady,
+    authSession.user?.email,
+    authSession.user?.uid,
+    currentDriveAccessToken,
+    driveSettings.connectionEmail,
+    driveSettings.connectionOwnerUid,
+    driveSettings.enabled,
+    driveSettings.folderId,
+    online,
+    refreshGoogleDrive,
+  ]);
 
   const setDriveAutoSync = useCallback((enabled) => {
     updateDriveSettings((current) => ({ ...current, autoSync: Boolean(enabled) }));
@@ -7912,6 +8003,7 @@ function App() {
       setCloudCollaboration(EMPTY_CLOUD_COLLABORATION);
       cancelDriveOperations();
       driveTokenRef.current = null;
+      driveRestoreAttemptRef.current = "";
       window.clearTimeout(driveSyncTimerRef.current);
       if (!authPreviewUserRef.current) await signOutMoodboardSession();
       setAuthSession({ status: "signed-out", user: null, error: null });
@@ -7948,6 +8040,7 @@ function App() {
       setCollaborationResume(null);
       setCloudCollaboration(EMPTY_CLOUD_COLLABORATION);
       driveTokenRef.current = null;
+      driveRestoreAttemptRef.current = "";
       const clearedDriveState = saveDriveState(localStorage, {});
       setDriveSettings(clearedDriveState);
       const clearedStoragePreferences = saveStoragePreferences(localStorage, {});
@@ -9803,6 +9896,7 @@ function App() {
       return undefined;
     }
     if (!currentDriveAccessToken()) {
+      if (["checking", "connecting"].includes(driveSession.status)) return undefined;
       setDriveSession((current) => ({ ...current, status: "authorization-required", connected: false, busy: false, message: "重新連結 Drive 後會繼續同步；本機變更不會遺失。" }));
       return undefined;
     }
@@ -9811,7 +9905,7 @@ function App() {
       saveBoardToGoogleDrive({ silent: true });
     }, 6000);
     return () => window.clearTimeout(driveSyncTimerRef.current);
-  }, [authReady, board.revision, board.updatedAt, currentDriveAccessToken, currentDriveLink, currentPrimaryStorageTarget, driveSession.conflict, driveSettings.autoSync, driveSettings.enabled, hydrated, online, saveBoardToGoogleDrive, storagePreferences.autoSave]);
+  }, [authReady, board.revision, board.updatedAt, currentDriveAccessToken, currentDriveLink, currentPrimaryStorageTarget, driveSession.conflict, driveSession.status, driveSettings.autoSync, driveSettings.enabled, hydrated, online, saveBoardToGoogleDrive, storagePreferences.autoSave]);
 
   const exportBrowserHtml = useCallback(async () => {
     try {
@@ -11528,7 +11622,7 @@ function App() {
     setLoadedTextFlow(null);
     setZoomWindowRect(null);
     setTool("zoom-window");
-    announce("縮放視窗：拖曳框住要放大的區域；Esc 取消。", "info");
+    announce("縮放範圍：拖曳框住要檢視的區域；按住 Option／Alt 可反向縮小，Esc 取消。", "info");
   }, [announce, finishZoomWindowTool, tool]);
 
   const onZoomWindowPointerDown = useCallback((event) => {
@@ -11582,7 +11676,7 @@ function App() {
       }
       const startWorld = screenToWorld(canvasRect.left + start.x, canvasRect.top + start.y);
       const endWorld = screenToWorld(canvasRect.left + latest.x, canvasRect.top + latest.y);
-      const nextView = viewWorldRectInViewport({
+      const fittedView = viewWorldRectInViewport({
         left: startWorld.x,
         top: startWorld.y,
         right: endWorld.x,
@@ -11592,10 +11686,26 @@ function App() {
         minZoom: MIN_ZOOM,
         maxZoom: MAX_ZOOM,
       });
+      const zoomOut = pointerEvent.altKey || altDownRef.current;
+      let nextView = fittedView;
+      if (zoomOut) {
+        const currentView = viewRef.current;
+        const inverseFactor = Math.max(1.2, fittedView.zoom / currentView.zoom);
+        const zoom = clamp(currentView.zoom / inverseFactor, MIN_ZOOM, MAX_ZOOM);
+        const centerWorld = {
+          x: (startWorld.x + endWorld.x) / 2,
+          y: (startWorld.y + endWorld.y) / 2,
+        };
+        nextView = {
+          zoom,
+          x: canvasRect.width / 2 - centerWorld.x * zoom,
+          y: canvasRect.height / 2 - centerWorld.y * zoom,
+        };
+      }
       viewRef.current = nextView;
       setView(nextView);
       finishZoomWindowTool();
-      announce("已放大框選區域。", "success");
+      announce(zoomOut ? "已縮小框選區域。" : "已放大框選區域。", "success");
     };
     releaseGesture = registerPointerGesture({
       label: "縮放視窗",
@@ -11695,6 +11805,8 @@ function App() {
         setGroupGesture((current) => current?.type === "scale" ? { ...current, shift: true } : current);
       }
       if (event.key === "Alt") {
+        altDownRef.current = true;
+        setAltDown(true);
         setResizeGesture((current) => current ? { ...current, alt: true, pivotAnchor: "mc" } : current);
         setGroupGesture((current) => current?.type === "scale" ? { ...current, alt: true, pivotAnchor: "mc", pivot: boundsAnchorPoint(current.bounds, "mc") } : current);
       }
@@ -11836,6 +11948,8 @@ function App() {
         setGroupGesture((current) => current?.type === "scale" ? { ...current, shift: false } : current);
       }
       if (event.key === "Alt") {
+        altDownRef.current = false;
+        setAltDown(false);
         setResizeGesture((current) => current ? { ...current, alt: false, pivotAnchor: resizePivotAnchor(current.handle, false) } : current);
         setGroupGesture((current) => {
           if (current?.type !== "scale") return current;
@@ -11846,6 +11960,8 @@ function App() {
     };
     const blur = () => {
       setSpaceDown(false);
+      altDownRef.current = false;
+      setAltDown(false);
       setModifierDown(false);
       setResizeGesture((current) => current ? { ...current, shift: false, alt: false } : current);
       setGroupGesture((current) => current?.type === "scale" ? { ...current, shift: false, alt: false } : current);
@@ -12156,57 +12272,58 @@ function App() {
     >
       {isBooting ? <StartupSequence onComplete={finishStartup} /> : null}
       <header className="app-topbar" aria-hidden={isBooting || focusMode || undefined} inert={isBooting || focusMode ? true : undefined}>
-        <div className="brand-block">
-          <span className="brand-mark" aria-hidden="true">∞</span>
-          <div><strong>Infinite Moodboard</strong><small>PETFASHION 創意工具</small></div>
-        </div>
+        <div className="topbar-primary">
+          <div className="brand-block" role="img" aria-label="Infinite Moodboard" title="Infinite Moodboard｜PETFASHION 創意工具">
+            <span className="brand-mark" aria-hidden="true">∞</span>
+          </div>
 
-        <div className="file-actions">
-          <IconButton
-            className="desktop-panel-button"
-            label={leftPanelVisible ? "隱藏圖層、分群、素材與構圖側欄" : "顯示圖層、分群、素材與構圖側欄"}
-            active={leftPanelVisible}
-            aria-pressed={leftPanelVisible}
-            onClick={toggleLeftPanel}
-          >
-            <PanelLeft size={18} />
-          </IconButton>
-          <IconButton
-            className="mobile-panel-button"
-            label="開啟圖層、分群、素材與構圖側欄"
-            active={mobilePanel === "left"}
-            aria-pressed={mobilePanel === "left"}
-            onClick={() => setMobilePanel((current) => current === "left" ? null : "left")}
-          >
-            <PanelLeft size={18} />
-          </IconButton>
-          <FileMenu
-            onOpenLibrary={openGoogleDriveLibrary}
-            onOpenFile={openBoardFile}
-            onSave={savePreferredBoard}
-            onSaveAs={() => saveBoardFile(true)}
-            onExportBrowser={exportBrowserHtml}
-            onExportObjects={() => exportObjects("selected")}
-            onOutputComposition={outputSelectionComposition}
-            canExportObjects={!sourceModeActive && selectedObjects.length > 0}
-            canOutputComposition={!sourceModeActive && selectedObjects.length > 0}
-            onOpenCollaboration={() => requestAdvancedFeature("collaboration")}
-            onToggleGuidesLocked={toggleGuidesLocked}
-            onOpenVersions={openVersionModal}
-            onOpenAbout={openAboutSettings}
-            guidesLocked={Boolean(board.guidesLocked)}
-            guideControlsDisabled={cloudReadOnly || sourceModeActive}
-            saveTitle={currentPrimaryStorageTarget === "drive"
-              ? "儲存到 Google Drive"
-              : currentPrimaryStorageTarget === "local"
-                ? localFileBinding.status === "linked"
-                  ? `儲存到 ${localFileBinding.name || ".moodboard 檔案"}`
-                  : "選擇 .moodboard 儲存位置"
-                : "選擇主要儲存位置"}
-            collaborationCount={authReady && cloudCollaboration.roomId
-              ? Math.max(1, cloudCollaboration.peers.length)
-              : authReady && peers.length ? peers.length + 1 : 0}
-          />
+          <div className="file-actions">
+            <IconButton
+              className="desktop-panel-button"
+              label={leftPanelVisible ? "隱藏圖層、分群、素材與構圖側欄" : "顯示圖層、分群、素材與構圖側欄"}
+              active={leftPanelVisible}
+              aria-pressed={leftPanelVisible}
+              onClick={toggleLeftPanel}
+            >
+              <PanelLeft size={18} />
+            </IconButton>
+            <IconButton
+              className="mobile-panel-button"
+              label="開啟圖層、分群、素材與構圖側欄"
+              active={mobilePanel === "left"}
+              aria-pressed={mobilePanel === "left"}
+              onClick={() => setMobilePanel((current) => current === "left" ? null : "left")}
+            >
+              <PanelLeft size={18} />
+            </IconButton>
+            <FileMenu
+              onOpenLibrary={openGoogleDriveLibrary}
+              onOpenFile={openBoardFile}
+              onSave={savePreferredBoard}
+              onSaveAs={() => saveBoardFile(true)}
+              onExportBrowser={exportBrowserHtml}
+              onExportObjects={() => exportObjects("selected")}
+              onOutputComposition={outputSelectionComposition}
+              canExportObjects={!sourceModeActive && selectedObjects.length > 0}
+              canOutputComposition={!sourceModeActive && selectedObjects.length > 0}
+              onOpenCollaboration={() => requestAdvancedFeature("collaboration")}
+              onToggleGuidesLocked={toggleGuidesLocked}
+              onOpenVersions={openVersionModal}
+              onOpenAbout={openAboutSettings}
+              guidesLocked={Boolean(board.guidesLocked)}
+              guideControlsDisabled={cloudReadOnly || sourceModeActive}
+              saveTitle={currentPrimaryStorageTarget === "drive"
+                ? "儲存到 Google Drive"
+                : currentPrimaryStorageTarget === "local"
+                  ? localFileBinding.status === "linked"
+                    ? `儲存到 ${localFileBinding.name || ".moodboard 檔案"}`
+                    : "選擇 .moodboard 儲存位置"
+                  : "選擇主要儲存位置"}
+              collaborationCount={authReady && cloudCollaboration.roomId
+                ? Math.max(1, cloudCollaboration.peers.length)
+                : authReady && peers.length ? peers.length + 1 : 0}
+            />
+          </div>
         </div>
 
         <label className="board-title-field">
@@ -12215,9 +12332,9 @@ function App() {
             value={board.name}
             onChange={(event) => applyBoard((current) => ({ ...current, name: event.target.value }))}
             disabled={cloudReadOnly || sourceModeActive}
-            title={sourceModeActive ? "素材檢視中；回到 Moodboard 後才能修改名稱" : undefined}
+            title={sourceModeActive ? "素材檢視中；回到 Moodboard 後才能修改名稱" : topbarSaveState}
           />
-          <small aria-live="polite">{sourceModeActive ? "素材檢視中 · Moodboard 名稱唯讀" : topbarSaveState}</small>
+          <small className="sr-only" aria-live="polite">{sourceModeActive ? "素材檢視中 · Moodboard 名稱唯讀" : topbarSaveState}</small>
         </label>
 
         <div className="topbar-secondary">
@@ -12231,7 +12348,7 @@ function App() {
               onClick={openGoogleDriveLibrary}
             >
               <DriveStatusIcon className={drivePresentation.tone === "working" ? "is-spinning" : ""} size={17} aria-hidden="true" />
-              <span>{drivePresentation.label}</span>
+              <span className="sr-only">{drivePresentation.label}</span>
             </button>
           ) : null}
           <IconButton
@@ -12248,11 +12365,10 @@ function App() {
             className="account-menu-button"
             type="button"
             aria-label={authReady ? `帳號：${accountDisplayName(authSession.user)}` : "登入以使用進階功能"}
-            title="帳號與隱私"
+            title={authReady ? `帳號與隱私：${accountDisplayName(authSession.user)}` : "登入以使用進階功能"}
             onClick={openAccountSettings}
           >
             {authReady ? <AccountAvatar user={authSession.user} size={26} /> : <UserRound size={17} />}
-            <span {...(authReady ? { "data-l10n-ignore": true } : {})}>{authReady ? accountDisplayName(authSession.user) : "登入"}</span>
           </button>
           <IconButton
             className="settings-button"
@@ -12289,6 +12405,7 @@ function App() {
             onZoomWindow={activateZoomWindowTool}
             showZoomWindow={!sourceModeActive}
             zoomWindowActive={tool === "zoom-window"}
+            zoomWindowZoomOut={altDown}
           />
         </div>
       </header>
@@ -12402,6 +12519,17 @@ function App() {
                   <IconButton label="選取工具 Shift+V；連按兩下顯示全部物件" active={tool === "select"} aria-pressed={tool === "select"} onClick={(event) => onPrimaryCanvasToolClick(event, "select")}><MousePointer2 size={18} /></IconButton>
                   <IconButton label="平移工具 Shift+H（按住 Space 可暫時使用；按住 Shift 可暫時選取）；連按兩下回到 100%" active={tool === "hand"} aria-pressed={tool === "hand"} onClick={(event) => onPrimaryCanvasToolClick(event, "hand")}><Hand size={18} /></IconButton>
                   <IconButton
+                    className="desktop-zoom-window-tool"
+                    label={altDown
+                      ? "縮小範圍：拖曳框住區域；放開 Option／Alt 回到放大"
+                      : "縮放範圍：拖曳框住要放大的區域；按住 Option／Alt 反向縮小；Esc 取消"}
+                    active={tool === "zoom-window"}
+                    aria-pressed={tool === "zoom-window"}
+                    onClick={activateZoomWindowTool}
+                  >
+                    {altDown ? <ZoomOut size={18} /> : <ZoomIn size={18} />}
+                  </IconButton>
+                  <IconButton
                     label={authReady ? "進階 3D 旋轉工具 Shift+3（拖曳選取物件旋轉）" : "進階 3D 旋轉工具 Shift+3（需要登入）"}
                     active={tool === "3d"}
                     aria-pressed={tool === "3d"}
@@ -12425,8 +12553,7 @@ function App() {
                 <IconButton label="建立 Grid" onClick={() => setShowGridBuilder(true)} disabled={cloudReadOnly}><LayoutGrid size={18} /></IconButton>
                 <div className="tool-divider" />
                 <div className="zoom-group">
-                  <IconButton label="縮放視窗：拖曳框住要放大的區域；Esc 取消" active={tool === "zoom-window"} aria-pressed={tool === "zoom-window"} onClick={activateZoomWindowTool}><Crosshair size={17} /></IconButton>
-                  <IconButton label="縮小" onClick={() => { const rect = canvasRef.current.getBoundingClientRect(); zoomAround(rect.left + rect.width / 2, rect.top + rect.height / 2, view.zoom / 1.2); }}><ZoomOut size={17} /></IconButton>
+                  <IconButton label="縮小" onClick={() => { const rect = canvasRef.current.getBoundingClientRect(); zoomAround(rect.left + rect.width / 2, rect.top + rect.height / 2, view.zoom / 1.2); }}><Minus size={17} /></IconButton>
                   <button
                     className="zoom-value"
                     type="button"
@@ -12437,7 +12564,7 @@ function App() {
                   >
                     {Math.round(view.zoom * 100)}%
                   </button>
-                  <IconButton label="放大" onClick={() => { const rect = canvasRef.current.getBoundingClientRect(); zoomAround(rect.left + rect.width / 2, rect.top + rect.height / 2, view.zoom * 1.2); }}><ZoomIn size={17} /></IconButton>
+                  <IconButton label="放大" onClick={() => { const rect = canvasRef.current.getBoundingClientRect(); zoomAround(rect.left + rect.width / 2, rect.top + rect.height / 2, view.zoom * 1.2); }}><Plus size={17} /></IconButton>
                 </div>
               </>
             )}
@@ -12548,7 +12675,7 @@ function App() {
             ) : null}
 
             {marquee && !inspectionActive ? <div className="selection-marquee" style={marquee} aria-hidden="true" /> : null}
-            {zoomWindowRect && !inspectionActive ? <div className="zoom-window-marquee" style={zoomWindowRect} aria-hidden="true">{zoomWindowRect.width >= 96 && zoomWindowRect.height >= 48 ? <span>放大此區域</span> : null}</div> : null}
+            {zoomWindowRect && !inspectionActive ? <div className="zoom-window-marquee" style={zoomWindowRect} aria-hidden="true">{zoomWindowRect.width >= 96 && zoomWindowRect.height >= 48 ? <span>{altDown ? "縮小此區域" : "放大此區域"}</span> : null}</div> : null}
 
             {cloudReadOnly && !sourceModeActive ? (
               <button className="cloud-read-only-banner" type="button" onClick={() => setShowCollaboration(true)}>
