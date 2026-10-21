@@ -1,8 +1,8 @@
 {
   "product": "Infinite Moodboard",
   "channel": "stable",
-  "version": "0.35.0",
+  "version": "0.36.0",
   "releasedAt": "2026-10-21",
-  "summary": "補強尺規與輔助導引線：Shift 整數吸附、完整位置讀值、全域與個別鎖定、右鍵刪除，以及移除原點顯示瑕疵。",
+  "summary": "新增裝置全域 Color Set：命名、快速套用、管理、匯入與匯出，並共用於文字、形狀與紙張色彩。",
   "url": "https://moodboard.petfashion.tw/"
 }

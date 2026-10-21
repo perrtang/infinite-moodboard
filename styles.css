@@ -2654,6 +2654,10 @@ html[lang="en"] .sidebar-tabs button svg {
   font-size: calc(8px + var(--ui-font-offset, 0px));
 }
 
+.object-color-set-selector select {
+  width: 100%;
+}
+
 .object-color-swatches {
   display: grid;
   gap: 5px;
@@ -2693,10 +2697,17 @@ html[lang="en"] .sidebar-tabs button svg {
   stroke-width: 3;
 }
 
+.object-color-set-empty {
+  color: var(--text-muted);
+  font-size: calc(9px + var(--ui-font-offset, 0px));
+  grid-column: 1 / -1;
+  margin: 2px 0;
+}
+
 .object-color-library-actions {
   display: grid;
   gap: 3px;
-  grid-template-columns: minmax(0, 1.6fr) minmax(0, 0.7fr) minmax(0, 0.7fr);
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.8fr);
 }
 
 .object-color-library-actions button {
@@ -2723,6 +2734,139 @@ html[lang="en"] .sidebar-tabs button svg {
 .object-color-library-actions button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
+}
+
+.object-color-set-manager {
+  background: rgb(var(--accent-rgb) / 0.045);
+  border-radius: 7px;
+  display: grid;
+  gap: 9px;
+  padding: 10px;
+}
+
+.object-color-set-manager-heading {
+  align-items: baseline;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.object-color-set-manager-heading strong {
+  color: var(--text);
+  font-size: calc(10px + var(--ui-font-offset, 0px));
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.object-color-set-manager-heading small,
+.object-color-set-helper {
+  color: var(--text-muted);
+  font-size: calc(8px + var(--ui-font-offset, 0px));
+  margin: 0;
+}
+
+.object-color-set-edit-row,
+.object-color-set-create-row {
+  align-items: stretch;
+  display: grid;
+  gap: 5px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.object-color-set-edit-row label,
+.object-color-set-create-row label {
+  min-width: 0;
+}
+
+.object-color-set-edit-row input,
+.object-color-set-create-row input {
+  height: 100%;
+  min-width: 0;
+  width: 100%;
+}
+
+.object-color-set-edit-row button,
+.object-color-set-create-row button,
+.object-color-set-file-actions button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  color: var(--text-soft);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: calc(9px + var(--ui-font-offset, 0px));
+  gap: 5px;
+  justify-content: center;
+  min-height: 34px;
+  padding: 5px 8px;
+}
+
+.object-color-set-edit-row button:hover,
+.object-color-set-edit-row button:focus-visible,
+.object-color-set-create-row button:hover,
+.object-color-set-create-row button:focus-visible,
+.object-color-set-file-actions button:hover,
+.object-color-set-file-actions button:focus-visible {
+  background: rgb(var(--accent-rgb) / 0.08);
+  color: var(--text);
+}
+
+.object-color-set-edit-row button:focus-visible,
+.object-color-set-create-row button:focus-visible,
+.object-color-set-file-actions button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.object-color-set-edit-row button:disabled,
+.object-color-set-create-row button:disabled,
+.object-color-set-file-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+}
+
+.object-color-set-file-actions {
+  display: grid;
+  gap: 3px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.object-color-set-file-actions button.is-danger {
+  color: var(--danger);
+}
+
+.object-color-set-removals {
+  display: grid;
+  gap: 5px;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+}
+
+.object-color-set-removals button {
+  align-items: center;
+  background: var(--object-swatch);
+  border: 0;
+  border-radius: 50%;
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  height: 26px;
+  justify-content: center;
+  padding: 0;
+  width: 26px;
+}
+
+.object-color-set-removals button:hover,
+.object-color-set-removals button:focus-visible {
+  box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--danger);
+  outline: 0;
+}
+
+.object-color-set-removals svg {
+  filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 1px #000);
+  stroke-width: 3;
 }
 
 .property-wide {
@@ -9602,6 +9746,21 @@ button.status-label:hover {
 
   .object-color-library-actions button {
     min-height: 44px;
+  }
+
+  .object-color-set-edit-row button,
+  .object-color-set-create-row button,
+  .object-color-set-file-actions button {
+    min-height: 44px;
+  }
+
+  .object-color-set-removals {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .object-color-set-removals button {
+    height: 44px;
+    width: 44px;
   }
 }
 

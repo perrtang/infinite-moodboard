@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   AlignCenter,
@@ -262,11 +262,21 @@ import {
   serializeInterfaceTheme,
 } from "./theme.js";
 import {
-  loadObjectColorLibrary,
-  mergeObjectColorLibrary,
-  parseObjectColorLibraryFile,
-  saveObjectColorLibrary,
-  serializeObjectColorLibrary,
+  activeObjectColorSet,
+  addObjectColorToSet,
+  createObjectColorSet,
+  deleteObjectColorSet,
+  loadObjectColorSets,
+  mergeImportedObjectColorSets,
+  normalizeObjectColor,
+  OBJECT_COLOR_LIBRARY_LIMIT,
+  OBJECT_COLOR_SETS_FILE_SIZE_LIMIT,
+  parseObjectColorSetsFile,
+  removeObjectColorFromSet,
+  renameObjectColorSet,
+  saveObjectColorSets,
+  selectObjectColorSet,
+  serializeObjectColorSets,
 } from "./color-library.js";
 import {
   CANVAS_BACKGROUND_STORAGE_KEY,
@@ -3257,16 +3267,38 @@ function Micro3DControls({ objects, onChange, active, onActiveChange }) {
   );
 }
 
-function ObjectColorLibraryControl({
+function ObjectColorSetControl({
   label,
   value,
-  colors,
+  colorSetsState,
   onChange,
+  onSelectSet,
   onAdd,
+  onCreateSet,
+  onRenameSet,
+  onRemoveColor,
+  onDeleteSet,
   onLoad,
   onExport,
 }) {
+  const activeSet = activeObjectColorSet(colorSetsState);
   const currentColor = String(value || "#000000").toUpperCase();
+  const [managerOpen, setManagerOpen] = useState(false);
+  const [newSetName, setNewSetName] = useState("");
+  const [renameDraft, setRenameDraft] = useState(activeSet.name);
+  const managerId = useId();
+
+  useEffect(() => {
+    setRenameDraft(activeSet.name);
+  }, [activeSet.id, activeSet.name]);
+
+  const createSet = () => {
+    const name = newSetName.trim();
+    if (!name) return;
+    onCreateSet(name);
+    setNewSetName("");
+  };
+
   return (
     <div className="object-color-control">
       <label>
@@ -3277,11 +3309,17 @@ function ObjectColorLibraryControl({
         </span>
       </label>
       <div className="object-color-library-heading">
-        <strong>色彩庫</strong>
-        <small>儲存在這台裝置</small>
+        <strong>色彩組合</strong>
+        <small>全域可用 · 儲存在這台裝置</small>
       </div>
-      <div className="object-color-swatches" role="group" aria-label={`${label}色彩庫`}>
-        {colors.map((color) => {
+      <label className="object-color-set-selector">
+        <span className="sr-only">目前色彩組合</span>
+        <select value={activeSet.id} onChange={(event) => onSelectSet(event.target.value)}>
+          {colorSetsState.sets.map((set) => <option key={set.id} value={set.id}>{set.name}</option>)}
+        </select>
+      </label>
+      <div className="object-color-swatches" role="group" aria-label={`${label}色彩組合 ${activeSet.name}`}>
+        {activeSet.colors.map((color) => {
           const active = color === currentColor;
           return (
             <button
@@ -3298,12 +3336,44 @@ function ObjectColorLibraryControl({
             </button>
           );
         })}
+        {!activeSet.colors.length ? <p className="object-color-set-empty">這組色彩尚未加入色票。</p> : null}
       </div>
       <div className="object-color-library-actions">
         <button type="button" onClick={() => onAdd(currentColor)}><Plus size={14} /> 加入目前色彩</button>
-        <button type="button" onClick={onLoad}><FolderOpen size={14} /> 載入</button>
-        <button type="button" onClick={onExport}><Download size={14} /> 匯出</button>
+        <button type="button" aria-expanded={managerOpen} aria-controls={managerId} onClick={() => setManagerOpen((open) => !open)}><Palette size={14} /> 管理</button>
       </div>
+      {managerOpen ? (
+        <div id={managerId} className="object-color-set-manager" aria-label="管理色彩組合">
+          <div className="object-color-set-manager-heading">
+            <strong>{activeSet.name}</strong>
+            <small>{activeSet.builtin ? "內建組合 · 唯讀" : `${activeSet.colors.length} 個色彩`}</small>
+          </div>
+          {!activeSet.builtin ? (
+            <>
+              <div className="object-color-set-edit-row">
+                <label><span className="sr-only">重新命名色彩組合</span><input maxLength={48} value={renameDraft} onChange={(event) => setRenameDraft(event.target.value)} /></label>
+                <button type="button" disabled={!renameDraft.trim() || renameDraft.trim() === activeSet.name} onClick={() => onRenameSet(activeSet.id, renameDraft)}><Save size={14} /><span>儲存名稱</span></button>
+              </div>
+              {activeSet.colors.length ? (
+                <div className="object-color-set-removals" role="group" aria-label={`移除 ${activeSet.name} 的色彩`}>
+                  {activeSet.colors.map((color) => (
+                    <button key={color} type="button" style={{ "--object-swatch": color }} aria-label={`移除 ${color}`} title={`移除 ${color}`} onClick={() => onRemoveColor(activeSet.id, color)}><X size={11} /></button>
+                  ))}
+                </div>
+              ) : null}
+            </>
+          ) : <p className="object-color-set-helper">內建色票保持不變；加入目前色彩時會自動建立「我的色彩」。</p>}
+          <div className="object-color-set-create-row">
+            <label><span className="sr-only">新色彩組合名稱</span><input maxLength={48} value={newSetName} placeholder="新色彩組合名稱" onChange={(event) => setNewSetName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); createSet(); } }} /></label>
+            <button type="button" disabled={!newSetName.trim()} onClick={createSet}><Plus size={14} /><span>新增組合</span></button>
+          </div>
+          <div className="object-color-set-file-actions">
+            <button type="button" onClick={onLoad}><FolderOpen size={14} /> 匯入</button>
+            <button type="button" onClick={onExport}><Download size={14} /> 匯出全部</button>
+            <button className="is-danger" type="button" disabled={activeSet.builtin || colorSetsState.sets.length <= 1} onClick={() => onDeleteSet(activeSet.id)}><Trash2 size={14} /> 刪除組合</button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -3430,10 +3500,15 @@ function Inspector({
   onResizeArtboardPreset,
   selectionGrouped,
   onToggleGroup,
-  objectColorLibrary,
+  objectColorSets,
+  onSelectObjectColorSet,
   onAddObjectColor,
-  onLoadObjectColorLibrary,
-  onExportObjectColorLibrary,
+  onCreateObjectColorSet,
+  onRenameObjectColorSet,
+  onRemoveObjectColor,
+  onDeleteObjectColorSet,
+  onLoadObjectColorSets,
+  onExportObjectColorSets,
   readOnly = false,
   mobilePanel,
   setMobilePanel,
@@ -3554,14 +3629,19 @@ function Inspector({
                   </label>
                   <label><span>大小</span><div className="input-with-suffix"><input type="number" min="6" max="512" value={Math.round(object.fontSize * 10) / 10} onChange={(event) => onUpdateObject(object.id, { fontSize: Math.max(6, Number(event.target.value) || 6) })} /><b>px</b></div></label>
                 </div>
-                <ObjectColorLibraryControl
+                <ObjectColorSetControl
                   label="文字色彩"
                   value={object.color}
-                  colors={objectColorLibrary}
+                  colorSetsState={objectColorSets}
                   onChange={(color) => onUpdateObject(object.id, { color })}
+                  onSelectSet={onSelectObjectColorSet}
                   onAdd={onAddObjectColor}
-                  onLoad={onLoadObjectColorLibrary}
-                  onExport={onExportObjectColorLibrary}
+                  onCreateSet={onCreateObjectColorSet}
+                  onRenameSet={onRenameObjectColorSet}
+                  onRemoveColor={onRemoveObjectColor}
+                  onDeleteSet={onDeleteObjectColorSet}
+                  onLoad={onLoadObjectColorSets}
+                  onExport={onExportObjectColorSets}
                 />
                 <div className="text-alignment-fields">
                   <TextAlignmentControl
@@ -3673,14 +3753,19 @@ function Inspector({
                     </div>
                   </div>
                 ) : null}
-                <ObjectColorLibraryControl
+                <ObjectColorSetControl
                   label="填滿色彩"
                   value={object.fill}
-                  colors={objectColorLibrary}
+                  colorSetsState={objectColorSets}
                   onChange={(fill) => onUpdateObject(object.id, { fill })}
+                  onSelectSet={onSelectObjectColorSet}
                   onAdd={onAddObjectColor}
-                  onLoad={onLoadObjectColorLibrary}
-                  onExport={onExportObjectColorLibrary}
+                  onCreateSet={onCreateObjectColorSet}
+                  onRenameSet={onRenameObjectColorSet}
+                  onRemoveColor={onRemoveObjectColor}
+                  onDeleteSet={onDeleteObjectColorSet}
+                  onLoad={onLoadObjectColorSets}
+                  onExport={onExportObjectColorSets}
                 />
                 <div className="shape-quick-sizes">
                   <strong>快速尺寸</strong>
@@ -3729,10 +3814,20 @@ function Inspector({
                   <button type="button" role="radio" aria-checked={object.paperOrientation !== "landscape"} className={object.paperOrientation !== "landscape" ? "is-active" : ""} onClick={() => onResizeArtboardPreset(object.id, object.paperPreset, "portrait")}>直式</button>
                   <button type="button" role="radio" aria-checked={object.paperOrientation === "landscape"} className={object.paperOrientation === "landscape" ? "is-active" : ""} onClick={() => onResizeArtboardPreset(object.id, object.paperPreset, "landscape")}>橫式</button>
                 </div>
-                <label>
-                  <span>紙張色彩</span>
-                  <span className="color-input-row"><input type="color" value={object.fill} onChange={(event) => onUpdateObject(object.id, { fill: event.target.value })} /><code>{object.fill.toUpperCase()}</code></span>
-                </label>
+                <ObjectColorSetControl
+                  label="紙張色彩"
+                  value={object.fill}
+                  colorSetsState={objectColorSets}
+                  onChange={(fill) => onUpdateObject(object.id, { fill })}
+                  onSelectSet={onSelectObjectColorSet}
+                  onAdd={onAddObjectColor}
+                  onCreateSet={onCreateObjectColorSet}
+                  onRenameSet={onRenameObjectColorSet}
+                  onRemoveColor={onRemoveObjectColor}
+                  onDeleteSet={onDeleteObjectColorSet}
+                  onLoad={onLoadObjectColorSets}
+                  onExport={onExportObjectColorSets}
+                />
                 <label><span>符合內容的參考邊距</span><div className="input-with-suffix"><input type="number" min="0" max="400" value={Math.round(object.paperPadding || 0)} onChange={(event) => onUpdateObject(object.id, { paperPadding: Math.max(0, Math.min(400, Number(event.target.value) || 0)) })} /><b>px</b></div></label>
                 <button className="secondary-button full-width" type="button" onClick={() => onFitArtboard(object.id)}>
                   <Maximize2 size={15} /> 依目前紙上物件重新符合
@@ -6484,7 +6579,7 @@ function App() {
   const [previewTheme, setPreviewTheme] = useState(null);
   const [interfaceTypography, setInterfaceTypography] = useState(loadStoredInterfaceTypography);
   const [canvasBackground, setCanvasBackground] = useState(loadStoredCanvasBackground);
-  const [objectColorLibrary, setObjectColorLibrary] = useState(loadObjectColorLibrary);
+  const [objectColorSets, setObjectColorSets] = useState(loadObjectColorSets);
   const [updateCheck, setUpdateCheck] = useState({ status: "idle", manifest: null, checkedAt: null, message: "" });
   const [updatePreference, setUpdatePreference] = useState(loadUpdatePreference);
   const [updateAction, setUpdateAction] = useState({ status: "idle", message: "" });
@@ -6538,7 +6633,7 @@ function App() {
   const svgInputRef = useRef(null);
   const boardInputRef = useRef(null);
   const themeInputRef = useRef(null);
-  const objectColorLibraryInputRef = useRef(null);
+  const objectColorSetsInputRef = useRef(null);
   const fileHandleRef = useRef(null);
   const driveTokenRef = useRef(null);
   const driveOperationEpochRef = useRef(0);
@@ -6875,8 +6970,8 @@ function App() {
   }, [customThemes]);
 
   useEffect(() => {
-    saveObjectColorLibrary(localStorage, objectColorLibrary);
-  }, [objectColorLibrary]);
+    saveObjectColorSets(localStorage, objectColorSets);
+  }, [objectColorSets]);
 
   useEffect(() => {
     localStorage.setItem(ACTIVE_THEME_STORAGE_KEY, activeTheme.id);
@@ -7786,33 +7881,104 @@ function App() {
     }
   }, [announce]);
 
-  const addObjectColorToLibrary = useCallback((color) => {
-    const next = mergeObjectColorLibrary(objectColorLibrary, [color]);
-    if (next.length === objectColorLibrary.length) {
-      announce("這個色彩已經在色彩庫中。", "success");
+  const selectActiveObjectColorSet = useCallback((setId) => {
+    setObjectColorSets((current) => selectObjectColorSet(current, setId));
+  }, []);
+
+  const addObjectColorToActiveSet = useCallback((color) => {
+    const normalizedColor = normalizeObjectColor(color);
+    if (!normalizedColor) {
+      announce("這個色碼無法加入色彩組合。", "error");
       return;
     }
-    setObjectColorLibrary(next);
-    announce(`已將 ${String(color).toUpperCase()} 加入物件色彩庫。`, "success");
-  }, [announce, objectColorLibrary]);
-
-  const exportObjectColorLibrary = useCallback(() => {
-    const blob = new Blob([serializeObjectColorLibrary(objectColorLibrary)], { type: "application/json;charset=utf-8" });
-    downloadBlob(blob, "Infinite-Moodboard-物件色彩庫.moodcolors");
-    announce(`已匯出 ${objectColorLibrary.length} 個物件色彩。`, "success");
-  }, [announce, objectColorLibrary]);
-
-  const importObjectColorLibraryFile = useCallback(async (file) => {
-    try {
-      const imported = parseObjectColorLibraryFile(await file.text());
-      const next = mergeObjectColorLibrary(objectColorLibrary, imported);
-      const added = next.length - objectColorLibrary.length;
-      setObjectColorLibrary(next);
-      announce(added > 0 ? `已載入 ${added} 個新色彩。` : "色彩庫中的顏色都已存在。", "success");
-    } catch (error) {
-      announce(error.message || "物件色彩庫載入失敗。", "error");
+    const activeSet = activeObjectColorSet(objectColorSets);
+    const existingCustom = activeSet.builtin
+      ? objectColorSets.sets.find((set) => !set.builtin && set.name === "我的色彩")
+      : activeSet;
+    if (existingCustom?.colors.includes(normalizedColor)) {
+      announce("這個色彩已經在目前的色彩組合中。", "success");
+      return;
     }
-  }, [announce, objectColorLibrary]);
+    if (existingCustom && existingCustom.colors.length >= OBJECT_COLOR_LIBRARY_LIMIT) {
+      announce(`這組色彩已達 ${OBJECT_COLOR_LIBRARY_LIMIT} 色上限。`, "warning");
+      return;
+    }
+    const autoSetId = createId("color-set");
+    setObjectColorSets((current) => {
+      const currentSet = activeObjectColorSet(current);
+      if (!currentSet.builtin) return addObjectColorToSet(current, currentSet.id, normalizedColor);
+      const currentCustom = current.sets.find((set) => !set.builtin && set.name === "我的色彩");
+      if (currentCustom) {
+        return addObjectColorToSet(selectObjectColorSet(current, currentCustom.id), currentCustom.id, normalizedColor);
+      }
+      return createObjectColorSet(current, "我的色彩", [normalizedColor], autoSetId);
+    });
+    announce(activeSet.builtin && !existingCustom
+      ? `已建立「我的色彩」並加入 ${normalizedColor}。`
+      : `已將 ${normalizedColor} 加入「${existingCustom?.name || activeSet.name}」。`, "success");
+  }, [announce, objectColorSets]);
+
+  const createNamedObjectColorSet = useCallback((name) => {
+    try {
+      const next = createObjectColorSet(objectColorSets, name, [], createId("color-set"));
+      setObjectColorSets(next);
+      announce(`已建立色彩組合「${activeObjectColorSet(next).name}」。`, "success");
+    } catch (error) {
+      announce(error.message || "無法建立色彩組合。", "error");
+    }
+  }, [announce, objectColorSets]);
+
+  const renameNamedObjectColorSet = useCallback((setId, name) => {
+    const next = renameObjectColorSet(objectColorSets, setId, name);
+    setObjectColorSets(next);
+    const renamed = next.sets.find((set) => set.id === setId);
+    announce(`已重新命名為「${renamed?.name || String(name).trim()}」。`, "success");
+  }, [announce, objectColorSets]);
+
+  const removeObjectColorFromNamedSet = useCallback((setId, color) => {
+    setObjectColorSets((current) => removeObjectColorFromSet(current, setId, color));
+    announce(`已從色彩組合移除 ${String(color).toUpperCase()}。`, "warning");
+  }, [announce]);
+
+  const deleteNamedObjectColorSet = useCallback((setId) => {
+    const target = objectColorSets.sets.find((set) => set.id === setId);
+    try {
+      const next = deleteObjectColorSet(objectColorSets, setId);
+      const message = interfaceLocale === "en"
+        ? `Delete the global color set “${target?.name || "Untitled colors"}”? Existing objects will keep their colors.`
+        : interfaceLocale === "zh-Hans"
+          ? `删除全局色彩组合“${target?.name || "未命名色彩"}”？现有对象会保留当前颜色。`
+          : `刪除全域色彩組合「${target?.name || "未命名色彩"}」？現有物件會保留目前色彩。`;
+      if (!window.confirm(message)) return;
+      setObjectColorSets(next);
+      announce(`已刪除色彩組合「${target?.name || "未命名色彩"}」。`, "warning");
+    } catch (error) {
+      announce(error.message || "無法刪除色彩組合。", "error");
+    }
+  }, [announce, interfaceLocale, objectColorSets]);
+
+  const exportObjectColorSets = useCallback(() => {
+    const blob = new Blob([serializeObjectColorSets(objectColorSets)], { type: "application/json;charset=utf-8" });
+    downloadBlob(blob, "Infinite-Moodboard-Color-Sets.moodcolors");
+    const colorCount = objectColorSets.sets.reduce((total, set) => total + set.colors.length, 0);
+    announce(`已匯出 ${objectColorSets.sets.length} 組、共 ${colorCount} 個色彩。`, "success");
+  }, [announce, objectColorSets]);
+
+  const importObjectColorSetsFile = useCallback(async (file) => {
+    try {
+      if (file.size > OBJECT_COLOR_SETS_FILE_SIZE_LIMIT) throw new Error("Color Set 檔案超過 128 KB 上限。");
+      const imported = parseObjectColorSetsFile(await file.text());
+      const preview = mergeImportedObjectColorSets(objectColorSets, imported);
+      if (!preview.addedSetCount) {
+        announce("Color Set 已達 24 組上限，沒有匯入任何組合。", "warning");
+        return;
+      }
+      setObjectColorSets((current) => mergeImportedObjectColorSets(current, imported).state);
+      announce(`已匯入 ${preview.addedSetCount} 組、共 ${preview.addedColorCount} 個色彩${preview.skippedSetCount ? `；另有 ${preview.skippedSetCount} 組因上限略過` : ""}。`, "success");
+    } catch (error) {
+      announce(error.message || "Color Set 匯入失敗。", "error");
+    }
+  }, [announce, objectColorSets]);
 
   const closeInterfaceThemes = useCallback(() => {
     setPreviewTheme(null);
@@ -12096,10 +12262,15 @@ function App() {
           onResizeArtboardPreset={resizeArtboardPreset}
           selectionGrouped={selectionGrouped}
           onToggleGroup={toggleSelectionGroup}
-          objectColorLibrary={objectColorLibrary}
-          onAddObjectColor={addObjectColorToLibrary}
-          onLoadObjectColorLibrary={() => objectColorLibraryInputRef.current?.click()}
-          onExportObjectColorLibrary={exportObjectColorLibrary}
+          objectColorSets={objectColorSets}
+          onSelectObjectColorSet={selectActiveObjectColorSet}
+          onAddObjectColor={addObjectColorToActiveSet}
+          onCreateObjectColorSet={createNamedObjectColorSet}
+          onRenameObjectColorSet={renameNamedObjectColorSet}
+          onRemoveObjectColor={removeObjectColorFromNamedSet}
+          onDeleteObjectColorSet={deleteNamedObjectColorSet}
+          onLoadObjectColorSets={() => objectColorSetsInputRef.current?.click()}
+          onExportObjectColorSets={exportObjectColorSets}
           readOnly={cloudReadOnly}
           mobilePanel={mobilePanel}
           setMobilePanel={setMobilePanel}
@@ -12362,7 +12533,7 @@ function App() {
       <input ref={svgInputRef} className="sr-only" type="file" accept=".svg,image/svg+xml" multiple onChange={onSvgInput} />
       <input ref={boardInputRef} className="sr-only" type="file" accept=".moodboard,.json,application/json" onChange={(event) => { const [file] = event.target.files || []; if (file) importLocalBoardFile(file); event.target.value = ""; }} />
       <input ref={themeInputRef} className="sr-only" type="file" accept=".moodtheme,.json,application/json" onChange={(event) => { const [file] = event.target.files || []; if (file) importInterfaceThemeFile(file); event.target.value = ""; }} />
-      <input ref={objectColorLibraryInputRef} className="sr-only" type="file" accept=".moodcolors,.json,application/json" onChange={(event) => { const [file] = event.target.files || []; if (file) importObjectColorLibraryFile(file); event.target.value = ""; }} />
+      <input ref={objectColorSetsInputRef} className="sr-only" type="file" accept=".moodcolors,.json,application/json" onChange={(event) => { const [file] = event.target.files || []; if (file) importObjectColorSetsFile(file); event.target.value = ""; }} />
     </main>
   );
 }

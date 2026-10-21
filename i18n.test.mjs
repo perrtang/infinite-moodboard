@@ -61,6 +61,13 @@ test("object color library controls and feedback are localized", () => {
   assert.equal(translateInterfaceText("文字色彩色彩庫", "en"), "Text color library");
   assert.equal(translateInterfaceText("已載入 3 個新色彩。", "en"), "Loaded 3 new colors.");
   assert.equal(translateInterfaceText("儲存在這台裝置", "zh-Hans"), "保存在这台设备");
+  assert.equal(translateInterfaceText("色彩組合", "en"), "Color set");
+  assert.equal(translateInterfaceText("紙張色彩色彩組合 我的色彩", "en"), "Paper color color set: My colors");
+  assert.equal(translateInterfaceText("已建立「我的色彩」並加入 #ABCDEF。", "en"), "Created “My colors” and added #ABCDEF.");
+  assert.equal(translateInterfaceText("已匯入 2 組、共 18 個色彩；另有 1 組因上限略過。", "en"), "Imported 2 sets with 18 colors; skipped 1 sets because of the limit.");
+  assert.equal(translateInterfaceText("這個色碼無法加入色彩組合。", "en"), "This color value cannot be added to the color set.");
+  assert.equal(translateInterfaceText("舊版色彩庫超過 48 色上限。", "en"), "The legacy color library exceeds the 48-color limit.");
+  assert.equal(translateInterfaceText("全域可用 · 儲存在這台裝置", "zh-Hans"), "全局可用 · 保存在这台设备");
 });
 
 test("workspace search, ruler, and shortcut copy is localized", () => {

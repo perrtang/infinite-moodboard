@@ -26,6 +26,13 @@ Infinite Moodboard runs the canvas, imported media, transforms, exports, and ver
 - Optional Google Drive file storage and opt-in realtime collaboration with view/edit permission requests.
 - 3D, Drive, collaboration, and export runtimes are loaded only when used, keeping the opening bundle smaller.
 
+## v0.36.0 — global Color Set release
+
+- Adds named device-global Color Sets shared by text, shape fills, and paper colors across every Moodboard.
+- Keeps a protected built-in palette while supporting custom set creation, rename, color removal, and confirmed deletion.
+- Imports and exports portable `.moodcolors` v2 files, appends collision-safe copies, and migrates legacy v1 color libraries without losing custom colors.
+- Adds responsive Inspector management, keyboard-visible focus states, and Traditional Chinese, Simplified Chinese, and English interface copy.
+
 ## v0.35.0 — guide control release
 
 - Keeps the guide position readout fully visible while dragging and shows when Shift snapping is active.
