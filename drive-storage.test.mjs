@@ -69,7 +69,9 @@ test("Google Drive tokens require the exact drive.file scope and expire safely",
 test("Google Drive authorization failures include missing and excessive permissions", () => {
   assert.equal(isGoogleDriveAuthorizationError({ status: 401 }), true);
   assert.equal(isGoogleDriveAuthorizationError({ code: "drive/permission", status: 403 }), true);
-  assert.equal(isGoogleDriveAuthorizationError({ reason: "insufficientPermissions" }), true);
+  assert.equal(isGoogleDriveAuthorizationError({ reason: "insufficientPermissions" }), false);
+  assert.equal(isGoogleDriveAuthorizationError({ status: 403, reason: "rateLimitExceeded" }), false);
+  assert.equal(isGoogleDriveAuthorizationError({ status: 403, reason: "forbidden" }), false);
   assert.equal(isGoogleDriveAuthorizationError({ code: "drive/quota", reason: "storageQuotaExceeded" }), false);
 });
 
@@ -193,6 +195,9 @@ test("normalizes Drive files and maps recoverable errors", () => {
   });
   assert.match(driveErrorMessage({ reason: "storageQuotaExceeded" }), /空間不足/);
   assert.match(driveErrorMessage({ status: 401 }), /重新連結/);
+  assert.match(driveErrorMessage({ status: 403, reason: "rateLimitExceeded" }), /暫時忙碌/);
+  assert.match(driveErrorMessage({ status: 403, reason: "appNotAuthorizedToFile" }), /重新選取/);
+  assert.match(driveErrorMessage({ status: 404, reason: "notFound" }), /沒有這份/);
   assert.match(driveErrorMessage({ code: "drive/offline" }), /離線/);
 });
 

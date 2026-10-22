@@ -26,6 +26,13 @@ Infinite Moodboard runs the canvas, imported media, transforms, exports, and ver
 - Optional Google Drive file storage and Drive-native sharing with viewer/editor permissions on the same file.
 - 3D, Drive sharing, and export runtimes are loaded only when used, keeping the opening bundle smaller.
 
+## v0.49.0 — safe shared-file opening release
+
+- Opens a recipient's first Drive share through Google Picker while preserving the least-privilege `drive.file` scope.
+- Verifies that the selected Drive file ID exactly matches the shared link before reading or linking any Moodboard content.
+- Keeps cancellation, mismatched selection, missing Drive permission, and unavailable Picker configuration in an explicit recovery state instead of showing a blank board as the shared file.
+- Loads the Picker only when needed and retains the optional Drive resource key throughout selection and download.
+
 ## v0.48.0 — Drive-native sharing release
 
 - Makes the user's own Google Drive `.moodboard` file the only cloud sharing unit; Infinite Moodboard no longer creates or resumes a Firestore sharing room.
@@ -219,7 +226,11 @@ Google Drive uses the least-privilege `drive.file` scope. A fork must supply its
 
 ```bash
 VITE_GOOGLE_DRIVE_CLIENT_ID=your-web-client-id.apps.googleusercontent.com
+VITE_GOOGLE_DRIVE_PICKER_API_KEY=your-restricted-browser-api-key
+VITE_GOOGLE_DRIVE_PROJECT_NUMBER=your-google-cloud-project-number
 ```
+
+The Picker key must be restricted to the deployed and local development origins plus `https://docs.google.com/*`, and to both the Google Picker API and Google Drive API. A recipient opening a shared Drive link for the first time explicitly selects that same file in Google Picker; the app validates the selected file ID before loading any Moodboard content.
 
 ### Legacy Firestore sources
 

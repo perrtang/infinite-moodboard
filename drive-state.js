@@ -44,8 +44,7 @@ export function isGoogleDriveAuthorizationError(error) {
   return error?.code === "drive/authorization"
     || error?.code === "drive/permission"
     || error?.status === 401
-    || error?.status === 403
-    || ["authError", "invalidCredentials", "insufficientPermissions", "forbidden"].includes(reason);
+    || ["authError", "invalidCredentials"].includes(reason);
 }
 
 export function serializeMoodboardSnapshot(snapshot) {
@@ -196,12 +195,19 @@ export function linkDriveFile(state, board, file) {
 
 export function driveErrorMessage(error) {
   const reason = error?.reason || error?.details?.error?.errors?.[0]?.reason || "";
+  if (error?.code === "drive/picker-unconfigured") return "網站尚未完成 Google 共享檔案選擇器設定；目前沒有開啟任何內容。";
+  if (error?.code === "drive/picker-mismatch") return "你選的不是此分享連結指定的檔案；沒有開啟任何內容。";
+  if (error?.code === "drive/picker-empty") return "Google Drive 沒有回傳可開啟的檔案；沒有開啟任何內容。";
+  if (["drive/picker-timeout", "drive/picker-unavailable", "drive/picker-error"].includes(error?.code)) return error?.message || "Google 檔案選擇器暫時無法使用；沒有開啟任何內容。";
   if (error?.code === "drive/conflict") return "這台裝置與 Drive 的內容不同；同步已暫停，兩份內容都已保留。";
   if (error?.code === "drive/revision") return error?.message || "無法安全建立或讀取 Google Drive 版本；目前 Moodboard 未受影響。";
   if (reason === "storageQuotaExceeded" || error?.code === "drive/quota") return "Google Drive 空間不足；畫布仍安全保存在這台裝置。";
   if (["authError", "invalidCredentials"].includes(reason) || error?.status === 401) return "Google Drive 授權已失效；請重新連結後再同步。";
-  if (["insufficientPermissions", "forbidden"].includes(reason) || error?.status === 403) return "目前沒有權限存取這個 Google Drive 檔案。";
   if (["rateLimitExceeded", "userRateLimitExceeded"].includes(reason) || error?.status === 429) return "Google Drive 暫時忙碌；本機版本已保留，稍後會再同步。";
+  if (reason === "appNotAuthorizedToFile") return "Infinite Moodboard 尚未獲得這份檔案的存取授權；請重新選取該檔案。";
+  if (["insufficientFilePermissions", "notFound"].includes(reason) || error?.status === 404) return "目前帳號沒有這份 Google Drive 檔案的存取權，或檔案已不存在。";
+  if (reason === "domainPolicy") return "目前 Google Workspace 組織政策不允許這個 App 存取 Drive。";
+  if (["insufficientPermissions", "forbidden"].includes(reason) || error?.status === 403) return "Google Drive 拒絕了這次操作；請檢查檔案權限或稍後再試。";
   if (error?.code === "drive/timeout") return "Google Drive 回應逾時；本機版本已保留，請稍後再試。";
   if (error?.code === "drive/offline") return "目前離線；變更已保存在這台裝置，連線後可再同步。";
   if (error?.name === "AbortError" || error?.code === "drive/cancelled") return "Google Drive 操作已取消；本機版本未受影響。";

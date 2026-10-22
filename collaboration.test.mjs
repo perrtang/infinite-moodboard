@@ -112,7 +112,9 @@ test("shared Moodboard links open one exact Google Drive file after verified sig
   assert.match(appSource, /直接開啟這份 Moodboard/);
   assert.match(appSource, /實際存取權仍以 Google Drive 為準/);
   assert.match(appSource, /requestAdvancedFeature\("shared-moodboard"\)/);
-  assert.match(appSource, /openGoogleDriveFile\(\{ id: incoming\.fileId, resourceKey: incoming\.resourceKey/);
+  assert.match(appSource, /openGoogleDriveMoodboardPicker\(\{[\s\S]*?expectedFileId: incoming\.fileId/);
+  assert.match(appSource, /openGoogleDriveFile\(selection\.file, \{ sharedLink: true \}\)/);
+  assert.doesNotMatch(appSource, /openGoogleDriveFile\(\{ id: incoming\.fileId, resourceKey: incoming\.resourceKey/);
   assert.doesNotMatch(appSource, /loadCollaborationRuntime|collaboration-firestore/);
 });
 
@@ -126,7 +128,8 @@ test("opening sharing never creates a second cloud room", () => {
 
 test("shared links compare their Drive file id before replacing the active Moodboard", () => {
   assert.match(appSource, /currentLink\?\.fileId === incoming\.fileId/);
-  assert.match(appSource, /automaticDriveShareOpenRef\.current === operationKey/);
+  assert.match(appSource, /status: "needs-picker-access"/);
+  assert.match(appSource, /expectedFileId: incoming\.fileId/);
   assert.match(appSource, /切換前版本已保留/);
 });
 

@@ -1,8 +1,8 @@
 {
   "product": "Infinite Moodboard",
   "channel": "stable",
-  "version": "0.48.0",
-  "releasedAt": "2026-10-22",
-  "summary": "分享與共同編輯改由使用者自己的 Google Drive 檔案與權限管理，不再建立 Firestore 分享空間。",
+  "version": "0.49.0",
+  "releasedAt": "2026-10-23",
+  "summary": "修正第二個 Google 帳號開啟 Drive 分享連結時可能看到空白內容；首次開啟會安全選取並驗證同一份檔案。",
   "url": "https://moodboard.petfashion.tw/"
 }

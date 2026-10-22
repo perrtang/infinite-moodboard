@@ -104,7 +104,7 @@ import {
 test("application version remains explicit and independent from board revisions", () => {
   assert.match(APP_VERSION, /^\d+\.\d+\.\d+$/);
   assert.equal(APP_VERSION_LABEL, `App v${APP_VERSION}`);
-  assert.equal(APP_RELEASE_DATE, "2026-10-22");
+  assert.equal(APP_RELEASE_DATE, "2026-10-23");
 });
 
 test("imported images keep their intrinsic pixel dimensions while videos retain a bounded preview", () => {
