@@ -6,8 +6,10 @@
 4. Push `main` and verify the GitHub Pages workflow succeeds and the public app reports the expected version.
 5. Create and push the annotated `vX.Y.Z` tag. The release workflow retests the commit and publishes the self-hosted ZIP plus `SHA256SUMS.txt`.
 6. Reopen the GitHub Release, download both assets, verify the checksum, and confirm the Release API exposes the asset `download_count` fields.
-7. Keep GitHub Pages, GitHub Release, Firebase rules, OAuth origins, PETFASHION promotion, and any custom domain as separate observable release gates.
+7. Keep GitHub Pages, GitHub Release, Google OAuth origins, Drive permission acceptance, PETFASHION promotion, and any custom domain as separate observable release gates.
 
-## Firestore safety gate
+## Drive sharing acceptance gate
 
-Never run `firebase deploy --only firestore:rules` from this repository. Its `firestore.rules` file contains only the Infinite Moodboard paths. Merge the fragment into the authoritative PETFASHION ruleset and verify every unrelated production rule remains present before deploying from the central infrastructure repository.
+Before calling Drive-native sharing accepted, verify one exact Drive file with two Google accounts: the owner invites the second account as viewer, the second account opens the app deep link read-only, the owner changes that account to editor, and both accounts read back the same file/version after one edit. Also test restricted access and link-view access separately.
+
+Legacy `firestore.rules` and collaboration sources remain only for migration review. Never deploy that rule fragment or reconnect production `?collab=` links to Firestore.

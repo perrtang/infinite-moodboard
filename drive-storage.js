@@ -1,3 +1,5 @@
+import { normalizeGoogleDrivePermission } from "./drive-share.js";
+
 const runtimeEnv = import.meta.env || {};
 
 export const GOOGLE_DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
@@ -140,11 +142,15 @@ export function normalizeDriveFile(file = {}) {
     version: String(file.version || ""),
     headRevisionId: String(file.headRevisionId || ""),
     webViewLink: String(file.webViewLink || ""),
+    resourceKey: String(file.resourceKey || ""),
+    ownedByMe: file.ownedByMe === true,
     parents: Array.isArray(file.parents) ? file.parents.map(String) : [],
     boardId: String(file.appProperties?.boardId || ""),
     capabilities: {
       canDownload: file.capabilities?.canDownload !== false,
       canReadRevisions: file.capabilities?.canReadRevisions !== false,
+      canEdit: file.capabilities?.canEdit === true,
+      canShare: file.capabilities?.canShare === true,
     },
   };
 }
@@ -189,6 +195,11 @@ export function normalizeDriveState(value) {
       modifiedTime: String(link.modifiedTime || ""),
       size: finiteNumber(link.size),
       headRevisionId: String(link.headRevisionId || ""),
+      webViewLink: String(link.webViewLink || ""),
+      resourceKey: String(link.resourceKey || ""),
+      ownedByMe: link.ownedByMe === true,
+      canEdit: link.canEdit === true,
+      canShare: link.canShare === true,
       syncedRevision: finiteNumber(link.syncedRevision),
       syncedUpdatedAt: String(link.syncedUpdatedAt || ""),
     };
@@ -232,6 +243,11 @@ export function linkDriveFile(state, board, file) {
         modifiedTime: remote.modifiedTime,
         size: remote.size,
         headRevisionId: remote.headRevisionId,
+        webViewLink: remote.webViewLink,
+        resourceKey: remote.resourceKey,
+        ownedByMe: remote.ownedByMe,
+        canEdit: remote.capabilities.canEdit,
+        canShare: remote.capabilities.canShare,
         syncedRevision: finiteNumber(board.revision),
         syncedUpdatedAt: String(board.updatedAt || ""),
       },
@@ -469,8 +485,126 @@ export async function ensureGoogleDriveFolder(accessToken, knownFolderId = "", {
   return String(folder.id);
 }
 
-const DRIVE_FILE_FIELDS = "id,name,mimeType,createdTime,modifiedTime,size,version,headRevisionId,webViewLink,parents,appProperties,capabilities(canDownload,canReadRevisions)";
+const DRIVE_FILE_FIELDS = "id,name,mimeType,createdTime,modifiedTime,size,version,headRevisionId,webViewLink,resourceKey,ownedByMe,parents,appProperties,capabilities(canDownload,canReadRevisions,canEdit,canShare)";
 const DRIVE_REVISION_FIELDS = "id,mimeType,modifiedTime,size,keepForever,originalFilename,lastModifyingUser(displayName,emailAddress,photoLink)";
+const DRIVE_PERMISSION_FIELDS = "id,type,role,displayName,emailAddress,photoLink,domain,allowFileDiscovery,pendingOwner,deleted";
+
+function driveResourceKeyHeaders(fileId, resourceKey = "") {
+  const normalized = String(resourceKey || "").trim();
+  return normalized ? { "X-Goog-Drive-Resource-Keys": `${fileId}/${normalized}` } : {};
+}
+
+export async function listGoogleDrivePermissions(accessToken, fileId, { resourceKey = "", signal } = {}) {
+  if (!fileId) throw new DriveApiError("Google Drive 檔案 ID 不完整。", { code: "drive/permission" });
+  const permissions = [];
+  let pageToken = "";
+  do {
+    const params = new URLSearchParams({
+      fields: `nextPageToken,permissions(${DRIVE_PERMISSION_FIELDS})`,
+      pageSize: "100",
+      supportsAllDrives: "true",
+    });
+    if (pageToken) params.set("pageToken", pageToken);
+    const result = await driveRequest(
+      accessToken,
+      `${DRIVE_API_ROOT}/files/${encodeURIComponent(fileId)}/permissions?${params}`,
+      { headers: driveResourceKeyHeaders(fileId, resourceKey), signal },
+    );
+    permissions.push(...(result?.permissions || []).map(normalizeGoogleDrivePermission).filter((permission) => permission.id));
+    pageToken = String(result?.nextPageToken || "");
+  } while (pageToken);
+  return permissions;
+}
+
+export async function createGoogleDrivePermission(accessToken, fileId, {
+  type = "user",
+  role = "reader",
+  emailAddress = "",
+  allowFileDiscovery = false,
+  resourceKey = "",
+  sendNotificationEmail = true,
+  signal,
+} = {}) {
+  if (!fileId) throw new DriveApiError("Google Drive 檔案 ID 不完整。", { code: "drive/permission" });
+  if (!["user", "anyone"].includes(type) || !["reader", "writer"].includes(role)) {
+    throw new DriveApiError("Google Drive 分享權限不正確。", { code: "drive/permission" });
+  }
+  const normalizedEmail = String(emailAddress || "").trim().toLowerCase();
+  if (type === "user" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+    throw new DriveApiError("請輸入有效的 Email。", { code: "drive/permission" });
+  }
+  const params = new URLSearchParams({
+    fields: DRIVE_PERMISSION_FIELDS,
+    supportsAllDrives: "true",
+  });
+  if (type === "user") params.set("sendNotificationEmail", sendNotificationEmail ? "true" : "false");
+  const payload = {
+    type,
+    role,
+    ...(type === "user" ? { emailAddress: normalizedEmail } : { allowFileDiscovery: allowFileDiscovery === true }),
+  };
+  const result = await driveRequest(
+    accessToken,
+    `${DRIVE_API_ROOT}/files/${encodeURIComponent(fileId)}/permissions?${params}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...driveResourceKeyHeaders(fileId, resourceKey) },
+      body: JSON.stringify(payload),
+      signal,
+    },
+  );
+  return normalizeGoogleDrivePermission(result);
+}
+
+export async function updateGoogleDrivePermission(accessToken, fileId, permissionId, role, { resourceKey = "", signal } = {}) {
+  if (!fileId || !permissionId || !["reader", "writer"].includes(role)) {
+    throw new DriveApiError("Google Drive 分享權限不正確。", { code: "drive/permission" });
+  }
+  const params = new URLSearchParams({ fields: DRIVE_PERMISSION_FIELDS, supportsAllDrives: "true" });
+  const result = await driveRequest(
+    accessToken,
+    `${DRIVE_API_ROOT}/files/${encodeURIComponent(fileId)}/permissions/${encodeURIComponent(permissionId)}?${params}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...driveResourceKeyHeaders(fileId, resourceKey) },
+      body: JSON.stringify({ role }),
+      signal,
+    },
+  );
+  return normalizeGoogleDrivePermission(result);
+}
+
+export async function deleteGoogleDrivePermission(accessToken, fileId, permissionId, { resourceKey = "", signal } = {}) {
+  if (!fileId || !permissionId) throw new DriveApiError("Google Drive 分享權限不正確。", { code: "drive/permission" });
+  const params = new URLSearchParams({ supportsAllDrives: "true" });
+  await driveRequest(
+    accessToken,
+    `${DRIVE_API_ROOT}/files/${encodeURIComponent(fileId)}/permissions/${encodeURIComponent(permissionId)}?${params}`,
+    { method: "DELETE", headers: driveResourceKeyHeaders(fileId, resourceKey), signal },
+  );
+  return true;
+}
+
+export async function setGoogleDriveGeneralAccess(accessToken, fileId, enabled, { resourceKey = "", signal } = {}) {
+  const permissions = await listGoogleDrivePermissions(accessToken, fileId, { resourceKey, signal });
+  const anyonePermissions = permissions.filter((permission) => permission.type === "anyone");
+  if (enabled) {
+    const current = anyonePermissions[0];
+    if (current?.role === "reader") return current;
+    if (current) return updateGoogleDrivePermission(accessToken, fileId, current.id, "reader", { resourceKey, signal });
+    return createGoogleDrivePermission(accessToken, fileId, {
+      type: "anyone",
+      role: "reader",
+      allowFileDiscovery: false,
+      resourceKey,
+      signal,
+    });
+  }
+  for (const permission of anyonePermissions) {
+    await deleteGoogleDrivePermission(accessToken, fileId, permission.id, { resourceKey, signal });
+  }
+  return null;
+}
 
 export async function listGoogleDriveMoodboards(accessToken, folderId) {
   if (!folderId) return [];
@@ -492,12 +626,19 @@ export async function listGoogleDriveMoodboards(accessToken, folderId) {
   return files;
 }
 
-export async function getGoogleDriveFile(accessToken, fileId, { signal } = {}) {
-  const result = await driveRequest(accessToken, `${DRIVE_API_ROOT}/files/${encodeURIComponent(fileId)}?fields=${encodeURIComponent(DRIVE_FILE_FIELDS)}`, { signal });
+export async function getGoogleDriveFile(accessToken, fileId, { resourceKey = "", signal } = {}) {
+  const params = new URLSearchParams({
+    fields: DRIVE_FILE_FIELDS,
+    supportsAllDrives: "true",
+  });
+  const result = await driveRequest(accessToken, `${DRIVE_API_ROOT}/files/${encodeURIComponent(fileId)}?${params}`, {
+    headers: driveResourceKeyHeaders(fileId, resourceKey),
+    signal,
+  });
   return normalizeDriveFile(result);
 }
 
-export async function listGoogleDriveRevisions(accessToken, fileId, { signal } = {}) {
+export async function listGoogleDriveRevisions(accessToken, fileId, { resourceKey = "", signal } = {}) {
   if (!fileId) return [];
   const revisions = [];
   let pageToken = "";
@@ -505,12 +646,13 @@ export async function listGoogleDriveRevisions(accessToken, fileId, { signal } =
     const params = new URLSearchParams({
       pageSize: "200",
       fields: `nextPageToken,revisions(${DRIVE_REVISION_FIELDS})`,
+      supportsAllDrives: "true",
     });
     if (pageToken) params.set("pageToken", pageToken);
     const result = await driveRequest(
       accessToken,
       `${DRIVE_API_ROOT}/files/${encodeURIComponent(fileId)}/revisions?${params}`,
-      { signal },
+      { headers: driveResourceKeyHeaders(fileId, resourceKey), signal },
     );
     revisions.push(...(result?.revisions || []).map(normalizeDriveRevision).filter((revision) => revision.id));
     pageToken = String(result?.nextPageToken || "");
@@ -518,16 +660,19 @@ export async function listGoogleDriveRevisions(accessToken, fileId, { signal } =
   return revisions.sort((a, b) => String(b.modifiedTime).localeCompare(String(a.modifiedTime)) || b.id.localeCompare(a.id));
 }
 
-export async function updateGoogleDriveRevisionRetention(accessToken, fileId, revisionId, keepForever, { signal } = {}) {
+export async function updateGoogleDriveRevisionRetention(accessToken, fileId, revisionId, keepForever, {
+  resourceKey = "",
+  signal,
+} = {}) {
   if (!fileId || !revisionId) {
     throw new DriveApiError("Google Drive 版本缺少可辨識的 ID。", { code: "drive/revision" });
   }
   const result = await driveRequest(
     accessToken,
-    `${DRIVE_API_ROOT}/files/${encodeURIComponent(fileId)}/revisions/${encodeURIComponent(revisionId)}?fields=${encodeURIComponent(DRIVE_REVISION_FIELDS)}`,
+    `${DRIVE_API_ROOT}/files/${encodeURIComponent(fileId)}/revisions/${encodeURIComponent(revisionId)}?fields=${encodeURIComponent(DRIVE_REVISION_FIELDS)}&supportsAllDrives=true`,
     {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...driveResourceKeyHeaders(fileId, resourceKey) },
       body: JSON.stringify({ keepForever: keepForever === true }),
       signal,
     },
@@ -537,23 +682,28 @@ export async function updateGoogleDriveRevisionRetention(accessToken, fileId, re
 
 export async function enforceGoogleDriveRevisionRetention(accessToken, fileId, {
   maxRetained = MAX_RETAINED_DRIVE_REVISIONS,
+  resourceKey = "",
   signal,
 } = {}) {
   const limit = Math.max(0, Math.floor(Number(maxRetained) || 0));
-  const revisions = await listGoogleDriveRevisions(accessToken, fileId, { signal });
+  const revisions = await listGoogleDriveRevisions(accessToken, fileId, { resourceKey, signal });
   const retained = revisions.filter((revision) => revision.keepForever);
   const released = [];
   for (const revision of retained.slice(limit)) {
-    await updateGoogleDriveRevisionRetention(accessToken, fileId, revision.id, false, { signal });
+    await updateGoogleDriveRevisionRetention(accessToken, fileId, revision.id, false, { resourceKey, signal });
     released.push(revision.id);
   }
   return { revisions, released };
 }
 
 async function getGoogleDriveFileState(accessToken, fileId, { signal } = {}) {
+  const params = new URLSearchParams({
+    fields: DRIVE_FILE_FIELDS,
+    supportsAllDrives: "true",
+  });
   const { payload, response } = await driveRequest(
     accessToken,
-    `${DRIVE_API_ROOT}/files/${encodeURIComponent(fileId)}?fields=${encodeURIComponent(DRIVE_FILE_FIELDS)}`,
+    `${DRIVE_API_ROOT}/files/${encodeURIComponent(fileId)}?${params}`,
     { signal, includeResponse: true },
   );
   return {
@@ -564,14 +714,16 @@ async function getGoogleDriveFileState(accessToken, fileId, { signal } = {}) {
 
 export async function downloadGoogleDriveMoodboard(accessToken, fileId, {
   revisionId = "",
+  resourceKey = "",
   signal,
   timeoutMs = DRIVE_TRANSFER_TIMEOUT_MS,
 } = {}) {
   const encodedFileId = encodeURIComponent(fileId);
   const endpoint = revisionId
-    ? `${DRIVE_API_ROOT}/files/${encodedFileId}/revisions/${encodeURIComponent(revisionId)}?alt=media`
-    : `${DRIVE_API_ROOT}/files/${encodedFileId}?alt=media`;
+    ? `${DRIVE_API_ROOT}/files/${encodedFileId}/revisions/${encodeURIComponent(revisionId)}?alt=media&supportsAllDrives=true`
+    : `${DRIVE_API_ROOT}/files/${encodedFileId}?alt=media&supportsAllDrives=true`;
   return driveRequest(accessToken, endpoint, {
+    headers: driveResourceKeyHeaders(fileId, resourceKey),
     signal,
     timeoutMs,
     responseType: "text",

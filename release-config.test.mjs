@@ -59,6 +59,6 @@ test("standalone rules file carries an explicit central-rules safety warning", a
   ]);
 
   assert.match(rules, /DO NOT DEPLOY THIS FILE BY ITSELF/);
-  assert.match(readme, /must never be deployed by itself/);
-  assert.match(releaseGuide, /Never run `firebase deploy --only firestore:rules`/);
+  assert.match(readme, /retained only for migration review and must never be deployed/);
+  assert.match(releaseGuide, /Never deploy that rule fragment/);
 });

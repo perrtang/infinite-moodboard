@@ -1,8 +1,8 @@
 {
   "product": "Infinite Moodboard",
   "channel": "stable",
-  "version": "0.47.0",
+  "version": "0.48.0",
   "releasedAt": "2026-10-22",
-  "summary": "分享與共同編輯改為登入後自動準備目前 Moodboard 的檢視連結，並可在同一面板直接查看與更新成員權限。",
+  "summary": "分享與共同編輯改由使用者自己的 Google Drive 檔案與權限管理，不再建立 Firestore 分享空間。",
   "url": "https://moodboard.petfashion.tw/"
 }

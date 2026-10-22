@@ -8,7 +8,7 @@
 
 **English** · [繁體中文](#繁體中文) · [简体中文](#简体中文)
 
-Infinite Moodboard runs the canvas, imported media, transforms, exports, and version history in your browser. No account is required for local editing, saving, opening, or exporting. Sign-in is requested only when you choose Google Drive, realtime collaboration, or other connected features.
+Infinite Moodboard runs the canvas, imported media, transforms, exports, and version history in your browser. No account is required for local editing, saving, opening, or exporting. Sign-in is requested only when you choose Google Drive storage, Drive-native sharing, or other connected features.
 
 ## Start here
 
@@ -23,8 +23,15 @@ Infinite Moodboard runs the canvas, imported media, transforms, exports, and ver
 - Multi-selection, nine-point transform pivots, proportional group scaling, alignment, distribution, layers, markers, and filtering.
 - Composition snapshots, local version history, `.moodboard` working files, and PNG, WebP, AVIF, PDF, asset, and read-only HTML output.
 - Traditional Chinese, Simplified Chinese, and English interfaces.
-- Optional Google Drive file storage and opt-in realtime collaboration with view/edit permission requests.
-- 3D, Drive, collaboration, and export runtimes are loaded only when used, keeping the opening bundle smaller.
+- Optional Google Drive file storage and Drive-native sharing with viewer/editor permissions on the same file.
+- 3D, Drive sharing, and export runtimes are loaded only when used, keeping the opening bundle smaller.
+
+## v0.48.0 — Drive-native sharing release
+
+- Makes the user's own Google Drive `.moodboard` file the only cloud sharing unit; Infinite Moodboard no longer creates or resumes a Firestore sharing room.
+- Uses Google Drive permissions for restricted access, link-view access, invited viewers/editors, role changes, and removal.
+- Copies an exact app link containing the Drive file ID and optional resource key while keeping Drive—not the URL—as the permission authority.
+- Opens shared files read-only when Drive denies editing, preserves a local recovery copy, and clearly migrates legacy `?collab=` links without writing new Firestore data.
 
 ## v0.47.0 — direct sharing access release
 
@@ -180,7 +187,7 @@ Infinite Moodboard runs the canvas, imported media, transforms, exports, and ver
 - Imported content, local autosaves, and local versions live in the current browser's IndexedDB by default.
 - Signing in does **not** upload a Moodboard.
 - Google Drive requires a separate `drive.file` consent and only creates a remote file after the user actively saves.
-- Realtime collaboration uploads only the Moodboard whose owner explicitly creates or joins a room.
+- Sharing never creates a second cloud workspace: content, versions, and member permissions remain attached to the same file in the user's own Google Drive.
 - Drive tokens remain in the current tab memory and are not written to IndexedDB or `localStorage`.
 - Marketing consent is separate from account creation.
 
@@ -214,9 +221,9 @@ Google Drive uses the least-privilege `drive.file` scope. A fork must supply its
 VITE_GOOGLE_DRIVE_CLIENT_ID=your-web-client-id.apps.googleusercontent.com
 ```
 
-### Firestore rule integration — important
+### Legacy Firestore sources
 
-`firestore.rules` in this repository is a **Moodboard-only fragment for review and tests**. PETFASHION's production Firestore serves other products from the same project, so this fragment must never be deployed by itself. Merge and review it in the authoritative central ruleset, verify unrelated rules remain intact, then deploy from that central repository. GitHub Pages deployment intentionally cannot deploy Firestore rules.
+Older releases used a separate Firestore sharing-room prototype. The current production app does not import or use that runtime; the remaining legacy source and rule fragment are retained only for migration review and must never be deployed from this repository.
 
 ## Release and recovery
 
@@ -231,12 +238,12 @@ No open-source license has been selected. Public source visibility does not gran
 
 ## 繁體中文
 
-Infinite Moodboard 是 PETFASHION 的免費、本機優先無限畫布。圖片、影片、文字、SVG、版本與輸出主要在瀏覽器內處理；不登入也能編輯、儲存、開啟與輸出。建議直接使用[線上版](https://moodboard.petfashion.tw/)，並定期下載可再次編輯的 `.moodboard` 工作檔。只有主動使用 Google Drive、即時共編等連線功能時才需要登入與另外授權。
+Infinite Moodboard 是 PETFASHION 的免費、本機優先無限畫布。圖片、影片、文字、SVG、版本與輸出主要在瀏覽器內處理；不登入也能編輯、儲存、開啟與輸出。建議直接使用[線上版](https://moodboard.petfashion.tw/)，並定期下載可再次編輯的 `.moodboard` 工作檔。只有主動使用 Google Drive 儲存或分享等連線功能時才需要登入與另外授權；雲端內容與權限都留在使用者自己的 Google Drive 檔案。
 
 下載的 `self-hosted.zip` 是供自行架站的靜態網頁版本，不是桌面安裝程式。資料與權限界線請讀 [PRIVACY.md](PRIVACY.md)。
 
 ## 简体中文
 
-Infinite Moodboard 是 PETFASHION 的免费、本地优先无限画布。图片、视频、文字、SVG、版本与输出主要在浏览器内处理；无需登录也能编辑、保存、打开与导出。建议直接使用[在线版](https://moodboard.petfashion.tw/)，并定期下载可再次编辑的 `.moodboard` 工作文件。只有主动使用 Google Drive、实时协作等联网功能时才需要登录与另外授权。
+Infinite Moodboard 是 PETFASHION 的免费、本地优先无限画布。图片、视频、文字、SVG、版本与输出主要在浏览器内处理；无需登录也能编辑、保存、打开与导出。建议直接使用[在线版](https://moodboard.petfashion.tw/)，并定期下载可再次编辑的 `.moodboard` 工作文件。只有主动使用 Google Drive 存储或分享等联网功能时才需要登录与另外授权；云端内容与权限都保留在用户自己的 Google Drive 文件。
 
 下载的 `self-hosted.zip` 是供自行部署的静态网页版本，不是桌面安装程序。数据与权限边界请阅读 [PRIVACY.md](PRIVACY.md)。

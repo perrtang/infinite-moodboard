@@ -8,7 +8,6 @@ const viteConfig = await readFile(new URL("./vite.config.js", import.meta.url), 
 test("advanced feature runtimes are dynamically imported instead of entering the startup graph", () => {
   const lazyModules = [
     "asset-export.js",
-    "collaboration-firestore.js",
     "drive-storage.js",
     "micro3d-ui.jsx",
     "output.js",
@@ -20,10 +19,10 @@ test("advanced feature runtimes are dynamically imported instead of entering the
   });
 });
 
-test("collaboration-only vendor code remains outside the initial authentication chunks", () => {
+test("legacy Firestore collaboration is absent from the production entry graph", () => {
+  assert.doesNotMatch(source, /collaboration-firestore|createMoodboardCollaborationRoom|joinMoodboardCollaborationInvite/);
   assert.match(viteConfig, /@firebase\/firestore[^\n]+firebase-firestore/);
   assert.match(viteConfig, /@firebase\/auth[^\n]+firebase-auth/);
-  assert.match(viteConfig, /yjs[^\n]+collaboration-engine/);
 });
 
 test("lazy 3D controls expose loading and recoverable failure feedback", () => {

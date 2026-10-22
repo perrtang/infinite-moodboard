@@ -180,11 +180,15 @@ test("normalizes Drive files and maps recoverable errors", () => {
     version: "3",
     headRevisionId: "",
     webViewLink: "",
+    resourceKey: "",
+    ownedByMe: false,
     parents: [],
     boardId: "board-1",
     capabilities: {
       canDownload: true,
       canReadRevisions: true,
+      canEdit: false,
+      canShare: false,
     },
   });
   assert.match(driveErrorMessage({ reason: "storageQuotaExceeded" }), /空間不足/);
@@ -526,8 +530,8 @@ test("an update arriving while the old revision is retained stops before upload"
 test("Drive revisions are normalized, paginated, and sorted newest first", async () => {
   const originalFetch = globalThis.fetch;
   const calls = [];
-  globalThis.fetch = async (url) => {
-    calls.push(String(url));
+  globalThis.fetch = async (url, options = {}) => {
+    calls.push({ url: String(url), headers: options.headers || {} });
     const secondPage = String(url).includes("pageToken=next-page");
     return {
       ok: true,
@@ -538,8 +542,10 @@ test("Drive revisions are normalized, paginated, and sorted newest first", async
     };
   };
   try {
-    const revisions = await listGoogleDriveRevisions("token", "file-1");
+    const revisions = await listGoogleDriveRevisions("token", "file-1", { resourceKey: "resource-1" });
     assert.equal(calls.length, 2);
+    assert.ok(calls.every((call) => call.url.includes("supportsAllDrives=true")));
+    assert.ok(calls.every((call) => call.headers["X-Goog-Drive-Resource-Keys"] === "file-1/resource-1"));
     assert.deepEqual(revisions.map((revision) => revision.id), ["r2", "r1"]);
     assert.equal(revisions[0].size, 20);
     assert.equal(revisions[0].keepForever, true);
@@ -587,7 +593,7 @@ test("downloads the exact head revision when a revision id is supplied", async (
   try {
     const content = await downloadGoogleDriveMoodboard("token", "file-1", { revisionId: "revision-8" });
     assert.equal(content, "{\"id\":\"board-1\"}");
-    assert.match(requestedUrl, /files\/file-1\/revisions\/revision-8\?alt=media/);
+    assert.match(requestedUrl, /files\/file-1\/revisions\/revision-8\?alt=media&supportsAllDrives=true/);
   } finally {
     globalThis.fetch = originalFetch;
   }

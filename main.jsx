@@ -211,6 +211,14 @@ import {
   serializeMoodboardSnapshot,
 } from "./drive-state.js";
 import {
+  createGoogleDriveMoodboardUrl,
+  driveFileRole,
+  drivePermissionRoleLabel,
+  googleDriveGeneralAccess,
+  googleDriveMembers,
+  parseGoogleDriveMoodboardLink,
+} from "./drive-share.js";
+import {
   completeMoodboardEmailSignInLink,
   isMoodboardEmailSignInLink,
   linkMoodboardFacebook,
@@ -222,17 +230,6 @@ import {
   signInMoodboardWithGoogle,
   signOutMoodboardSession,
 } from "./auth.js";
-import {
-  clearCollaborationResume,
-  collaborationAccessRequestStatusLabel,
-  collaborationRoleLabel,
-  loadCollaborationResume,
-  normalizeCollaborationInvite,
-  resolveCollaborationSharePreparation,
-  saveCollaborationResume,
-  shouldApplyCollaborationBoard,
-} from "./collaboration-state.js";
-import { clearCollaborationQueue } from "./collaboration-queue.js";
 import {
   PETFASHION_ACCOUNT_URL,
   PETFASHION_PRIVACY_URL,
@@ -349,26 +346,11 @@ import {
 import "./styles.css";
 
 const loadAssetExportRuntime = () => import("./asset-export.js");
-const loadCollaborationRuntime = () => import("./collaboration-firestore.js");
 const loadDriveRuntime = () => import("./drive-storage.js");
 const loadOutputRuntime = () => import("./output.js");
 const loadPortableRuntime = () => import("./portable.js");
 const LazyMicro3DActiveControls = React.lazy(() => import("./micro3d-ui.jsx").then((module) => ({ default: module.Micro3DActiveControls })));
 const LazyRotation3DGizmo = React.lazy(() => import("./micro3d-ui.jsx").then((module) => ({ default: module.Rotation3DGizmo })));
-
-function collaborationErrorMessage(error) {
-  if (error?.code === "collaboration/verified-account-required") return error.message;
-  if (error?.code === "collaboration/offline" || error?.code === "unavailable") return "目前離線；共編更新已保留在這台裝置，恢復連線後會繼續送出。";
-  if (error?.code === "permission-denied") return "目前帳號沒有這個共編空間的權限，或雲端安全規則尚未啟用。";
-  if (error?.code === "unauthenticated") return "登入狀態已失效；請重新登入後再加入共編。";
-  if (error?.code === "not-found" || error?.code === "collaboration/invite-not-found") return "找不到這個共編邀請；它可能已失效或被停用。";
-  if (error?.code === "collaboration/invite-expired") return "這個共編邀請已過期，請擁有者重新產生邀請。";
-  if (error?.code === "collaboration/not-initialized") return "共編空間仍在準備初始內容，請稍後再試。";
-  if (error?.code === "collaboration/request-not-allowed") return error.message;
-  if (error?.code === "collaboration/request-not-found") return "這筆編輯權限申請已處理；成員狀態會自動更新。";
-  if (error?.code === "collaboration/update-too-large") return error.message;
-  return error?.message || "即時共編暫時無法使用；本機 Moodboard 未受影響。";
-}
 
 const MARKER_ICONS = {
   heart: Heart,
@@ -409,19 +391,21 @@ const MARKER_COLOR_LABELS = {
 };
 
 const DEFAULT_FILTERS = { symbols: [], colors: [], mode: "any" };
-const EMPTY_CLOUD_COLLABORATION = Object.freeze({
+const EMPTY_DRIVE_SHARING = Object.freeze({
   status: "idle",
   message: "",
-  roomId: "",
-  inviteId: "",
-  inviteUrl: "",
+  fileId: "",
+  fileName: "",
+  resourceKey: "",
+  shareUrl: "",
+  webViewLink: "",
   role: "",
   canEdit: false,
-  peers: [],
+  canShare: false,
+  permissionsVisible: false,
+  permissions: [],
   members: [],
-  accessRequests: [],
-  accessRequest: null,
-  pendingCount: 0,
+  generalAccess: { enabled: false, permissionId: "", role: "viewer" },
 });
 const MIN_ZOOM = 0.08;
 const MAX_ZOOM = 4;
@@ -5313,13 +5297,13 @@ function AuthGate({
     }
     : feature === "collaboration"
     ? {
-      title: "登入後使用協作與同步",
-      description: "登入後才能啟用跨分頁協作與未來雲端同步；本機工作仍可繼續使用。",
+      title: "登入後分享 Google Drive Moodboard",
+      description: "登入後可把同一份 Drive 工作檔分享給指定帳號；本機編輯與輸出仍不需登入。",
     }
     : feature === "shared-moodboard"
       ? {
-        title: "登入後開啟分享的 Moodboard",
-        description: "登入後會直接以僅檢視身分開啟；需要修改時，可向擁有者申請編輯權限。",
+        title: "登入後開啟 Drive 分享檔案",
+        description: "登入並連結 Google Drive 後，會依檔案擁有者授予的檢視或編輯權限開啟。",
       }
     : feature === "drive"
       ? {
@@ -5333,7 +5317,7 @@ function AuthGate({
       }
       : {
         title: "登入以使用進階功能",
-        description: "協作、同步與進階 3D 需要登入；本機編輯、儲存與匯出不需登入。",
+        description: "Drive 分享、同步與進階 3D 需要登入；本機編輯、儲存與匯出不需登入。",
       };
   const statusFeedback = errorMessage
     ? { kind: "error", icon: AlertTriangle, message: errorMessage }
@@ -5986,235 +5970,236 @@ function DriveLibraryModal({
   );
 }
 
-function CollaborationModal({
+function DriveSharingModal({
   boardName,
-  sessionName,
-  setSessionName,
-  cloud,
-  initialInvite,
-  resumeAvailable,
-  resumeRequiresNewLink,
-  onCreateRoom,
-  onJoinRoom,
-  onRetryRoom,
-  onCopyInvite,
-  onRequestEditAccess,
-  onResolveAccessRequest,
+  sharing,
+  legacyLink,
+  onConnectDrive,
+  onSaveToDrive,
+  onRefresh,
+  onCopyLink,
+  onSetGeneralAccess,
+  onInviteMember,
   onSetMemberRole,
-  onLeaveRoom,
+  onRemoveMember,
   onClose,
 }) {
-  const [inviteDraft, setInviteDraft] = useState(initialInvite || "");
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState("viewer");
   const [permissionAction, setPermissionAction] = useState("");
-  const cloudConnected = ["connected", "syncing", "offline", "degraded"].includes(cloud.status) && Boolean(cloud.roomId);
-  const cloudBusy = ["creating", "joining", "connecting"].includes(cloud.status);
-  const pendingAccessRequests = (cloud.accessRequests || []).filter((request) => request.status === "pending");
+  const ready = sharing.status === "ready" && Boolean(sharing.fileId);
+  const busy = ["loading", "saving", "authorizing"].includes(sharing.status);
 
   const runPermissionAction = async (key, action) => {
     if (permissionAction) return;
     setPermissionAction(key);
     try {
-      await action();
+      const succeeded = await action();
+      if (succeeded && key === "invite") setEmail("");
     } finally {
       setPermissionAction("");
     }
   };
 
-  useEffect(() => {
-    if (initialInvite) setInviteDraft(initialInvite);
-  }, [initialInvite]);
-
   return (
-    <Modal title="分享與共同編輯" description="複製目前 Moodboard 的檢視連結，並在下方直接管理每位成員的檢視或編輯權限。" onClose={onClose} wide>
-      <section className={`cloud-collaboration-panel is-${cloud.status}`} aria-live="polite">
-        {cloudConnected ? (
+    <Modal
+      title="分享 Google Drive Moodboard"
+      description="分享的是目前這一份 Google Drive 工作檔；連結、成員與權限都由檔案擁有者的 Google Drive 管理。"
+      onClose={onClose}
+      wide
+    >
+      {legacyLink ? (
+        <div className="status-banner warning" role="status">
+          <AlertTriangle size={16} />
+          <span>這是舊版 Firestore 分享連結。請由檔案擁有者重新使用 Google Drive 分享；舊分享空間不會再續用。</span>
+        </div>
+      ) : null}
+      <section className={`cloud-collaboration-panel is-${sharing.status}`} aria-live="polite">
+        {ready ? (
           <>
             <div className="cloud-collaboration-heading">
-              <div><strong data-l10n-ignore>{boardName || "未命名 Infinite Moodboard"}</strong><small>{cloud.role === "owner" ? "已開啟分享" : "已加入分享的 Moodboard"}</small></div>
-              <span className="cloud-role-badge">{collaborationRoleLabel(cloud.role)}</span>
+              <div>
+                <strong data-l10n-ignore>{sharing.fileName || boardName || "未命名 Infinite Moodboard"}</strong>
+                <small>同一份 `.moodboard` 檔案 · Google Drive</small>
+              </div>
+              <span className="cloud-role-badge">{drivePermissionRoleLabel(sharing.role)}</span>
             </div>
-            {cloud.inviteUrl ? (
-              <section className="collaboration-share-card" aria-labelledby="collaboration-share-link-title">
-                <div className="collaboration-share-summary">
-                  <span className="collaboration-permission-icon" aria-hidden="true"><Share2 size={18} /></span>
-                  <div>
-                    <strong id="collaboration-share-link-title">分享連結</strong>
-                    <small>任何持有連結且已登入的用戶都能檢視；編輯仍需由擁有者核准。</small>
-                  </div>
+
+            <section className="collaboration-share-card" aria-labelledby="drive-share-link-title">
+              <div className="collaboration-share-summary">
+                <span className="collaboration-permission-icon" aria-hidden="true"><Share2 size={18} /></span>
+                <div>
+                  <strong id="drive-share-link-title">Moodboard 分享連結</strong>
+                  <small>{!sharing.permissionsVisible ? "存取權由 Google Drive 管理；目前帳號只能確認自己的權限。" : sharing.generalAccess.enabled ? "知道連結的人可檢視；編輯仍需個別授權。" : "目前是受限連結；只有已獲 Drive 授權的帳號能開啟。"}</small>
                 </div>
-                <label className="collaboration-invite-field">
-                  <span>目前 Moodboard 的分享連結</span>
-                  <div>
-                    <input
-                      value={cloud.inviteUrl || ""}
-                      readOnly
-                      data-l10n-ignore
-                      aria-label="目前 Moodboard 的分享連結"
-                      onFocus={(event) => event.currentTarget.select()}
-                    />
-                    <button className="primary-button" type="button" onClick={onCopyInvite} disabled={!cloud.inviteUrl}><Copy size={16} />複製檢視連結</button>
-                  </div>
-                </label>
-                <p className="collaboration-share-note"><History size={14} />分享連結自建立起 30 天內有效；已加入的成員可繼續使用。</p>
-              </section>
-            ) : null}
-            {cloud.role === "owner" ? (
-              <section className="collaboration-permission-section collaboration-access-section" aria-labelledby="collaboration-member-access-title">
-                <div className="collaboration-permission-heading">
-                  <span className="collaboration-permission-icon"><Users size={17} /></span>
-                  <div>
-                    <strong id="collaboration-member-access-title">擁有存取權的使用者</strong>
-                    <small>成員的檢視或編輯權限會在這裡直接更新。</small>
-                  </div>
+              </div>
+              <label className="collaboration-invite-field">
+                <span>直接開啟這份 Moodboard</span>
+                <div>
+                  <input
+                    value={sharing.shareUrl || ""}
+                    readOnly
+                    data-l10n-ignore
+                    aria-label="目前 Google Drive Moodboard 的分享連結"
+                    onFocus={(event) => event.currentTarget.select()}
+                  />
+                  <button className="primary-button" type="button" onClick={onCopyLink} disabled={!sharing.shareUrl}>
+                    <Copy size={16} />複製連結
+                  </button>
                 </div>
-                {cloud.members?.length ? (
-                  <div className="collaboration-member-list">
-                    {cloud.members.map((member) => {
-                      const roleActionKey = `role:${member.uid}`;
-                      const updatingRole = permissionAction === roleActionKey;
-                      return (
-                        <article key={member.uid}>
-                          <span className="collaboration-member-identity">
-                            <UserRound size={15} />
-                            <span><b data-l10n-ignore>{member.name}</b><small>{member.role === "owner" ? "Moodboard 擁有者" : collaborationRoleLabel(member.role)}</small></span>
-                          </span>
-                          {member.role === "owner" ? (
-                            <span className="collaboration-fixed-role"><Lock size={14} />擁有者</span>
-                          ) : (
-                            <span className="collaboration-role-control" aria-busy={updatingRole || undefined}>
-                              <select
-                                aria-label="成員權限"
-                                title={cloud.status === "offline" ? "連線後才能更新成員權限" : "直接更新成員權限"}
-                                value={member.role}
-                                onChange={(event) => runPermissionAction(roleActionKey, () => onSetMemberRole(member.uid, event.target.value))}
-                                disabled={Boolean(permissionAction) || cloud.status === "offline"}
-                              >
-                                <option value="viewer">檢視者</option>
-                                <option value="editor">編輯者</option>
-                              </select>
-                              {updatingRole ? <RefreshCw className="is-spinning" size={14} aria-label="正在更新權限…" /> : null}
-                            </span>
-                          )}
-                        </article>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="collaboration-list-loading"><RefreshCw className="is-spinning" size={14} />正在讀取成員…</p>
-                )}
-              </section>
-            ) : null}
-            {cloud.role === "owner" && pendingAccessRequests.length ? (
-              <section className="collaboration-permission-section" aria-labelledby="collaboration-pending-title">
-                <div className="collaboration-permission-heading">
-                  <span className="collaboration-permission-icon"><Users size={17} /></span>
-                  <div><strong id="collaboration-pending-title">編輯權限申請</strong><small>{`${pendingAccessRequests.length} 位檢視者等待你的決定。`}</small></div>
-                </div>
-                <div className="collaboration-request-list">
-                  {pendingAccessRequests.map((request) => (
-                    <article key={request.uid}>
-                      <span><UserRound size={15} /><b data-l10n-ignore>{request.name}</b></span>
-                      <div>
-                        <button className="secondary-button" type="button" onClick={() => runPermissionAction(`approve:${request.uid}`, () => onResolveAccessRequest(request.uid, "approved"))} disabled={Boolean(permissionAction)}><Check size={14} />核准</button>
-                        <button className="text-button" type="button" onClick={() => runPermissionAction(`deny:${request.uid}`, () => onResolveAccessRequest(request.uid, "denied"))} disabled={Boolean(permissionAction)}><X size={14} />拒絕</button>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              </section>
-            ) : null}
-            <section className="collaboration-permission-section collaboration-general-access" aria-labelledby="collaboration-general-access-title">
+              </label>
+              <p className="collaboration-share-note"><ShieldCheck size={14} />App 連結只辨識 Drive 檔案；實際存取權仍以 Google Drive 為準。</p>
+            </section>
+
+            {sharing.permissionsVisible ? <section className="collaboration-permission-section collaboration-general-access" aria-labelledby="drive-general-access-title">
               <div className="collaboration-general-access-row">
                 <div className="collaboration-permission-heading">
                   <span className="collaboration-permission-icon"><Share2 size={17} /></span>
                   <div>
-                    <strong id="collaboration-general-access-title">一般存取權限</strong>
-                    <small>知道連結且已登入的人</small>
+                    <strong id="drive-general-access-title">一般存取權限</strong>
+                    <small>{sharing.generalAccess.enabled ? "知道連結的人可檢視" : "受限：只有已授權帳號可開啟"}</small>
                   </div>
                 </div>
-                <span className="collaboration-fixed-role"><Eye size={14} />僅檢視</span>
+                {sharing.canShare ? (
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    aria-pressed={sharing.generalAccess.enabled}
+                    onClick={() => runPermissionAction("general", () => onSetGeneralAccess(!sharing.generalAccess.enabled))}
+                    disabled={Boolean(permissionAction)}
+                  >
+                    {permissionAction === "general" ? <RefreshCw className="is-spinning" size={14} /> : sharing.generalAccess.enabled ? <Lock size={14} /> : <Eye size={14} />}
+                    {sharing.generalAccess.enabled ? "改為受限" : "開啟連結檢視"}
+                  </button>
+                ) : (
+                  <span className="collaboration-fixed-role"><Eye size={14} />{sharing.generalAccess.enabled ? "可檢視" : "受限"}</span>
+                )}
               </div>
-              <p>連結權限固定為僅檢視；如需編輯，對方可提出申請，再由擁有者核准。</p>
-            </section>
-            {cloud.role === "viewer" ? (
-              <section className="collaboration-permission-section" aria-labelledby="collaboration-edit-access-title">
+              <p>連結檢視不會讓他人修改檔案；編輯權必須以 Google 帳號 Email 個別授予。</p>
+            </section> : null}
+
+            {sharing.canShare && sharing.permissionsVisible ? (
+              <section className="collaboration-permission-section collaboration-access-section" aria-labelledby="drive-member-access-title">
+                <div className="collaboration-permission-heading">
+                  <span className="collaboration-permission-icon"><Mail size={17} /></span>
+                  <div>
+                    <strong id="drive-member-access-title">新增協作者</strong>
+                    <small>Google Drive 會把正式邀請寄到對方的 Google 帳號。</small>
+                  </div>
+                </div>
+                <div className="drive-member-invite-row">
+                  <label>
+                    <span className="sr-only">協作者 Email</span>
+                    <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@example.com" autoComplete="email" />
+                  </label>
+                  <select aria-label="新協作者權限" value={role} onChange={(event) => setRole(event.target.value)}>
+                    <option value="viewer">檢視者</option>
+                    <option value="editor">編輯者</option>
+                  </select>
+                  <button
+                    className="primary-button"
+                    type="button"
+                    onClick={() => runPermissionAction("invite", () => onInviteMember(email, role))}
+                    disabled={Boolean(permissionAction) || !email.trim()}
+                  >
+                    {permissionAction === "invite" ? <RefreshCw className="is-spinning" size={15} /> : <Plus size={15} />}邀請
+                  </button>
+                </div>
+              </section>
+            ) : null}
+
+            {sharing.canShare && sharing.permissionsVisible ? <section className="collaboration-permission-section collaboration-access-section" aria-labelledby="drive-member-list-title">
+              <div className="collaboration-permission-heading">
+                <span className="collaboration-permission-icon"><Users size={17} /></span>
+                <div>
+                  <strong id="drive-member-list-title">擁有存取權的使用者</strong>
+                  <small>{`${sharing.members.length} 位成員；權限直接寫入 Google Drive。`}</small>
+                </div>
+              </div>
+              <div className="collaboration-member-list">
+                {sharing.members.map((member) => {
+                  const roleActionKey = `role:${member.id}`;
+                  const removeActionKey = `remove:${member.id}`;
+                  return (
+                    <article key={member.id}>
+                      <span className="collaboration-member-identity">
+                        <UserRound size={15} />
+                        <span>
+                          <b data-l10n-ignore>{member.name}</b>
+                          <small>{member.emailAddress || drivePermissionRoleLabel(member.appRole)}</small>
+                        </span>
+                      </span>
+                      {member.appRole === "owner" || !sharing.canShare ? (
+                        <span className="collaboration-fixed-role"><Lock size={14} />{drivePermissionRoleLabel(member.appRole)}</span>
+                      ) : (
+                        <span className="collaboration-role-control" aria-busy={permissionAction === roleActionKey || undefined}>
+                          <select
+                            aria-label={`${member.name} 的權限`}
+                            value={member.appRole}
+                            onChange={(event) => runPermissionAction(roleActionKey, () => onSetMemberRole(member.id, event.target.value))}
+                            disabled={Boolean(permissionAction)}
+                          >
+                            <option value="viewer">檢視者</option>
+                            <option value="editor">編輯者</option>
+                          </select>
+                          <button
+                            className="icon-button"
+                            type="button"
+                            aria-label={`移除 ${member.name} 的存取權`}
+                            title="移除存取權"
+                            onClick={() => runPermissionAction(removeActionKey, () => onRemoveMember(member))}
+                            disabled={Boolean(permissionAction)}
+                          >
+                            {permissionAction === removeActionKey ? <RefreshCw className="is-spinning" size={14} /> : <Trash2 size={14} />}
+                          </button>
+                        </span>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+            </section> : null}
+
+            {sharing.role === "viewer" ? (
+              <section className="collaboration-permission-section" aria-labelledby="drive-viewer-access-title">
                 <div className="collaboration-permission-heading">
                   <span className="collaboration-permission-icon"><Eye size={17} /></span>
                   <div>
-                    <strong id="collaboration-edit-access-title">目前只能檢視</strong>
-                    <small>可以瀏覽、選取與輸出；移動、刪除或修改內容前需取得擁有者核准。</small>
+                    <strong id="drive-viewer-access-title">目前只能檢視</strong>
+                    <small>如需編輯，請把你的 Google 帳號 Email 提供給擁有者；也可在 Google Drive 查看是否提供申請選項。</small>
                   </div>
                 </div>
-                {cloud.accessRequest?.status === "pending" ? (
-                  <p className="collaboration-request-state"><History size={14} />等待擁有者核准；權限變更後會自動切換為可編輯。</p>
-                ) : (
-                  <div className="collaboration-request-action">
-                    {cloud.accessRequest ? <small>{collaborationAccessRequestStatusLabel(cloud.accessRequest.status)}，可再次提出申請。</small> : null}
-                    <button
-                      className="secondary-button"
-                      type="button"
-                      onClick={() => runPermissionAction("request", onRequestEditAccess)}
-                      disabled={Boolean(permissionAction) || cloud.status === "offline"}
-                    >
-                      <Lock size={15} />{permissionAction === "request" ? "正在送出…" : "請求編輯權限"}
-                    </button>
-                  </div>
-                )}
               </section>
             ) : null}
+
             <div className="collaboration-live-status">
-              <p className="cloud-collaboration-message">{cloud.message || "即時共編已連線。"}</p>
-              <div className="collaboration-peer-list" aria-label="目前共編成員">
-                {(cloud.peers || []).map((peer) => (
-                  <span key={peer.id} className={peer.self ? "is-self" : ""} title={peer.self ? "這個分頁" : peer.name}>
-                    <UserRound size={14} /><b data-l10n-ignore>{peer.name}</b>{peer.self ? <small>你</small> : null}
-                  </span>
-                ))}
-                {!cloud.peers?.length ? <span><Users size={14} /><b>等待其他協作者</b></span> : null}
-              </div>
-              {cloud.pendingCount ? <p className="cloud-pending-note"><RefreshCw size={14} className={cloud.status === "syncing" ? "is-spinning" : ""} />{`${cloud.pendingCount} 個變更等待同步`}</p> : null}
+              <p className="cloud-collaboration-message">{sharing.message || "已讀取 Google Drive 的最新權限。"}</p>
             </div>
             <div className="cloud-collaboration-actions">
-              <button className="quiet-button" type="button" onClick={onLeaveRoom}><X size={15} />{cloud.role === "owner" ? "停止在這台裝置共編" : "離開共編"}</button>
+              <button className="quiet-button" type="button" onClick={onRefresh} disabled={busy}><RefreshCw size={15} />重新整理權限</button>
+              {sharing.webViewLink ? <a className="secondary-button" href={sharing.webViewLink} target="_blank" rel="noreferrer"><ExternalLink size={15} />在 Google Drive 開啟</a> : null}
             </div>
           </>
         ) : (
-          <>
-            <div className={`collaboration-preparation-state${cloud.status === "error" ? " is-error" : ""}`}>
-              <span className="collaboration-permission-icon" aria-hidden="true">
-                {cloud.status === "error" ? <AlertTriangle size={19} /> : <RefreshCw className="is-spinning" size={19} />}
-              </span>
-              <div>
-                <strong>{cloud.status === "error" ? "無法準備分享連結" : "正在準備分享連結…"}</strong>
-                <small>{cloud.message || "會先建立可復原的本機版本，再上傳這一份 Moodboard 的共編資料。"}</small>
+          <div className={`collaboration-preparation-state${sharing.status === "error" ? " is-error" : ""}`}>
+            <span className="collaboration-permission-icon" aria-hidden="true">
+              {sharing.status === "error" ? <AlertTriangle size={19} /> : busy ? <RefreshCw className="is-spinning" size={19} /> : <Cloud size={19} />}
+            </span>
+            <div>
+              <strong>{sharing.status === "legacy" ? "舊版分享連結已停用" : sharing.status === "authorization-required" ? "連結 Google Drive" : sharing.status === "needs-drive" ? "先儲存到 Google Drive" : sharing.status === "error" ? "無法讀取 Drive 分享權限" : "正在讀取 Google Drive…"}</strong>
+              <small>{sharing.message || "作品、版本與分享權限都會留在你自己的 Google Drive。"}</small>
+              <div className="collaboration-preparation-actions">
+                {sharing.status === "authorization-required" ? <button className="primary-button" type="button" onClick={onConnectDrive} disabled={busy}><Cloud size={15} />連結 Google Drive</button> : null}
+                {sharing.status === "needs-drive" ? <button className="primary-button" type="button" onClick={onSaveToDrive} disabled={busy}><CloudUpload size={15} />儲存並準備分享</button> : null}
+                {sharing.status === "error" ? <button className="primary-button" type="button" onClick={onRefresh} disabled={busy}><RefreshCw size={15} />重新嘗試</button> : null}
               </div>
             </div>
-            {cloud.status === "error" ? (
-              <div className="collaboration-preparation-actions">
-                {!resumeRequiresNewLink ? <button className="primary-button" type="button" onClick={onRetryRoom} disabled={cloudBusy}><RefreshCw size={15} />重新嘗試</button> : null}
-                {resumeAvailable ? <button className={resumeRequiresNewLink ? "primary-button" : "secondary-button"} type="button" onClick={onCreateRoom} disabled={cloudBusy}><Plus size={15} />建立新的檢視連結</button> : null}
-              </div>
-            ) : null}
-            <details className="collaboration-member-management collaboration-join-options" open={Boolean(initialInvite)}>
-              <summary><Share2 size={15} />加入別人分享的 Moodboard</summary>
-              <label className="collaboration-invite-field">
-                <span>分享連結或代碼</span>
-                <div><input value={inviteDraft} onChange={(event) => setInviteDraft(event.target.value)} placeholder="貼上 ?collab=… 連結" /><button className="secondary-button" type="button" onClick={() => onJoinRoom(inviteDraft)} disabled={cloudBusy || !inviteDraft.trim()}><Share2 size={15} />加入檢視</button></div>
-              </label>
-            </details>
-          </>
+          </div>
         )}
       </section>
-      <details className="collaboration-member-management collaboration-session-options">
-        <summary><UserRound size={15} />共同編輯顯示名稱</summary>
-        <label className="session-name-field">
-          <span>這個分頁顯示名稱</span>
-          <input value={sessionName} onChange={(event) => setSessionName(event.target.value.slice(0, 24))} />
-        </label>
-      </details>
       <div className="architecture-note">
-        <strong>分享、儲存與隱私</strong>
-        <p>開啟這個分享面板時，只會為目前這一份 Moodboard 準備分享連結；Google Drive 的儲存與同步仍在「我的 Moodboards」管理，兩者不是同一個連結。App 首頁網址不包含作品內容，也不代表編輯權限。</p>
+        <strong>同一份檔案，沒有第二個分享空間</strong>
+        <p>Infinite Moodboard 不會把作品或協作者清單另存到 Firestore。內容、版本與權限都跟著這份 `.moodboard` Google Drive 檔案；本機仍保留可復原副本。</p>
       </div>
     </Modal>
   );
@@ -7216,8 +7201,8 @@ function App() {
   const [canvasToolbarDragging, setCanvasToolbarDragging] = useState(false);
   const [sessionName, setSessionNameState] = useState(() => localStorage.getItem("moodboard-session-name") || createSessionName());
   const [peers, setPeers] = useState([]);
-  const [cloudCollaboration, setCloudCollaboration] = useState(EMPTY_CLOUD_COLLABORATION);
-  const cloudReadOnly = Boolean(cloudCollaboration.roomId && !cloudCollaboration.canEdit);
+  const [driveSharing, setDriveSharing] = useState(EMPTY_DRIVE_SHARING);
+  const cloudReadOnly = Boolean(driveSharing.fileId && !driveSharing.canEdit);
 
   useEffect(() => {
     if (!cloudReadOnly) return;
@@ -7228,7 +7213,6 @@ function App() {
     setShowAnnotationBuilder(false);
     setTool((current) => current === "3d" ? "select" : current);
   }, [cloudReadOnly]);
-  const [collaborationResume, setCollaborationResume] = useState(() => loadCollaborationResume());
   const [historySignal, setHistorySignal] = useState(0);
   const canUseDirectoryPicker = typeof window.showDirectoryPicker === "function" && navigator.webdriver !== true;
   const canUseFileSystemPicker = typeof window.showSaveFilePicker === "function";
@@ -7258,10 +7242,10 @@ function App() {
   const channelRef = useRef(null);
   const peersRef = useRef(new Map());
   const sessionIdRef = useRef(createId("session"));
-  const cloudCollaborationSessionRef = useRef(null);
-  const initialCollaborationInviteRef = useRef(normalizeCollaborationInvite(window.location.href));
-  const automaticCollaborationJoinRef = useRef("");
-  const automaticCollaborationShareRef = useRef("");
+  const initialDriveShareRef = useRef(parseGoogleDriveMoodboardLink(window.location.href));
+  const legacyCollaborationLinkRef = useRef(new URL(window.location.href).searchParams.has("collab"));
+  const automaticDriveShareOpenRef = useRef("");
+  const driveSharingRequestRef = useRef(0);
   const saveTimerRef = useRef(null);
   const localSavePromiseRef = useRef(Promise.resolve());
   const localFileSavePromiseRef = useRef(Promise.resolve());
@@ -8131,6 +8115,8 @@ function App() {
 
   const completeAdvancedFeature = useCallback((feature) => {
     if (feature === "collaboration" || feature === "shared-moodboard") {
+      setShowLocalFileLocation(false);
+      setShowStorageLocation(false);
       setShowCollaboration(true);
       return;
     }
@@ -8381,10 +8367,7 @@ function App() {
     setAuthBusy(true);
     setAuthMessage("");
     try {
-      const collaborationSession = cloudCollaborationSessionRef.current;
-      cloudCollaborationSessionRef.current = null;
-      if (collaborationSession) await collaborationSession.destroy().catch(() => undefined);
-      setCloudCollaboration(EMPTY_CLOUD_COLLABORATION);
+      setDriveSharing(EMPTY_DRIVE_SHARING);
       cancelDriveOperations();
       driveTokenRef.current = null;
       driveRestoreAttemptRef.current = "";
@@ -8416,13 +8399,8 @@ function App() {
     window.clearTimeout(driveSyncTimerRef.current);
     try {
       await localSavePromiseRef.current.catch(() => undefined);
-      const collaborationSession = cloudCollaborationSessionRef.current;
-      cloudCollaborationSessionRef.current = null;
-      if (collaborationSession) await collaborationSession.destroy().catch(() => undefined);
-      await Promise.all([clearLocalMoodboardData(), clearCollaborationQueue()]);
-      clearCollaborationResume();
-      setCollaborationResume(null);
-      setCloudCollaboration(EMPTY_CLOUD_COLLABORATION);
+      await clearLocalMoodboardData();
+      setDriveSharing(EMPTY_DRIVE_SHARING);
       driveTokenRef.current = null;
       driveRestoreAttemptRef.current = "";
       const clearedDriveState = saveDriveState(localStorage, {});
@@ -8758,7 +8736,6 @@ function App() {
       board: { ...nextBoard, view: viewRef.current },
       sentAt: new Date().toISOString(),
     });
-    cloudCollaborationSessionRef.current?.updateBoard(nextBoard);
   }, []);
 
   const pushUndo = useCallback((snapshot = boardRef.current) => {
@@ -8821,7 +8798,6 @@ function App() {
     setSessionNameState(value);
     localStorage.setItem("moodboard-session-name", value);
     channelRef.current?.postMessage({ type: "presence", sourceId: sessionIdRef.current, name: value, sentAt: Date.now() });
-    cloudCollaborationSessionRef.current?.setDisplayName(value);
   };
 
   useEffect(() => {
@@ -8971,7 +8947,6 @@ function App() {
             incoming.view = current.view;
             boardRef.current = incoming;
             setBoard(incoming);
-            if (message.origin !== "cloud") cloudCollaborationSessionRef.current?.updateBoard(incoming);
             announce(`${message.name || "另一個分頁"}同步了畫布`, "success");
           }
         } catch {
@@ -9588,276 +9563,10 @@ function App() {
     applyAppUpdate({ automatic: true });
   }, [applyAppUpdate, hydrated, updateCheck.manifest?.version, updateCheck.status, updateNoticeDismissed, updatePreference]);
 
-  const stopCloudCollaboration = useCallback(async ({ forget = false } = {}) => {
-    const session = cloudCollaborationSessionRef.current;
-    cloudCollaborationSessionRef.current = null;
-    if (session) await session.destroy().catch(() => undefined);
-    setCloudCollaboration(EMPTY_CLOUD_COLLABORATION);
-    if (forget) {
-      clearCollaborationResume();
-      setCollaborationResume(null);
-    }
-  }, []);
-
-  const applyCloudCollaborationBoard = useCallback((incomingBoard) => {
-    try {
-      const incoming = ensureBoard(incomingBoard);
-      incoming.view = viewRef.current;
-      boardRef.current = incoming;
-      setBoard(incoming);
-      selectedIdsRef.current = [];
-      setSelectedIds([]);
-      setKeyObjectId(null);
-      setDirty(true);
-      setSaveState("即時共編已同步");
-      channelRef.current?.postMessage({
-        type: "board-update",
-        origin: "cloud",
-        sourceId: sessionIdRef.current,
-        name: sessionName,
-        board: incoming,
-        sentAt: new Date().toISOString(),
-      });
-    } catch {
-      setCloudCollaboration((current) => ({ ...current, status: "degraded", message: "收到無法辨識的共編資料；目前畫布已保留。" }));
-    }
-  }, [sessionName]);
-
-  const scrubCollaborationInviteFromUrl = useCallback(() => {
-    const url = new URL(window.location.href);
-    if (!url.searchParams.has("collab")) return;
-    url.searchParams.delete("collab");
-    window.history.replaceState({}, "", url);
-  }, []);
-
-  const collaborationSessionOptions = useCallback((sharedBoard = null) => {
-    const expectedBoardId = sharedBoard?.id ? String(sharedBoard.id) : "";
-    return {
-      board: sharedBoard || boardSnapshot(),
-      user: authSession.user,
-      clientId: sessionIdRef.current,
-      displayName: sessionName,
-      onBoard: (incomingBoard) => {
-        if (!shouldApplyCollaborationBoard(expectedBoardId, boardRef.current.id)) return;
-        applyCloudCollaborationBoard(incomingBoard);
-      },
-      onState: (nextState) => setCloudCollaboration((current) => ({ ...current, ...nextState })),
-    };
-  }, [applyCloudCollaborationBoard, authSession.user, boardSnapshot, sessionName]);
-
-  const startCloudCollaboration = useCallback(async () => {
-    if (!authReady) {
-      requestAdvancedFeature("collaboration");
-      return;
-    }
-    const sharedBoard = boardSnapshot();
-    const sharedBoardId = sharedBoard.id;
-    await stopCloudCollaboration({ forget: false });
-    setCloudCollaboration({ ...EMPTY_CLOUD_COLLABORATION, status: "creating", message: "正在建立安全的分享連結…" });
-    try {
-      const { createMoodboardCollaborationRoom } = await loadCollaborationRuntime();
-      await saveVersion(sharedBoard, translateInterfaceText("開始即時共編前"), "automatic");
-      const session = await createMoodboardCollaborationRoom(collaborationSessionOptions(sharedBoard));
-      if (boardRef.current.id !== sharedBoardId) {
-        await session.destroy().catch(() => undefined);
-        const message = "建立分享連結期間已切換 Moodboard；剛才的內容已保留，請重新開啟分享。";
-        setCloudCollaboration({ ...EMPTY_CLOUD_COLLABORATION, status: "error", message });
-        announce(message, "warning");
-        return;
-      }
-      cloudCollaborationSessionRef.current = session;
-      const resume = saveCollaborationResume(localStorage, {
-        roomId: session.roomId,
-        boardId: sharedBoardId,
-        inviteId: session.inviteId,
-      });
-      setCollaborationResume(resume);
-      initialCollaborationInviteRef.current = "";
-      scrubCollaborationInviteFromUrl();
-      announce("分享連結已建立；對方登入後會以僅檢視身分開啟。", "success");
-    } catch (error) {
-      const message = collaborationErrorMessage(error);
-      setCloudCollaboration({ ...EMPTY_CLOUD_COLLABORATION, status: "error", message });
-      announce(message, "error");
-    }
-  }, [announce, authReady, boardSnapshot, collaborationSessionOptions, requestAdvancedFeature, scrubCollaborationInviteFromUrl, stopCloudCollaboration]);
-
-  const joinCloudCollaboration = useCallback(async (inviteValue) => {
-    if (!authReady) {
-      initialCollaborationInviteRef.current = normalizeCollaborationInvite(inviteValue);
-      requestAdvancedFeature("collaboration");
-      return;
-    }
-    const inviteId = normalizeCollaborationInvite(inviteValue);
-    if (!inviteId) {
-      setCloudCollaboration({ ...EMPTY_CLOUD_COLLABORATION, status: "error", message: "請貼上有效的共編邀請連結或代碼。" });
-      return;
-    }
-    await stopCloudCollaboration({ forget: false });
-    setCloudCollaboration({ ...EMPTY_CLOUD_COLLABORATION, status: "joining", message: "正在確認邀請與成員權限…" });
-    try {
-      const { joinMoodboardCollaborationInvite } = await loadCollaborationRuntime();
-      await saveVersion(boardSnapshot(), translateInterfaceText("加入即時共編前"), "automatic");
-      const session = await joinMoodboardCollaborationInvite({ ...collaborationSessionOptions(), inviteId });
-      cloudCollaborationSessionRef.current = session;
-      const resume = saveCollaborationResume(localStorage, {
-        roomId: session.roomId,
-        boardId: boardRef.current.id,
-        inviteId: session.inviteId,
-      });
-      setCollaborationResume(resume);
-      initialCollaborationInviteRef.current = "";
-      scrubCollaborationInviteFromUrl();
-      announce(session.canEdit ? "已開啟分享的 Moodboard，可以共同編輯。" : "已開啟分享的 Moodboard，目前為僅檢視。", "success");
-    } catch (error) {
-      const message = collaborationErrorMessage(error);
-      setCloudCollaboration({ ...EMPTY_CLOUD_COLLABORATION, status: "error", message });
-      announce(message, "error");
-    }
-  }, [announce, authReady, boardSnapshot, collaborationSessionOptions, requestAdvancedFeature, scrubCollaborationInviteFromUrl, stopCloudCollaboration]);
-
-  const resumeCloudCollaboration = useCallback(async () => {
-    if (!authReady || !collaborationResume?.roomId) return;
-    const sharedBoard = boardSnapshot();
-    if (collaborationResume.boardId !== sharedBoard.id) {
-      setCloudCollaboration({ ...EMPTY_CLOUD_COLLABORATION, status: "error", message: "上次的分享連結屬於另一份 Moodboard；可為目前內容建立新連結。" });
-      return;
-    }
-    const sharedBoardId = sharedBoard.id;
-    await stopCloudCollaboration({ forget: false });
-    setCloudCollaboration({ ...EMPTY_CLOUD_COLLABORATION, status: "connecting", message: "正在續接上次的共編空間…" });
-    try {
-      const { resumeMoodboardCollaborationRoom } = await loadCollaborationRuntime();
-      await saveVersion(sharedBoard, translateInterfaceText("續接即時共編前"), "automatic");
-      const session = await resumeMoodboardCollaborationRoom({
-        ...collaborationSessionOptions(sharedBoard),
-        roomId: collaborationResume.roomId,
-        inviteId: collaborationResume.inviteId,
-      });
-      if (boardRef.current.id !== sharedBoardId) {
-        await session.destroy().catch(() => undefined);
-        const message = "恢復分享連結期間已切換 Moodboard；目前內容不會被取代。";
-        setCloudCollaboration({ ...EMPTY_CLOUD_COLLABORATION, status: "error", message });
-        announce(message, "warning");
-        return;
-      }
-      cloudCollaborationSessionRef.current = session;
-      announce("已續接上次的即時共編空間。", "success");
-    } catch (error) {
-      const message = collaborationErrorMessage(error);
-      setCloudCollaboration({ ...EMPTY_CLOUD_COLLABORATION, status: "error", message });
-      announce(message, "error");
-    }
-  }, [announce, authReady, boardSnapshot, collaborationResume, collaborationSessionOptions, stopCloudCollaboration]);
-
-  const copyCloudCollaborationInvite = useCallback(async () => {
-    if (!cloudCollaboration.inviteUrl) return;
-    try {
-      await navigator.clipboard.writeText(cloudCollaboration.inviteUrl);
-      announce("分享連結已複製；對方登入後即可檢視並申請編輯權限。", "success");
-    } catch {
-      announce("無法自動複製；請選取分享連結後手動複製。", "warning");
-    }
-  }, [announce, cloudCollaboration.inviteUrl]);
-
-  const requestCloudCollaborationEditAccess = useCallback(async () => {
-    try {
-      await cloudCollaborationSessionRef.current?.requestEditAccess();
-      announce("已送出編輯權限申請。", "success");
-    } catch (error) {
-      announce(collaborationErrorMessage(error), "error");
-    }
-  }, [announce]);
-
-  const resolveCloudCollaborationAccessRequest = useCallback(async (requesterUid, decision) => {
-    try {
-      await cloudCollaborationSessionRef.current?.resolveAccessRequest(requesterUid, decision);
-      announce(decision === "approved" ? "已核准編輯權限。" : "已拒絕編輯權限申請。", "success");
-    } catch (error) {
-      announce(collaborationErrorMessage(error), "error");
-    }
-  }, [announce]);
-
-  const setCloudCollaborationMemberRole = useCallback(async (memberUid, role) => {
-    try {
-      await cloudCollaborationSessionRef.current?.setMemberRole(memberUid, role);
-      announce(role === "editor" ? "已允許成員編輯。" : "已將成員改為僅檢視。", "success");
-    } catch (error) {
-      announce(collaborationErrorMessage(error), "error");
-    }
-  }, [announce]);
-
-  const leaveCloudCollaboration = useCallback(async () => {
-    await stopCloudCollaboration({ forget: true });
-    automaticCollaborationShareRef.current = "";
-    setShowCollaboration(false);
-    announce("已離開共編；目前畫布仍保存在這台裝置。", "success");
-  }, [announce, stopCloudCollaboration]);
-
-  const prepareCloudCollaborationShare = useCallback(({ force = false, forceNew = false } = {}) => {
-    const plan = resolveCollaborationSharePreparation({
-      panelOpen: showCollaboration,
-      hydrated,
-      authReady,
-      incomingInviteId: initialCollaborationInviteRef.current,
-      hasSession: Boolean(cloudCollaborationSessionRef.current || cloudCollaboration.roomId),
-      status: cloudCollaboration.status,
-      boardId: boardRef.current.id,
-      resume: forceNew ? null : collaborationResume,
-    });
-    if (!plan.action) return false;
-    if (!force && automaticCollaborationShareRef.current === plan.key) return false;
-    automaticCollaborationShareRef.current = plan.key;
-    if (plan.action === "recover") {
-      setCloudCollaboration({
-        ...EMPTY_CLOUD_COLLABORATION,
-        status: "error",
-        message: "上次的共編空間缺少可複製的分享連結；原空間與協作者不會變更。請明確建立新連結，並把新連結重新提供給協作者。",
-      });
-    } else if (plan.action === "resume") resumeCloudCollaboration();
-    else startCloudCollaboration();
-    return true;
-  }, [authReady, cloudCollaboration.roomId, cloudCollaboration.status, collaborationResume, hydrated, resumeCloudCollaboration, showCollaboration, startCloudCollaboration]);
-
-  useEffect(() => {
-    if (authReady || !cloudCollaborationSessionRef.current) return;
-    const session = cloudCollaborationSessionRef.current;
-    cloudCollaborationSessionRef.current = null;
-    session.destroy().catch(() => undefined);
-    setCloudCollaboration(EMPTY_CLOUD_COLLABORATION);
-  }, [authReady]);
-
-  useEffect(() => () => {
-    const session = cloudCollaborationSessionRef.current;
-    cloudCollaborationSessionRef.current = null;
-    session?.destroy().catch(() => undefined);
-  }, []);
-
-  useEffect(() => {
-    const inviteId = initialCollaborationInviteRef.current;
-    if (!hydrated || !inviteId) return;
-    if (!authReady) {
-      if (authSession.status !== "loading") requestAdvancedFeature("shared-moodboard");
-      return;
-    }
-    setShowCollaboration(true);
-    if (automaticCollaborationJoinRef.current === inviteId || cloudCollaborationSessionRef.current) return;
-    automaticCollaborationJoinRef.current = inviteId;
-    joinCloudCollaboration(inviteId);
-  }, [authReady, authSession.status, hydrated, joinCloudCollaboration, requestAdvancedFeature]);
-
-  useEffect(() => {
-    if (!showCollaboration) {
-      automaticCollaborationShareRef.current = "";
-      return;
-    }
-    prepareCloudCollaborationShare();
-  }, [prepareCloudCollaborationShare, showCollaboration]);
-
   const activateLocalMoodboard = useCallback(async (nextBoard, message) => {
     const current = boardSnapshot();
     try {
-      await stopCloudCollaboration({ forget: false });
+      setDriveSharing(EMPTY_DRIVE_SHARING);
       await persistBoardLocally(current);
       if (dirty || current.objects.length) {
         await saveVersion(current, translateInterfaceText("切換 Moodboard 前"), "automatic");
@@ -9898,7 +9607,7 @@ function App() {
       announce(error?.message || "無法切換 Moodboard；目前畫布未受影響。", "error");
       return null;
     }
-  }, [announce, boardSnapshot, cancelDriveOperations, dirty, driveSettings.links, persistBoardLocally, refreshLocalLibrarySummary, setBoardPrimaryStorage, stopCloudCollaboration, storagePreferences]);
+  }, [announce, boardSnapshot, cancelDriveOperations, dirty, driveSettings.links, persistBoardLocally, refreshLocalLibrarySummary, setBoardPrimaryStorage, storagePreferences]);
 
   const openLocalMoodboard = useCallback((record) => {
     if (!record?.board) {
@@ -9964,10 +9673,14 @@ function App() {
 
   useEffect(() => {
     if (!hydrated || showStorageLocation || currentPrimaryStorageTarget !== "local" || !storagePreferences.autoSave) return;
+    if (showCollaboration) {
+      setShowLocalFileLocation(false);
+      return;
+    }
     if (!["unlinked", "permission-required", "unsupported", "error"].includes(localFileBinding.status)) return;
     if (localFilePromptDismissedRef.current.has(board.id)) return;
     setShowLocalFileLocation(true);
-  }, [board.id, currentPrimaryStorageTarget, hydrated, localFileBinding.status, showStorageLocation, storagePreferences.autoSave]);
+  }, [board.id, currentPrimaryStorageTarget, hydrated, localFileBinding.status, showCollaboration, showStorageLocation, storagePreferences.autoSave]);
 
   const chooseLocalFileForAutosave = useCallback(async () => {
     const snapshot = boardSnapshot();
@@ -10231,34 +9944,54 @@ function App() {
 
   const openGoogleDriveFile = useCallback(async (file) => {
     const operationEpoch = driveOperationEpochRef.current;
+    driveSharingRequestRef.current += 1;
     const accessToken = currentDriveAccessToken();
     if (!accessToken) {
       setDriveSession((current) => ({ ...current, status: "authorization-required", connected: false, busy: false, message: "請重新連結 Google Drive 後再開啟檔案。" }));
-      return;
+      return null;
     }
     setDriveSession((current) => ({ ...current, status: "checking", connected: true, busy: true, message: `正在開啟「${file.name}」…` }));
     try {
       const { downloadGoogleDriveMoodboard, getGoogleDriveFile } = await loadDriveRuntime();
       const current = boardSnapshot();
       if (dirty || current.objects.length) await saveVersion(current, translateInterfaceText("切換 Drive 檔案前"), "automatic");
-      let metadata = await getGoogleDriveFile(accessToken, file.id);
-      if (operationEpoch !== driveOperationEpochRef.current) return;
-      const content = await downloadGoogleDriveMoodboard(accessToken, file.id, { revisionId: metadata.headRevisionId });
+      const resourceKey = String(file.resourceKey || "");
+      let metadata = await getGoogleDriveFile(accessToken, file.id, { resourceKey });
+      if (operationEpoch !== driveOperationEpochRef.current) return null;
+      const content = await downloadGoogleDriveMoodboard(accessToken, file.id, { revisionId: metadata.headRevisionId, resourceKey });
       if (!metadata.headRevisionId) {
-        const verified = await getGoogleDriveFile(accessToken, file.id);
+        const verified = await getGoogleDriveFile(accessToken, file.id, { resourceKey });
         if (verified.version !== metadata.version) throw new DriveConflictError(verified);
         metadata = verified;
       }
-      if (operationEpoch !== driveOperationEpochRef.current) return;
+      if (operationEpoch !== driveOperationEpochRef.current) return null;
       const imported = await importBoardFile(
         new File([content], metadata.name, { type: "application/json" }),
         null,
         { shouldCommit: () => operationEpoch === driveOperationEpochRef.current },
       );
       if (!imported) throw new DriveApiError("Google Drive 檔案內容無法辨識。", { code: "drive/invalid-file" });
-      if (operationEpoch !== driveOperationEpochRef.current) return;
+      if (operationEpoch !== driveOperationEpochRef.current) return null;
       updateDriveSettings((state) => linkDriveFile(state, imported, metadata));
       setBoardPrimaryStorage(imported.id, "drive");
+      const resolvedResourceKey = metadata.resourceKey || resourceKey;
+      const role = driveFileRole(metadata);
+      setDriveSharing({
+        ...EMPTY_DRIVE_SHARING,
+        status: "linked",
+        message: role === "viewer" ? "已依 Google Drive 權限以僅檢視模式開啟。" : "已依 Google Drive 權限開啟檔案。",
+        fileId: metadata.id,
+        fileName: metadata.name,
+        resourceKey: resolvedResourceKey,
+        shareUrl: createGoogleDriveMoodboardUrl(
+          { fileId: metadata.id, resourceKey: resolvedResourceKey },
+          `${window.location.origin}${window.location.pathname}`,
+        ),
+        webViewLink: metadata.webViewLink,
+        role,
+        canEdit: role !== "viewer",
+        canShare: metadata.capabilities.canShare,
+      });
       setDriveSession((session) => ({
         ...session,
         status: "synced",
@@ -10271,6 +10004,7 @@ function App() {
       }));
       setShowDriveLibrary(false);
       announce(`已從 Google Drive 開啟「${imported.name}」；切換前版本已保留。`, "success");
+      return { board: imported, metadata };
     } catch (error) {
       if (operationEpoch !== driveOperationEpochRef.current || error?.name === "AbortError") return;
       const isConflict = error?.code === "drive/conflict";
@@ -10285,8 +10019,282 @@ function App() {
         conflict: isConflict ? error.remoteFile : current.conflict,
       }));
       announce(driveErrorMessage(error), "error");
+      return null;
     }
   }, [announce, boardSnapshot, currentDriveAccessToken, dirty, importBoardFile, setBoardPrimaryStorage, updateDriveSettings]);
+
+  const refreshDriveSharing = useCallback(async (target = null) => {
+    const requestId = driveSharingRequestRef.current + 1;
+    driveSharingRequestRef.current = requestId;
+    const activeBoardId = boardRef.current.id;
+    const requestIsCurrent = () => (
+      driveSharingRequestRef.current === requestId
+      && boardRef.current.id === activeBoardId
+    );
+    const currentState = loadDriveState(localStorage);
+    const linked = currentState.links[boardRef.current.id] || null;
+    const incoming = initialDriveShareRef.current;
+    const fileId = String(target?.fileId || target?.id || incoming?.fileId || linked?.fileId || "");
+    const resourceKey = String(target?.resourceKey || incoming?.resourceKey || linked?.resourceKey || "");
+    if (!fileId) {
+      setDriveSharing({
+        ...EMPTY_DRIVE_SHARING,
+        status: "needs-drive",
+        message: "先把目前 Moodboard 儲存成你 Google Drive 裡的 `.moodboard` 檔案，才能建立同一份檔案的分享連結。",
+      });
+      return false;
+    }
+    const accessToken = currentDriveAccessToken();
+    if (!accessToken) {
+      setDriveSharing({
+        ...EMPTY_DRIVE_SHARING,
+        status: "authorization-required",
+        fileId,
+        resourceKey,
+        message: "請連結 Google Drive，才能讀取這份檔案與它目前的分享權限。",
+      });
+      return false;
+    }
+    setDriveSharing((current) => ({
+      ...current,
+      status: "loading",
+      fileId,
+      resourceKey,
+      message: "正在讀取 Google Drive 的檔案與權限…",
+    }));
+    try {
+      const { getGoogleDriveFile, listGoogleDrivePermissions } = await loadDriveRuntime();
+      const metadata = await getGoogleDriveFile(accessToken, fileId, { resourceKey });
+      if (!requestIsCurrent()) return false;
+      let permissions = [];
+      let permissionsVisible = false;
+      let permissionMessage = "";
+      try {
+        permissions = await listGoogleDrivePermissions(accessToken, fileId, { resourceKey });
+        permissionsVisible = true;
+      } catch (permissionError) {
+        if (!requestIsCurrent()) return false;
+        if (metadata.capabilities.canShare) throw permissionError;
+        permissionMessage = "目前帳號可開啟這份檔案，但 Google Drive 未提供完整分享名單；權限仍由 Drive 管理。";
+      }
+      if (!requestIsCurrent()) return false;
+      const resolvedResourceKey = metadata.resourceKey || resourceKey;
+      const role = driveFileRole(metadata);
+      setDriveSharing({
+        status: "ready",
+        message: permissionMessage || "已讀取 Google Drive 的最新分享權限。",
+        fileId: metadata.id,
+        fileName: metadata.name,
+        resourceKey: resolvedResourceKey,
+        shareUrl: createGoogleDriveMoodboardUrl(
+          { fileId: metadata.id, resourceKey: resolvedResourceKey },
+          `${window.location.origin}${window.location.pathname}`,
+        ),
+        webViewLink: metadata.webViewLink,
+        role,
+        canEdit: role !== "viewer",
+        canShare: metadata.capabilities.canShare,
+        permissionsVisible,
+        permissions,
+        members: googleDriveMembers(permissions),
+        generalAccess: googleDriveGeneralAccess(permissions),
+      });
+      return true;
+    } catch (error) {
+      if (!requestIsCurrent()) return false;
+      const authorizationRequired = isGoogleDriveAuthorizationError(error);
+      if (authorizationRequired) driveTokenRef.current = null;
+      setDriveSharing((current) => ({
+        ...current,
+        status: authorizationRequired ? "authorization-required" : "error",
+        message: driveErrorMessage(error),
+      }));
+      return false;
+    }
+  }, [currentDriveAccessToken]);
+
+  const connectDriveForSharing = useCallback(async () => {
+    setDriveSharing((current) => ({ ...current, status: "authorizing", message: "正在連結你的 Google Drive…" }));
+    const connection = await connectGoogleDrive();
+    if (!connection) return false;
+    const incoming = initialDriveShareRef.current;
+    if (incoming?.fileId) {
+      const currentLink = loadDriveState(localStorage).links[boardRef.current.id];
+      if (currentLink?.fileId !== incoming.fileId) {
+        const opened = await openGoogleDriveFile({ id: incoming.fileId, resourceKey: incoming.resourceKey, name: "分享的 Moodboard" });
+        if (!opened) return false;
+        return refreshDriveSharing({ fileId: opened.metadata.id, resourceKey: opened.metadata.resourceKey || incoming.resourceKey });
+      }
+    }
+    return refreshDriveSharing(incoming || null);
+  }, [connectGoogleDrive, openGoogleDriveFile, refreshDriveSharing]);
+
+  const saveCurrentBoardForSharing = useCallback(async () => {
+    setDriveSharing((current) => ({ ...current, status: "saving", message: "正在先建立本機版本，再儲存到 Google Drive…" }));
+    const saved = await saveBoardToGoogleDrive();
+    if (!saved) {
+      const accessToken = currentDriveAccessToken();
+      setDriveSharing((current) => ({
+        ...current,
+        status: accessToken ? "error" : "authorization-required",
+        message: accessToken ? "尚未完成 Google Drive 儲存；目前本機內容仍安全保留。" : "請先連結 Google Drive。",
+      }));
+      return false;
+    }
+    const link = loadDriveState(localStorage).links[boardRef.current.id];
+    return refreshDriveSharing(link ? { fileId: link.fileId, resourceKey: link.resourceKey } : null);
+  }, [currentDriveAccessToken, refreshDriveSharing, saveBoardToGoogleDrive]);
+
+  const copyDriveSharingLink = useCallback(async () => {
+    if (!driveSharing.shareUrl) return false;
+    try {
+      await navigator.clipboard.writeText(driveSharing.shareUrl);
+      announce(
+        driveSharing.generalAccess.enabled
+          ? "Moodboard 檢視連結已複製；知道連結的人可依 Drive 權限開啟。"
+          : "受限的 Moodboard 連結已複製；只有已獲 Drive 授權的帳號能開啟。",
+        "success",
+      );
+      return true;
+    } catch {
+      announce("無法自動複製；請選取連結後手動複製。", "warning");
+      return false;
+    }
+  }, [announce, driveSharing.generalAccess.enabled, driveSharing.shareUrl]);
+
+  const setDriveSharingGeneralAccess = useCallback(async (enabled) => {
+    const accessToken = currentDriveAccessToken();
+    if (!accessToken || !driveSharing.fileId) return false;
+    try {
+      const { setGoogleDriveGeneralAccess } = await loadDriveRuntime();
+      await setGoogleDriveGeneralAccess(accessToken, driveSharing.fileId, enabled, { resourceKey: driveSharing.resourceKey });
+      await refreshDriveSharing({ fileId: driveSharing.fileId, resourceKey: driveSharing.resourceKey });
+      announce(enabled ? "已允許知道連結的人檢視；編輯權仍需個別授予。" : "已將這份 Drive 檔案改為受限存取。", "success");
+      return true;
+    } catch (error) {
+      announce(driveErrorMessage(error), "error");
+      return false;
+    }
+  }, [announce, currentDriveAccessToken, driveSharing.fileId, driveSharing.resourceKey, refreshDriveSharing]);
+
+  const inviteDriveSharingMember = useCallback(async (email, role) => {
+    const accessToken = currentDriveAccessToken();
+    if (!accessToken || !driveSharing.fileId) return false;
+    try {
+      const { createGoogleDrivePermission } = await loadDriveRuntime();
+      await createGoogleDrivePermission(accessToken, driveSharing.fileId, {
+        type: "user",
+        role: role === "editor" ? "writer" : "reader",
+        emailAddress: email,
+        resourceKey: driveSharing.resourceKey,
+        sendNotificationEmail: true,
+      });
+      await refreshDriveSharing({ fileId: driveSharing.fileId, resourceKey: driveSharing.resourceKey });
+      announce(`已透過 Google Drive 邀請 ${email.trim()}。`, "success");
+      return true;
+    } catch (error) {
+      announce(driveErrorMessage(error), "error");
+      return false;
+    }
+  }, [announce, currentDriveAccessToken, driveSharing.fileId, driveSharing.resourceKey, refreshDriveSharing]);
+
+  const setDriveSharingMemberRole = useCallback(async (permissionId, role) => {
+    const accessToken = currentDriveAccessToken();
+    if (!accessToken || !driveSharing.fileId) return false;
+    try {
+      const { updateGoogleDrivePermission } = await loadDriveRuntime();
+      await updateGoogleDrivePermission(
+        accessToken,
+        driveSharing.fileId,
+        permissionId,
+        role === "editor" ? "writer" : "reader",
+        { resourceKey: driveSharing.resourceKey },
+      );
+      await refreshDriveSharing({ fileId: driveSharing.fileId, resourceKey: driveSharing.resourceKey });
+      announce(role === "editor" ? "已允許這位成員編輯。" : "已將這位成員改為僅檢視。", "success");
+      return true;
+    } catch (error) {
+      announce(driveErrorMessage(error), "error");
+      return false;
+    }
+  }, [announce, currentDriveAccessToken, driveSharing.fileId, driveSharing.resourceKey, refreshDriveSharing]);
+
+  const removeDriveSharingMember = useCallback(async (member) => {
+    if (!window.confirm(`確定要移除「${member.name}」對這份 Google Drive 檔案的存取權嗎？`)) return false;
+    const accessToken = currentDriveAccessToken();
+    if (!accessToken || !driveSharing.fileId) return false;
+    try {
+      const { deleteGoogleDrivePermission } = await loadDriveRuntime();
+      await deleteGoogleDrivePermission(accessToken, driveSharing.fileId, member.id, { resourceKey: driveSharing.resourceKey });
+      await refreshDriveSharing({ fileId: driveSharing.fileId, resourceKey: driveSharing.resourceKey });
+      announce(`已移除 ${member.name} 的 Drive 存取權。`, "success");
+      return true;
+    } catch (error) {
+      announce(driveErrorMessage(error), "error");
+      return false;
+    }
+  }, [announce, currentDriveAccessToken, driveSharing.fileId, driveSharing.resourceKey, refreshDriveSharing]);
+
+  useEffect(() => {
+    const incoming = initialDriveShareRef.current;
+    if (!hydrated || !incoming?.fileId) return;
+    setShowCollaboration(true);
+    if (!authReady) {
+      if (authSession.status !== "loading") requestAdvancedFeature("shared-moodboard");
+      return;
+    }
+    if (!currentDriveAccessToken()) {
+      setDriveSharing({
+        ...EMPTY_DRIVE_SHARING,
+        status: "authorization-required",
+        fileId: incoming.fileId,
+        resourceKey: incoming.resourceKey,
+        message: "連結 Google Drive 後，會直接開啟這個連結指定的 Moodboard。",
+      });
+      return;
+    }
+    const operationKey = `${incoming.fileId}:${incoming.resourceKey || ""}`;
+    if (automaticDriveShareOpenRef.current === operationKey) return;
+    automaticDriveShareOpenRef.current = operationKey;
+    const currentLink = loadDriveState(localStorage).links[boardRef.current.id];
+    if (currentLink?.fileId === incoming.fileId) {
+      refreshDriveSharing(incoming);
+      return;
+    }
+    openGoogleDriveFile({ id: incoming.fileId, resourceKey: incoming.resourceKey, name: "分享的 Moodboard" })
+      .then((opened) => opened && refreshDriveSharing({ fileId: opened.metadata.id, resourceKey: opened.metadata.resourceKey || incoming.resourceKey }));
+  }, [authReady, authSession.status, currentDriveAccessToken, driveSession.connected, hydrated, openGoogleDriveFile, refreshDriveSharing, requestAdvancedFeature]);
+
+  useEffect(() => {
+    if (!hydrated || !legacyCollaborationLinkRef.current || initialDriveShareRef.current?.fileId) return;
+    setShowCollaboration(true);
+    setDriveSharing({
+      ...EMPTY_DRIVE_SHARING,
+      status: "legacy",
+      message: "這個 `?collab=` 連結屬於舊版 Firestore 分享空間，已不再使用。請聯絡檔案擁有者，以 Google Drive 重新分享同一份 `.moodboard` 檔案。",
+    });
+  }, [hydrated]);
+
+  const closeDriveSharing = useCallback(() => {
+    if (legacyCollaborationLinkRef.current) {
+      const nextUrl = new URL(window.location.href);
+      nextUrl.searchParams.delete("collab");
+      window.history.replaceState({}, "", `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
+      legacyCollaborationLinkRef.current = false;
+      setDriveSharing(EMPTY_DRIVE_SHARING);
+    }
+    setShowCollaboration(false);
+  }, []);
+
+  useEffect(() => {
+    if (!showCollaboration || initialDriveShareRef.current?.fileId || legacyCollaborationLinkRef.current) return;
+    if (!authReady) {
+      requestAdvancedFeature("collaboration");
+      return;
+    }
+    const linked = loadDriveState(localStorage).links[boardRef.current.id];
+    refreshDriveSharing(linked ? { fileId: linked.fileId, resourceKey: linked.resourceKey } : null);
+  }, [authReady, board.id, refreshDriveSharing, requestAdvancedFeature, showCollaboration]);
 
   const refreshDriveVersions = useCallback(async () => {
     const boardId = boardRef.current.id;
@@ -10303,11 +10311,11 @@ function App() {
     setDriveVersions((current) => ({ ...current, status: "loading", fileId: link.fileId, message: "" }));
     try {
       const { getGoogleDriveFile, listGoogleDriveRevisions } = await loadDriveRuntime();
-      const metadata = await getGoogleDriveFile(accessToken, link.fileId);
+      const metadata = await getGoogleDriveFile(accessToken, link.fileId, { resourceKey: link.resourceKey });
       if (metadata.capabilities?.canReadRevisions === false) {
         throw new DriveApiError("目前帳號沒有讀取這份檔案版本紀錄的權限。", { code: "drive/permission", status: 403 });
       }
-      const items = await listGoogleDriveRevisions(accessToken, link.fileId);
+      const items = await listGoogleDriveRevisions(accessToken, link.fileId, { resourceKey: link.resourceKey });
       setDriveVersions({ status: "ready", items, fileId: link.fileId, headRevisionId: metadata.headRevisionId, message: "" });
       return items;
     } catch (error) {
@@ -10338,12 +10346,16 @@ function App() {
     setVersionBusy(true);
     try {
       const { downloadGoogleDriveMoodboard, getGoogleDriveFile } = await loadDriveRuntime();
-      const metadata = await getGoogleDriveFile(accessToken, file.id);
+      const resourceKey = file.resourceKey || driveSettings.links[boardRef.current.id]?.resourceKey || "";
+      const metadata = await getGoogleDriveFile(accessToken, file.id, { resourceKey });
       const isHead = !revision || revision.id === metadata.headRevisionId;
       if (!isHead && !revision.keepForever) {
         throw new DriveApiError("這個 Drive 暫存版本無法下載；目前 Moodboard 未受影響。", { code: "drive/revision" });
       }
-      const content = await downloadGoogleDriveMoodboard(accessToken, file.id, { revisionId: isHead ? "" : revision.id });
+      const content = await downloadGoogleDriveMoodboard(accessToken, file.id, {
+        revisionId: isHead ? "" : revision.id,
+        resourceKey,
+      });
       const parsed = ensureBoard(JSON.parse(content));
       const versionTime = revision?.modifiedTime || metadata.modifiedTime || new Date().toISOString();
       const recovered = createRecoveredMoodboard(parsed, { label: `Drive 復原 ${formatTime(versionTime)}` });
@@ -10362,7 +10374,7 @@ function App() {
     } finally {
       setVersionBusy(false);
     }
-  }, [activateLocalMoodboard, announce, currentDriveAccessToken]);
+  }, [activateLocalMoodboard, announce, currentDriveAccessToken, driveSettings.links]);
 
   const saveBoardFile = useCallback(async (forceDownload = false) => {
     const snapshot = boardSnapshot();
@@ -12605,7 +12617,7 @@ function App() {
         else if (dragActive) setDragActive(false);
         else if (preparedDownloads.length) closePreparedDownloads();
         else if (showVersions) setShowVersions(false);
-        else if (showCollaboration) setShowCollaboration(false);
+        else if (showCollaboration) closeDriveSharing();
         else if (mobilePanel) setMobilePanel(null);
         else if (filters.symbols.length || filters.colors.length) setFilters(DEFAULT_FILTERS);
         else if (tool === "zoom-window") finishZoomWindowTool();
@@ -12657,7 +12669,7 @@ function App() {
       window.removeEventListener("keyup", keyUp);
       window.removeEventListener("blur", blur);
     };
-  }, [announce, cancelPendingObjectDeletion, closeAdvancedFeatureGate, closeInterfaceThemes, closePreparedDownloads, copySelectedObjects, cutSelectedObjects, deleteSelected, dismissLocalFileLocation, dragActive, duplicateSelected, escapeCancellationRequest, filters.colors.length, filters.symbols.length, finishZoomWindowTool, focusMode, isClearingLocalData, keepEscapeAdjustment, leftPanelVisible, leftTab, loadedTextFlow, mobilePanel, openBoardFile, openListSearch, pasteCopiedObjects, pendingAdvancedFeature, pendingObjectDeletion, preparedDownloads.length, redo, requestActivePointerCancellation, requestAdvancedFeature, restoreWorkspaceChrome, rightPanelVisible, savePreferredBoard, shapeMenuOpen, showAnnotationBuilder, showBothPanels, showCollaboration, showDeleteLocalData, showDriveLibrary, showGridBuilder, showInterfaceThemes, showLocalFileLocation, showSettings, showShortcuts, showStorageLocation, showVersions, toggleBothPanels, toggleCanvasBackground, toggleFocusMode, toggleGuides, toggleLeftPanel, toggleRightPanel, toggleRulers, toggleSelectionGroup, tool, undo]);
+  }, [announce, cancelPendingObjectDeletion, closeAdvancedFeatureGate, closeDriveSharing, closeInterfaceThemes, closePreparedDownloads, copySelectedObjects, cutSelectedObjects, deleteSelected, dismissLocalFileLocation, dragActive, duplicateSelected, escapeCancellationRequest, filters.colors.length, filters.symbols.length, finishZoomWindowTool, focusMode, isClearingLocalData, keepEscapeAdjustment, leftPanelVisible, leftTab, loadedTextFlow, mobilePanel, openBoardFile, openListSearch, pasteCopiedObjects, pendingAdvancedFeature, pendingObjectDeletion, preparedDownloads.length, redo, requestActivePointerCancellation, requestAdvancedFeature, restoreWorkspaceChrome, rightPanelVisible, savePreferredBoard, shapeMenuOpen, showAnnotationBuilder, showBothPanels, showCollaboration, showDeleteLocalData, showDriveLibrary, showGridBuilder, showInterfaceThemes, showLocalFileLocation, showSettings, showShortcuts, showStorageLocation, showVersions, toggleBothPanels, toggleCanvasBackground, toggleFocusMode, toggleGuides, toggleLeftPanel, toggleRightPanel, toggleRulers, toggleSelectionGroup, tool, undo]);
 
   const exportObjects = useCallback(async (scopeOverride) => {
     const scope = typeof scopeOverride === "string" ? scopeOverride : exportScope;
@@ -13019,8 +13031,8 @@ function App() {
                     ? `儲存到 ${localFileBinding.name || ".moodboard 檔案"}`
                     : "選擇 .moodboard 儲存位置"
                   : "選擇主要儲存位置"}
-              collaborationCount={authReady && cloudCollaboration.roomId
-                ? Math.max(1, cloudCollaboration.peers.length)
+              collaborationCount={authReady && driveSharing.fileId
+                ? Math.max(1, driveSharing.members.length)
                 : authReady && peers.length ? peers.length + 1 : 0}
             />
           </div>
@@ -13782,25 +13794,19 @@ function App() {
         />
       ) : null}
       {showCollaboration ? (
-        <CollaborationModal
+        <DriveSharingModal
           boardName={board.name}
-          sessionName={sessionName}
-          setSessionName={setSessionName}
-          cloud={cloudCollaboration}
-          initialInvite={initialCollaborationInviteRef.current}
-          resumeAvailable={Boolean(collaborationResume?.roomId && collaborationResume.boardId === board.id)}
-          resumeRequiresNewLink={Boolean(collaborationResume?.roomId
-            && collaborationResume.boardId === board.id
-            && !normalizeCollaborationInvite(collaborationResume.inviteId))}
-          onCreateRoom={() => prepareCloudCollaborationShare({ force: true, forceNew: true })}
-          onJoinRoom={joinCloudCollaboration}
-          onRetryRoom={() => prepareCloudCollaborationShare({ force: true })}
-          onCopyInvite={copyCloudCollaborationInvite}
-          onRequestEditAccess={requestCloudCollaborationEditAccess}
-          onResolveAccessRequest={resolveCloudCollaborationAccessRequest}
-          onSetMemberRole={setCloudCollaborationMemberRole}
-          onLeaveRoom={leaveCloudCollaboration}
-          onClose={() => setShowCollaboration(false)}
+          sharing={driveSharing}
+          legacyLink={legacyCollaborationLinkRef.current}
+          onConnectDrive={connectDriveForSharing}
+          onSaveToDrive={saveCurrentBoardForSharing}
+          onRefresh={() => refreshDriveSharing({ fileId: driveSharing.fileId, resourceKey: driveSharing.resourceKey })}
+          onCopyLink={copyDriveSharingLink}
+          onSetGeneralAccess={setDriveSharingGeneralAccess}
+          onInviteMember={inviteDriveSharingMember}
+          onSetMemberRole={setDriveSharingMemberRole}
+          onRemoveMember={removeDriveSharingMember}
+          onClose={closeDriveSharing}
         />
       ) : null}
       {preparedDownloads.length ? (

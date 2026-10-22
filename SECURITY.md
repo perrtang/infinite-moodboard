@@ -10,10 +10,14 @@
 
 回報請包含：受影響版本、重現步驟、預期與實際結果，以及已移除私人資料的最小證據。請勿測試或存取其他使用者的帳號與資料。
 
-## 即時共編安全邊界
+## Google Drive 分享安全邊界
 
-- Cloud Firestore 只接受已完成 Email 驗證的 Firebase 身份；房間不可列舉，讀取必須是房間成員。
-- 只有擁有者與編輯者能寫入共編更新；只有擁有者能管理成員、房間與邀請。
-- 邀請連結是具期限的 bearer token。不要把連結放在公開 Issue、紀錄或螢幕截圖中。
-- 共編更新採分段上傳，單次更新限制 48 MiB；完成發布後不可覆寫內容，避免已同步歷史遭竄改。
-- `firestore.rules` 只是 Infinite Moodboard 規則片段，不能從本倉庫單獨部署；必須合併到 PETFASHION 中央規則、確認其它產品規則完整，再由中央基礎設施來源部署。GitHub Pages 發布成功不代表 Firestore 規則已部署。
+- 雲端作品、版本與成員權限都附著在使用者自己的 Google Drive `.moodboard` 檔案；正式應用程式不會另建 Firestore 分享空間。
+- App 只要求 `drive.file`，只能處理由 Infinite Moodboard 建立或使用者明確交給 App 的檔案。所有讀寫與權限變更仍受 Google Drive ACL、檔案能力與 Workspace 管理政策限制。
+- 分享網址中的 Drive file ID 與 resource key 只用於定位檔案，不取代權限檢查。不要把受限檔案連結放進公開 Issue、紀錄或螢幕截圖。
+- 只有 Drive 回報可分享的帳號能邀請成員、變更 viewer/editor 角色或移除權限；只有 Drive 回報可編輯時，App 才允許修改內容。
+- 每次更新既有檔案都保留版本與衝突檢查；發現較新 Drive 內容時停止自動覆寫，直到使用者明確解決衝突。
+
+## 舊版 Firestore 檔案
+
+倉庫仍保留舊共編原型與規則片段供遷移稽核，但正式入口不再載入。不得從本倉庫部署 `firestore.rules`，也不得把舊 `?collab=` 連結重新接回 Firestore。
