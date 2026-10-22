@@ -1,8 +1,8 @@
 {
   "product": "Infinite Moodboard",
   "channel": "stable",
-  "version": "0.46.1",
+  "version": "0.47.0",
   "releasedAt": "2026-10-22",
-  "summary": "修正 Google Drive 同步請求可能永久顯示處理中的問題；逾時時會停止等待、保留本機版本並提供可重試狀態。",
+  "summary": "分享與共同編輯改為登入後自動準備目前 Moodboard 的檢視連結，並可在同一面板直接查看與更新成員權限。",
   "url": "https://moodboard.petfashion.tw/"
 }

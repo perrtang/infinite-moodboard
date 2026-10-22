@@ -21,6 +21,42 @@ export function collaborationAccessRequestStatusLabel(value) {
   }[normalizeCollaborationAccessRequestStatus(value)];
 }
 
+export function shouldApplyCollaborationBoard(expectedBoardId, activeBoardId) {
+  const expected = String(expectedBoardId || "");
+  return !expected || expected === String(activeBoardId || "");
+}
+
+export function resolveCollaborationSharePreparation({
+  panelOpen,
+  hydrated,
+  authReady,
+  incomingInviteId,
+  hasSession,
+  status,
+  boardId,
+  resume,
+}) {
+  const currentBoardId = String(boardId || "");
+  if (!panelOpen || !hydrated || !authReady || !currentBoardId) return { action: null, key: "" };
+  if (incomingInviteId || hasSession || ["creating", "joining", "connecting"].includes(status)) {
+    return { action: null, key: "" };
+  }
+  const resumeInviteId = normalizeCollaborationInvite(resume?.inviteId);
+  if (resume?.roomId && String(resume.boardId || "") === currentBoardId) {
+    if (!resumeInviteId) {
+      return {
+        action: "recover",
+        key: `recover:${currentBoardId}:${String(resume.roomId)}`,
+      };
+    }
+    return {
+      action: "resume",
+      key: `resume:${currentBoardId}:${String(resume.roomId)}`,
+    };
+  }
+  return { action: "create", key: `create:${currentBoardId}` };
+}
+
 export function normalizeCollaborationInvite(value, baseUrl = globalThis.location?.href || "https://moodboard.invalid/") {
   const raw = String(value || "").trim();
   if (!raw) return "";

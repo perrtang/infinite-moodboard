@@ -22,10 +22,15 @@ import {
   splitCollaborationUpdate,
   writeBoardToCollaborationDocument,
 } from "./collaboration.js";
+import {
+  resolveCollaborationSharePreparation,
+  shouldApplyCollaborationBoard,
+} from "./collaboration-state.js";
 import { createBoard, ensureBoard } from "./model.js";
 
 const appSource = await readFile(new URL("./main.jsx", import.meta.url), "utf8");
 const documentSource = await readFile(new URL("./index.html", import.meta.url), "utf8");
+const stylesSource = await readFile(new URL("./styles.css", import.meta.url), "utf8");
 
 function sampleBoard() {
   return ensureBoard(createBoard({
@@ -108,11 +113,69 @@ test("shared collaboration links start as view only and access request states ar
 
 test("shared Moodboard links use a link-first flow and auto-join after verified sign-in", () => {
   assert.match(appSource, /title="分享與共同編輯"/);
-  assert.match(appSource, /建立專屬檢視連結/);
   assert.match(appSource, /複製檢視連結/);
-  assert.match(appSource, /網址列只代表 App/);
+  assert.match(appSource, /App 首頁網址不包含作品內容/);
   assert.match(appSource, /requestAdvancedFeature\("shared-moodboard"\)/);
   assert.match(appSource, /automaticCollaborationJoinRef\.current = inviteId;\s*joinCloudCollaboration\(inviteId\);/);
+});
+
+test("opening sharing plans one safe create or same-board resume action", () => {
+  const base = {
+    panelOpen: true,
+    hydrated: true,
+    authReady: true,
+    incomingInviteId: "",
+    hasSession: false,
+    status: "idle",
+    boardId: "board-a",
+    resume: null,
+  };
+  assert.deepEqual(resolveCollaborationSharePreparation(base), {
+    action: "create",
+    key: "create:board-a",
+  });
+  assert.deepEqual(resolveCollaborationSharePreparation({
+    ...base,
+    resume: { roomId: "room-a", boardId: "board-a", inviteId: "invite_abcdefghijklmnopqrstuvwx" },
+  }), {
+    action: "resume",
+    key: "resume:board-a:room-a",
+  });
+  assert.equal(resolveCollaborationSharePreparation({ ...base, panelOpen: false }).action, null);
+  assert.equal(resolveCollaborationSharePreparation({ ...base, authReady: false }).action, null);
+  assert.equal(resolveCollaborationSharePreparation({ ...base, incomingInviteId: "invite-a" }).action, null);
+  assert.equal(resolveCollaborationSharePreparation({ ...base, hasSession: true }).action, null);
+  assert.equal(resolveCollaborationSharePreparation({ ...base, status: "creating" }).action, null);
+  assert.equal(resolveCollaborationSharePreparation({
+    ...base,
+    resume: { roomId: "room-b", boardId: "board-b", inviteId: "invite_abcdefghijklmnopqrstuvwx" },
+  }).action, "create");
+  assert.equal(resolveCollaborationSharePreparation({
+    ...base,
+    resume: { roomId: "room-a", boardId: "board-a", inviteId: "" },
+  }).action, "recover");
+  assert.match(appSource, /上次的共編空間缺少可複製的分享連結；原空間與協作者不會變更/);
+  assert.match(appSource, /!resumeRequiresNewLink \? <button className="primary-button"/);
+});
+
+test("shared-board callbacks cannot replace a different active Moodboard", () => {
+  assert.equal(shouldApplyCollaborationBoard("board-a", "board-a"), true);
+  assert.equal(shouldApplyCollaborationBoard("board-a", "board-b"), false);
+  assert.equal(shouldApplyCollaborationBoard("", "board-b"), true);
+  assert.match(appSource, /shouldApplyCollaborationBoard\(expectedBoardId, boardRef\.current\.id\)/);
+});
+
+test("sharing panel exposes the link and direct member permissions without expanding a details control", () => {
+  assert.match(appSource, /擁有存取權的使用者/);
+  assert.match(appSource, /<select[\s\S]{0,560}<option value="viewer">檢視者<\/option>[\s\S]{0,120}<option value="editor">編輯者<\/option>/);
+  assert.doesNotMatch(appSource, /<details className="collaboration-member-management">\s*<summary><Users[^>]*\/>管理成員權限/);
+  assert.match(appSource, /一般存取權限/);
+  assert.match(appSource, /連結權限固定為僅檢視/);
+  assert.match(appSource, /disabled=\{Boolean\(permissionAction\) \|\| cloud\.status === "offline"\}/);
+  assert.match(appSource, /正在準備分享連結…/);
+  assert.match(appSource, /onRetryRoom/);
+  assert.match(stylesSource, /\.collaboration-role-control select \{[\s\S]*min-height: 36px;/);
+  assert.match(stylesSource, /\.collaboration-role-control,[\s\S]*\.collaboration-role-control select,[\s\S]*min-height: 44px;[\s\S]*width: 100%;/);
 });
 
 test("collaboration document keeps assets while preserving each device viewport", () => {

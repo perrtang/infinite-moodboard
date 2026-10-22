@@ -228,7 +228,9 @@ import {
   collaborationRoleLabel,
   loadCollaborationResume,
   normalizeCollaborationInvite,
+  resolveCollaborationSharePreparation,
   saveCollaborationResume,
+  shouldApplyCollaborationBoard,
 } from "./collaboration-state.js";
 import { clearCollaborationQueue } from "./collaboration-queue.js";
 import {
@@ -5991,9 +5993,10 @@ function CollaborationModal({
   cloud,
   initialInvite,
   resumeAvailable,
+  resumeRequiresNewLink,
   onCreateRoom,
   onJoinRoom,
-  onResumeRoom,
+  onRetryRoom,
   onCopyInvite,
   onRequestEditAccess,
   onResolveAccessRequest,
@@ -6022,7 +6025,7 @@ function CollaborationModal({
   }, [initialInvite]);
 
   return (
-    <Modal title="分享與共同編輯" description="網址列只代表 App；請從這裡複製目前 Moodboard 的專屬連結。" onClose={onClose} wide>
+    <Modal title="分享與共同編輯" description="複製目前 Moodboard 的檢視連結，並在下方直接管理每位成員的檢視或編輯權限。" onClose={onClose} wide>
       <section className={`cloud-collaboration-panel is-${cloud.status}`} aria-live="polite">
         {cloudConnected ? (
           <>
@@ -6030,23 +6033,23 @@ function CollaborationModal({
               <div><strong data-l10n-ignore>{boardName || "未命名 Infinite Moodboard"}</strong><small>{cloud.role === "owner" ? "已開啟分享" : "已加入分享的 Moodboard"}</small></div>
               <span className="cloud-role-badge">{collaborationRoleLabel(cloud.role)}</span>
             </div>
-            {cloud.role === "owner" ? (
+            {cloud.inviteUrl ? (
               <section className="collaboration-share-card" aria-labelledby="collaboration-share-link-title">
                 <div className="collaboration-share-summary">
                   <span className="collaboration-permission-icon" aria-hidden="true"><Share2 size={18} /></span>
                   <div>
-                    <strong id="collaboration-share-link-title">專屬檢視連結</strong>
-                    <small>同事完成 Email 驗證登入後可檢視這份 Moodboard；只有提出申請並由你核准後才能編輯。</small>
+                    <strong id="collaboration-share-link-title">分享連結</strong>
+                    <small>任何持有連結且已登入的用戶都能檢視；編輯仍需由擁有者核准。</small>
                   </div>
                 </div>
                 <label className="collaboration-invite-field">
-                  <span>目前 Moodboard 的專屬檢視連結</span>
+                  <span>目前 Moodboard 的分享連結</span>
                   <div>
                     <input
                       value={cloud.inviteUrl || ""}
                       readOnly
                       data-l10n-ignore
-                      aria-label="目前 Moodboard 的專屬檢視連結"
+                      aria-label="目前 Moodboard 的分享連結"
                       onFocus={(event) => event.currentTarget.select()}
                     />
                     <button className="primary-button" type="button" onClick={onCopyInvite} disabled={!cloud.inviteUrl}><Copy size={16} />複製檢視連結</button>
@@ -6055,16 +6058,84 @@ function CollaborationModal({
                 <p className="collaboration-share-note"><History size={14} />分享連結自建立起 30 天內有效；已加入的成員可繼續使用。</p>
               </section>
             ) : null}
-            <p className="cloud-collaboration-message">{cloud.message || "即時共編已連線。"}</p>
-            <div className="collaboration-peer-list" aria-label="目前共編成員">
-              {(cloud.peers || []).map((peer) => (
-                <span key={peer.id} className={peer.self ? "is-self" : ""} title={peer.self ? "這個分頁" : peer.name}>
-                  <UserRound size={14} /><b data-l10n-ignore>{peer.name}</b>{peer.self ? <small>你</small> : null}
-                </span>
-              ))}
-              {!cloud.peers?.length ? <span><Users size={14} /><b>等待其他協作者</b></span> : null}
-            </div>
-            {cloud.pendingCount ? <p className="cloud-pending-note"><RefreshCw size={14} className={cloud.status === "syncing" ? "is-spinning" : ""} />{`${cloud.pendingCount} 個變更等待同步`}</p> : null}
+            {cloud.role === "owner" ? (
+              <section className="collaboration-permission-section collaboration-access-section" aria-labelledby="collaboration-member-access-title">
+                <div className="collaboration-permission-heading">
+                  <span className="collaboration-permission-icon"><Users size={17} /></span>
+                  <div>
+                    <strong id="collaboration-member-access-title">擁有存取權的使用者</strong>
+                    <small>成員的檢視或編輯權限會在這裡直接更新。</small>
+                  </div>
+                </div>
+                {cloud.members?.length ? (
+                  <div className="collaboration-member-list">
+                    {cloud.members.map((member) => {
+                      const roleActionKey = `role:${member.uid}`;
+                      const updatingRole = permissionAction === roleActionKey;
+                      return (
+                        <article key={member.uid}>
+                          <span className="collaboration-member-identity">
+                            <UserRound size={15} />
+                            <span><b data-l10n-ignore>{member.name}</b><small>{member.role === "owner" ? "Moodboard 擁有者" : collaborationRoleLabel(member.role)}</small></span>
+                          </span>
+                          {member.role === "owner" ? (
+                            <span className="collaboration-fixed-role"><Lock size={14} />擁有者</span>
+                          ) : (
+                            <span className="collaboration-role-control" aria-busy={updatingRole || undefined}>
+                              <select
+                                aria-label="成員權限"
+                                title={cloud.status === "offline" ? "連線後才能更新成員權限" : "直接更新成員權限"}
+                                value={member.role}
+                                onChange={(event) => runPermissionAction(roleActionKey, () => onSetMemberRole(member.uid, event.target.value))}
+                                disabled={Boolean(permissionAction) || cloud.status === "offline"}
+                              >
+                                <option value="viewer">檢視者</option>
+                                <option value="editor">編輯者</option>
+                              </select>
+                              {updatingRole ? <RefreshCw className="is-spinning" size={14} aria-label="正在更新權限…" /> : null}
+                            </span>
+                          )}
+                        </article>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="collaboration-list-loading"><RefreshCw className="is-spinning" size={14} />正在讀取成員…</p>
+                )}
+              </section>
+            ) : null}
+            {cloud.role === "owner" && pendingAccessRequests.length ? (
+              <section className="collaboration-permission-section" aria-labelledby="collaboration-pending-title">
+                <div className="collaboration-permission-heading">
+                  <span className="collaboration-permission-icon"><Users size={17} /></span>
+                  <div><strong id="collaboration-pending-title">編輯權限申請</strong><small>{`${pendingAccessRequests.length} 位檢視者等待你的決定。`}</small></div>
+                </div>
+                <div className="collaboration-request-list">
+                  {pendingAccessRequests.map((request) => (
+                    <article key={request.uid}>
+                      <span><UserRound size={15} /><b data-l10n-ignore>{request.name}</b></span>
+                      <div>
+                        <button className="secondary-button" type="button" onClick={() => runPermissionAction(`approve:${request.uid}`, () => onResolveAccessRequest(request.uid, "approved"))} disabled={Boolean(permissionAction)}><Check size={14} />核准</button>
+                        <button className="text-button" type="button" onClick={() => runPermissionAction(`deny:${request.uid}`, () => onResolveAccessRequest(request.uid, "denied"))} disabled={Boolean(permissionAction)}><X size={14} />拒絕</button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+            <section className="collaboration-permission-section collaboration-general-access" aria-labelledby="collaboration-general-access-title">
+              <div className="collaboration-general-access-row">
+                <div className="collaboration-permission-heading">
+                  <span className="collaboration-permission-icon"><Share2 size={17} /></span>
+                  <div>
+                    <strong id="collaboration-general-access-title">一般存取權限</strong>
+                    <small>知道連結且已登入的人</small>
+                  </div>
+                </div>
+                <span className="collaboration-fixed-role"><Eye size={14} />僅檢視</span>
+              </div>
+              <p>連結權限固定為僅檢視；如需編輯，對方可提出申請，再由擁有者核准。</p>
+            </section>
             {cloud.role === "viewer" ? (
               <section className="collaboration-permission-section" aria-labelledby="collaboration-edit-access-title">
                 <div className="collaboration-permission-heading">
@@ -6091,66 +6162,46 @@ function CollaborationModal({
                 )}
               </section>
             ) : null}
-            {cloud.role === "owner" && pendingAccessRequests.length ? (
-              <section className="collaboration-permission-section" aria-labelledby="collaboration-pending-title">
-                <div className="collaboration-permission-heading">
-                  <span className="collaboration-permission-icon"><Users size={17} /></span>
-                  <div><strong id="collaboration-pending-title">編輯權限申請</strong><small>{`${pendingAccessRequests.length} 位檢視者等待你的決定。`}</small></div>
-                </div>
-                <div className="collaboration-request-list">
-                  {pendingAccessRequests.map((request) => (
-                    <article key={request.uid}>
-                      <span><UserRound size={15} /><b data-l10n-ignore>{request.name}</b></span>
-                      <div>
-                        <button className="secondary-button" type="button" onClick={() => runPermissionAction(`approve:${request.uid}`, () => onResolveAccessRequest(request.uid, "approved"))} disabled={Boolean(permissionAction)}><Check size={14} />核准</button>
-                        <button className="text-button" type="button" onClick={() => runPermissionAction(`deny:${request.uid}`, () => onResolveAccessRequest(request.uid, "denied"))} disabled={Boolean(permissionAction)}><X size={14} />拒絕</button>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              </section>
-            ) : null}
-            {cloud.role === "owner" && cloud.members?.length ? (
-              <details className="collaboration-member-management">
-                <summary><Users size={15} />管理成員權限 <small>{cloud.members.length}</small></summary>
-                <div className="collaboration-member-list">
-                  {cloud.members.map((member) => (
-                    <article key={member.uid}>
-                      <span><UserRound size={15} /><b data-l10n-ignore>{member.name}</b><small>{collaborationRoleLabel(member.role)}</small></span>
-                      {member.role !== "owner" ? (
-                        <button
-                          className="text-button"
-                          type="button"
-                          onClick={() => runPermissionAction(`role:${member.uid}`, () => onSetMemberRole(member.uid, member.role === "editor" ? "viewer" : "editor"))}
-                          disabled={Boolean(permissionAction)}
-                        >
-                          {member.role === "editor" ? <Eye size={14} /> : <Unlock size={14} />}{member.role === "editor" ? "改為僅檢視" : "允許編輯"}
-                        </button>
-                      ) : null}
-                    </article>
-                  ))}
-                </div>
-              </details>
-            ) : null}
+            <div className="collaboration-live-status">
+              <p className="cloud-collaboration-message">{cloud.message || "即時共編已連線。"}</p>
+              <div className="collaboration-peer-list" aria-label="目前共編成員">
+                {(cloud.peers || []).map((peer) => (
+                  <span key={peer.id} className={peer.self ? "is-self" : ""} title={peer.self ? "這個分頁" : peer.name}>
+                    <UserRound size={14} /><b data-l10n-ignore>{peer.name}</b>{peer.self ? <small>你</small> : null}
+                  </span>
+                ))}
+                {!cloud.peers?.length ? <span><Users size={14} /><b>等待其他協作者</b></span> : null}
+              </div>
+              {cloud.pendingCount ? <p className="cloud-pending-note"><RefreshCw size={14} className={cloud.status === "syncing" ? "is-spinning" : ""} />{`${cloud.pendingCount} 個變更等待同步`}</p> : null}
+            </div>
             <div className="cloud-collaboration-actions">
               <button className="quiet-button" type="button" onClick={onLeaveRoom}><X size={15} />{cloud.role === "owner" ? "停止在這台裝置共編" : "離開共編"}</button>
             </div>
           </>
         ) : (
           <>
-            <div className="cloud-collaboration-choice">
-              <div><strong>分享目前 Moodboard</strong><small>會先建立可復原的本機版本，再上傳這一份 Moodboard 的共編資料。</small></div>
-              <button className="primary-button" type="button" onClick={onCreateRoom} disabled={cloudBusy}><Share2 size={16} />{cloud.status === "creating" ? "建立中…" : "建立專屬檢視連結"}</button>
+            <div className={`collaboration-preparation-state${cloud.status === "error" ? " is-error" : ""}`}>
+              <span className="collaboration-permission-icon" aria-hidden="true">
+                {cloud.status === "error" ? <AlertTriangle size={19} /> : <RefreshCw className="is-spinning" size={19} />}
+              </span>
+              <div>
+                <strong>{cloud.status === "error" ? "無法準備分享連結" : "正在準備分享連結…"}</strong>
+                <small>{cloud.message || "會先建立可復原的本機版本，再上傳這一份 Moodboard 的共編資料。"}</small>
+              </div>
             </div>
-            <details className="collaboration-member-management collaboration-join-options" open={Boolean(initialInvite || cloud.status === "error")}>
+            {cloud.status === "error" ? (
+              <div className="collaboration-preparation-actions">
+                {!resumeRequiresNewLink ? <button className="primary-button" type="button" onClick={onRetryRoom} disabled={cloudBusy}><RefreshCw size={15} />重新嘗試</button> : null}
+                {resumeAvailable ? <button className={resumeRequiresNewLink ? "primary-button" : "secondary-button"} type="button" onClick={onCreateRoom} disabled={cloudBusy}><Plus size={15} />建立新的檢視連結</button> : null}
+              </div>
+            ) : null}
+            <details className="collaboration-member-management collaboration-join-options" open={Boolean(initialInvite)}>
               <summary><Share2 size={15} />加入別人分享的 Moodboard</summary>
               <label className="collaboration-invite-field">
                 <span>分享連結或代碼</span>
                 <div><input value={inviteDraft} onChange={(event) => setInviteDraft(event.target.value)} placeholder="貼上 ?collab=… 連結" /><button className="secondary-button" type="button" onClick={() => onJoinRoom(inviteDraft)} disabled={cloudBusy || !inviteDraft.trim()}><Share2 size={15} />加入檢視</button></div>
               </label>
-              {resumeAvailable ? <button className="text-button collaboration-resume-button" type="button" onClick={onResumeRoom} disabled={cloudBusy}><RefreshCw size={14} />繼續上次的共編空間</button> : null}
             </details>
-            {cloud.message ? <p className={`cloud-collaboration-message${cloud.status === "error" ? " is-error" : ""}`}>{cloud.message}</p> : null}
           </>
         )}
       </section>
@@ -6163,7 +6214,7 @@ function CollaborationModal({
       </details>
       <div className="architecture-note">
         <strong>分享、儲存與隱私</strong>
-        <p>分享只會上傳目前這一份 Moodboard；Google Drive 的儲存與同步仍在「我的 Moodboards」管理，兩者不是同一個連結。App 首頁網址不包含作品內容，也不代表編輯權限。網路中斷時，變更會先留在這台裝置，恢復連線後再合併。</p>
+        <p>開啟這個分享面板時，只會為目前這一份 Moodboard 準備分享連結；Google Drive 的儲存與同步仍在「我的 Moodboards」管理，兩者不是同一個連結。App 首頁網址不包含作品內容，也不代表編輯權限。</p>
       </div>
     </Modal>
   );
@@ -7210,6 +7261,7 @@ function App() {
   const cloudCollaborationSessionRef = useRef(null);
   const initialCollaborationInviteRef = useRef(normalizeCollaborationInvite(window.location.href));
   const automaticCollaborationJoinRef = useRef("");
+  const automaticCollaborationShareRef = useRef("");
   const saveTimerRef = useRef(null);
   const localSavePromiseRef = useRef(Promise.resolve());
   const localFileSavePromiseRef = useRef(Promise.resolve());
@@ -9578,30 +9630,45 @@ function App() {
     window.history.replaceState({}, "", url);
   }, []);
 
-  const collaborationSessionOptions = useCallback(() => ({
-    board: boardSnapshot(),
-    user: authSession.user,
-    clientId: sessionIdRef.current,
-    displayName: sessionName,
-    onBoard: applyCloudCollaborationBoard,
-    onState: (nextState) => setCloudCollaboration((current) => ({ ...current, ...nextState })),
-  }), [applyCloudCollaborationBoard, authSession.user, boardSnapshot, sessionName]);
+  const collaborationSessionOptions = useCallback((sharedBoard = null) => {
+    const expectedBoardId = sharedBoard?.id ? String(sharedBoard.id) : "";
+    return {
+      board: sharedBoard || boardSnapshot(),
+      user: authSession.user,
+      clientId: sessionIdRef.current,
+      displayName: sessionName,
+      onBoard: (incomingBoard) => {
+        if (!shouldApplyCollaborationBoard(expectedBoardId, boardRef.current.id)) return;
+        applyCloudCollaborationBoard(incomingBoard);
+      },
+      onState: (nextState) => setCloudCollaboration((current) => ({ ...current, ...nextState })),
+    };
+  }, [applyCloudCollaborationBoard, authSession.user, boardSnapshot, sessionName]);
 
   const startCloudCollaboration = useCallback(async () => {
     if (!authReady) {
       requestAdvancedFeature("collaboration");
       return;
     }
+    const sharedBoard = boardSnapshot();
+    const sharedBoardId = sharedBoard.id;
     await stopCloudCollaboration({ forget: false });
     setCloudCollaboration({ ...EMPTY_CLOUD_COLLABORATION, status: "creating", message: "正在建立安全的分享連結…" });
     try {
       const { createMoodboardCollaborationRoom } = await loadCollaborationRuntime();
-      await saveVersion(boardSnapshot(), translateInterfaceText("開始即時共編前"), "automatic");
-      const session = await createMoodboardCollaborationRoom(collaborationSessionOptions());
+      await saveVersion(sharedBoard, translateInterfaceText("開始即時共編前"), "automatic");
+      const session = await createMoodboardCollaborationRoom(collaborationSessionOptions(sharedBoard));
+      if (boardRef.current.id !== sharedBoardId) {
+        await session.destroy().catch(() => undefined);
+        const message = "建立分享連結期間已切換 Moodboard；剛才的內容已保留，請重新開啟分享。";
+        setCloudCollaboration({ ...EMPTY_CLOUD_COLLABORATION, status: "error", message });
+        announce(message, "warning");
+        return;
+      }
       cloudCollaborationSessionRef.current = session;
       const resume = saveCollaborationResume(localStorage, {
         roomId: session.roomId,
-        boardId: boardRef.current.id,
+        boardId: sharedBoardId,
         inviteId: session.inviteId,
       });
       setCollaborationResume(resume);
@@ -9651,16 +9718,29 @@ function App() {
 
   const resumeCloudCollaboration = useCallback(async () => {
     if (!authReady || !collaborationResume?.roomId) return;
+    const sharedBoard = boardSnapshot();
+    if (collaborationResume.boardId !== sharedBoard.id) {
+      setCloudCollaboration({ ...EMPTY_CLOUD_COLLABORATION, status: "error", message: "上次的分享連結屬於另一份 Moodboard；可為目前內容建立新連結。" });
+      return;
+    }
+    const sharedBoardId = sharedBoard.id;
     await stopCloudCollaboration({ forget: false });
     setCloudCollaboration({ ...EMPTY_CLOUD_COLLABORATION, status: "connecting", message: "正在續接上次的共編空間…" });
     try {
       const { resumeMoodboardCollaborationRoom } = await loadCollaborationRuntime();
-      await saveVersion(boardSnapshot(), translateInterfaceText("續接即時共編前"), "automatic");
+      await saveVersion(sharedBoard, translateInterfaceText("續接即時共編前"), "automatic");
       const session = await resumeMoodboardCollaborationRoom({
-        ...collaborationSessionOptions(),
+        ...collaborationSessionOptions(sharedBoard),
         roomId: collaborationResume.roomId,
         inviteId: collaborationResume.inviteId,
       });
+      if (boardRef.current.id !== sharedBoardId) {
+        await session.destroy().catch(() => undefined);
+        const message = "恢復分享連結期間已切換 Moodboard；目前內容不會被取代。";
+        setCloudCollaboration({ ...EMPTY_CLOUD_COLLABORATION, status: "error", message });
+        announce(message, "warning");
+        return;
+      }
       cloudCollaborationSessionRef.current = session;
       announce("已續接上次的即時共編空間。", "success");
     } catch (error) {
@@ -9709,8 +9789,35 @@ function App() {
 
   const leaveCloudCollaboration = useCallback(async () => {
     await stopCloudCollaboration({ forget: true });
+    automaticCollaborationShareRef.current = "";
+    setShowCollaboration(false);
     announce("已離開共編；目前畫布仍保存在這台裝置。", "success");
   }, [announce, stopCloudCollaboration]);
+
+  const prepareCloudCollaborationShare = useCallback(({ force = false, forceNew = false } = {}) => {
+    const plan = resolveCollaborationSharePreparation({
+      panelOpen: showCollaboration,
+      hydrated,
+      authReady,
+      incomingInviteId: initialCollaborationInviteRef.current,
+      hasSession: Boolean(cloudCollaborationSessionRef.current || cloudCollaboration.roomId),
+      status: cloudCollaboration.status,
+      boardId: boardRef.current.id,
+      resume: forceNew ? null : collaborationResume,
+    });
+    if (!plan.action) return false;
+    if (!force && automaticCollaborationShareRef.current === plan.key) return false;
+    automaticCollaborationShareRef.current = plan.key;
+    if (plan.action === "recover") {
+      setCloudCollaboration({
+        ...EMPTY_CLOUD_COLLABORATION,
+        status: "error",
+        message: "上次的共編空間缺少可複製的分享連結；原空間與協作者不會變更。請明確建立新連結，並把新連結重新提供給協作者。",
+      });
+    } else if (plan.action === "resume") resumeCloudCollaboration();
+    else startCloudCollaboration();
+    return true;
+  }, [authReady, cloudCollaboration.roomId, cloudCollaboration.status, collaborationResume, hydrated, resumeCloudCollaboration, showCollaboration, startCloudCollaboration]);
 
   useEffect(() => {
     if (authReady || !cloudCollaborationSessionRef.current) return;
@@ -9738,6 +9845,14 @@ function App() {
     automaticCollaborationJoinRef.current = inviteId;
     joinCloudCollaboration(inviteId);
   }, [authReady, authSession.status, hydrated, joinCloudCollaboration, requestAdvancedFeature]);
+
+  useEffect(() => {
+    if (!showCollaboration) {
+      automaticCollaborationShareRef.current = "";
+      return;
+    }
+    prepareCloudCollaborationShare();
+  }, [prepareCloudCollaborationShare, showCollaboration]);
 
   const activateLocalMoodboard = useCallback(async (nextBoard, message) => {
     const current = boardSnapshot();
@@ -13674,9 +13789,12 @@ function App() {
           cloud={cloudCollaboration}
           initialInvite={initialCollaborationInviteRef.current}
           resumeAvailable={Boolean(collaborationResume?.roomId && collaborationResume.boardId === board.id)}
-          onCreateRoom={startCloudCollaboration}
+          resumeRequiresNewLink={Boolean(collaborationResume?.roomId
+            && collaborationResume.boardId === board.id
+            && !normalizeCollaborationInvite(collaborationResume.inviteId))}
+          onCreateRoom={() => prepareCloudCollaborationShare({ force: true, forceNew: true })}
           onJoinRoom={joinCloudCollaboration}
-          onResumeRoom={resumeCloudCollaboration}
+          onRetryRoom={() => prepareCloudCollaborationShare({ force: true })}
           onCopyInvite={copyCloudCollaborationInvite}
           onRequestEditAccess={requestCloudCollaborationEditAccess}
           onResolveAccessRequest={resolveCloudCollaborationAccessRequest}

@@ -8477,6 +8477,7 @@ button.status-label:hover {
 .collaboration-permission-heading > div {
   display: grid;
   gap: 2px;
+  min-width: 0;
 }
 
 .collaboration-permission-heading strong,
@@ -8533,6 +8534,138 @@ button.status-label:hover {
 .collaboration-member-list b {
   font-size: calc(10px + var(--ui-font-offset, 0px));
   font-weight: 650;
+}
+
+.collaboration-member-identity {
+  min-width: 0;
+}
+
+.collaboration-member-identity > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.collaboration-member-identity b,
+.collaboration-member-identity small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collaboration-role-control {
+  align-items: center;
+  display: inline-flex;
+  flex: none;
+  gap: 7px;
+}
+
+.collaboration-role-control select {
+  appearance: none;
+  background-color: var(--control-bg);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
+    linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) calc(50% - 2px),
+    calc(100% - 9px) calc(50% - 2px);
+  background-repeat: no-repeat;
+  background-size: 5px 5px, 5px 5px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+  min-height: 36px;
+  min-width: 112px;
+  padding: 7px 28px 7px 10px;
+}
+
+.collaboration-role-control select:focus {
+  border-color: var(--accent-ui);
+  box-shadow: 0 0 0 3px rgb(var(--accent-rgb) / 0.1);
+  outline: none;
+}
+
+.collaboration-role-control select:disabled {
+  cursor: wait;
+  opacity: 0.66;
+}
+
+.collaboration-fixed-role {
+  align-items: center;
+  color: var(--text-muted);
+  display: inline-flex;
+  flex: none;
+  font-size: calc(10px + var(--ui-font-offset, 0px));
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 10px;
+}
+
+.collaboration-general-access-row {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.collaboration-general-access-row .collaboration-permission-heading {
+  min-width: 0;
+}
+
+.collaboration-general-access > p,
+.collaboration-list-loading {
+  color: var(--text-muted);
+  font-size: calc(9px + var(--ui-font-offset, 0px));
+  line-height: 1.5;
+  margin: 0;
+}
+
+.collaboration-list-loading {
+  align-items: center;
+  display: flex;
+  gap: 7px;
+}
+
+.collaboration-live-status {
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 8px;
+  padding-top: 11px;
+}
+
+.collaboration-preparation-state {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  min-height: 58px;
+}
+
+.collaboration-preparation-state > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.collaboration-preparation-state strong {
+  font-size: calc(11px + var(--ui-font-offset, 0px));
+}
+
+.collaboration-preparation-state small {
+  color: var(--text-muted);
+  font-size: calc(9px + var(--ui-font-offset, 0px));
+  line-height: 1.5;
+}
+
+.collaboration-preparation-state.is-error .collaboration-permission-icon,
+.collaboration-preparation-state.is-error strong {
+  color: var(--danger);
+}
+
+.collaboration-preparation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .collaboration-member-management {
@@ -10434,6 +10567,24 @@ button.status-label:hover {
     align-items: stretch;
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .collaboration-general-access-row,
+  .collaboration-preparation-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .collaboration-fixed-role {
+    min-height: 44px;
+    padding: 0;
+  }
+
+  .collaboration-role-control,
+  .collaboration-role-control select,
+  .collaboration-preparation-actions button {
+    min-height: 44px;
+    width: 100%;
   }
 }
 

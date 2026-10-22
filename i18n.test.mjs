@@ -180,6 +180,18 @@ test("real-time collaboration copy is localized", () => {
   assert.equal(translateInterfaceText("分享", "en"), "Share");
   assert.equal(translateInterfaceText("建立分享連結", "en"), "Create share link");
   assert.equal(translateInterfaceText("複製分享連結", "en"), "Copy share link");
+  assert.match(translateInterfaceText("任何持有連結且已登入的用戶都能檢視；編輯仍需由擁有者核准。", "en"), /owner still approves/);
+  assert.equal(translateInterfaceText("擁有存取權的使用者", "en"), "People with access");
+  assert.equal(translateInterfaceText("連線後才能更新成員權限", "en"), "Reconnect to update member access");
+  assert.equal(translateInterfaceText("一般存取權限", "en"), "General access");
+  assert.equal(translateInterfaceText("檢視者", "en"), "Viewer");
+  assert.equal(translateInterfaceText("編輯者", "zh-Hans"), "编辑者");
+  assert.equal(translateInterfaceText("正在準備分享連結…", "en"), "Preparing share link…");
+  assert.equal(translateInterfaceText("加入別人分享的 Moodboard", "en"), "Join a Moodboard someone shared");
+  assert.match(translateInterfaceText("建立分享連結期間已切換 Moodboard；剛才的內容已保留，請重新開啟分享。", "en"), /previous work is safe/);
+  assert.match(translateInterfaceText("上次的分享連結屬於另一份 Moodboard；可為目前內容建立新連結。", "en"), /another Moodboard/);
+  assert.match(translateInterfaceText("恢復分享連結期間已切換 Moodboard；目前內容不會被取代。", "en"), /was not replaced/);
+  assert.match(translateInterfaceText("上次的共編空間缺少可複製的分享連結；原空間與協作者不會變更。請明確建立新連結，並把新連結重新提供給協作者。", "en"), /remain unchanged/);
   assert.equal(translateInterfaceText("登入後開啟分享的 Moodboard", "en"), "Sign in to open the shared Moodboard");
   assert.equal(translateInterfaceText("可編輯", "en"), "Can edit");
   assert.equal(translateInterfaceText("3 個變更等待同步", "en"), "3 changes waiting to sync");
