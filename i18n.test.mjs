@@ -141,6 +141,8 @@ test("Google Drive storage and recovery copy is localized", () => {
   assert.equal(translateInterfaceText("只要求 drive.file 最小權限", "en"), "Requests only the minimum drive.file permission");
   assert.match(translateInterfaceText("Google Drive 是主要保存位置；每次編輯仍會先安全保存在這台裝置。", "en"), /saved on this device first/);
   assert.equal(translateInterfaceText("Google Drive 已同步", "en"), "Google Drive synced");
+  assert.equal(translateInterfaceText("Google Drive 已同步；本機同步佇列待整理", "en"), "Google Drive synced; the local sync queue needs cleanup");
+  assert.equal(translateInterfaceText("本機同步佇列狀態暫時無法更新。", "en"), "The local sync queue could not be updated temporarily.");
   assert.equal(translateInterfaceText("本機安全暫存", "en"), "Local safety cache");
   assert.equal(translateInterfaceText("等待同步", "en"), "Waiting to sync");
   assert.equal(translateInterfaceText("新增 Moodboard", "en"), "New Moodboard");
@@ -151,7 +153,7 @@ test("Google Drive storage and recovery copy is localized", () => {
   assert.equal(translateInterfaceText("2 / 5 個 Drive 檔案", "en"), "2 / 5 Drive files");
   assert.equal(translateInterfaceText("目前 Drive 帳號：person@example.com", "en"), "Current Drive account: person@example.com");
   assert.match(translateInterfaceText("Google Drive 空間不足；畫布仍安全保存在這台裝置。", "en"), /remains safely saved/);
-  assert.match(translateInterfaceText("正在先保存本機版本，再確認 Drive 空間與遠端版本…", "en"), /Saving the local version first/);
+  assert.match(translateInterfaceText("正在嘗試更新本機復原副本，再確認 Drive 空間與遠端版本…", "en"), /Trying to update the local recovery copy/);
   assert.match(translateInterfaceText("已中斷這個分頁的 Google Drive；雲端檔案、本機畫布與 PETFASHION 登入都未受影響。", "en"), /disconnected from this tab/);
   assert.equal(translateInterfaceText("儲存與同步", "zh-Hans"), "保存与同步");
   assert.equal(translateInterfaceText("選擇主要儲存位置", "zh-Hans"), "选择主要保存位置");

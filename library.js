@@ -11,8 +11,22 @@ function linkedBoardIdForFile(fileId, links) {
   return Object.entries(links || {}).find(([, link]) => link?.fileId === fileId)?.[0] || "";
 }
 
+function syncJobCoveredByLink(job, link) {
+  if (!job || !link) return false;
+  const snapshotRevision = Number(job.snapshotRevision || job.board?.revision || 0);
+  const snapshotUpdatedAt = String(job.snapshotUpdatedAt || job.board?.updatedAt || "");
+  const syncedRevision = Number(link.syncedRevision || 0);
+  const syncedUpdatedAt = String(link.syncedUpdatedAt || "");
+  const hasSnapshotFingerprint = snapshotRevision > 0 || Boolean(snapshotUpdatedAt);
+  const revisionCovered = snapshotRevision <= 0 || syncedRevision >= snapshotRevision;
+  const timestampCovered = !snapshotUpdatedAt || Boolean(syncedUpdatedAt && syncedUpdatedAt >= snapshotUpdatedAt);
+  return hasSnapshotFingerprint && revisionCovered && timestampCovered;
+}
+
 export function moodboardLibraryStatus(item) {
-  if (item.syncJob && SYNC_STATES.has(item.syncJob.state)) return item.syncJob.state;
+  if (item.syncJob && SYNC_STATES.has(item.syncJob.state) && !syncJobCoveredByLink(item.syncJob, item.link)) {
+    return item.syncJob.state;
+  }
   if (item.local && item.remote) {
     const linkedVersion = String(item.link?.version || "");
     const remoteVersion = String(item.remote?.version || "");
@@ -78,13 +92,13 @@ export function mergeMoodboardLibrary({ localBoards = [], remoteFiles = [], sync
     items.set(boardId, {
       key: `board:${boardId}`,
       boardId,
-      name: String(job.board?.name || "未命名 Infinite Moodboard"),
+      name: String(job.name || job.board?.name || "未命名 Infinite Moodboard"),
       local: null,
       remote: null,
       syncJob: job,
       link: links?.[boardId] || null,
       linkedFileId: String(job.fileId || links?.[boardId]?.fileId || ""),
-      updatedAt: newestTimestamp(job.updatedAt, job.board?.updatedAt),
+      updatedAt: newestTimestamp(job.updatedAt, job.snapshotUpdatedAt, job.board?.updatedAt),
     });
   }
 

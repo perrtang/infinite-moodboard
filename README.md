@@ -26,6 +26,16 @@ Infinite Moodboard runs the canvas, imported media, transforms, exports, and ver
 - Optional Google Drive file storage and Drive-native sharing with viewer/editor permissions on the same file.
 - 3D, Drive sharing, and export runtimes are loaded only when used, keeping the opening bundle smaller.
 
+## v0.52.0 — large-board Drive sync recovery release
+
+[Read the complete v0.52.0 release notes.](./public/release-notes/v0.52.0.html)
+
+- Continues Google Drive upload when the browser cannot update its local recovery copy, while clearly warning that the cloud and local outcomes differ.
+- Stores each current board once instead of duplicating the full payload in legacy state and routine sync-queue records.
+- Compacts safe legacy and queued copies before retrying a failed local save, without deleting a newer queued snapshot.
+- Separates sync-queue bookkeeping errors from local recovery failures and retries queue cleanup after a confirmed Drive upload.
+- Prevents a stale queue entry from leaving a successfully uploaded board labelled as still syncing.
+
 ## v0.51.0 — continuous Drive onboarding release
 
 [Read the complete v0.51.0 release notes.](./public/release-notes/v0.51.0.html)

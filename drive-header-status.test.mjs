@@ -25,7 +25,7 @@ test("a confirmed upload stops the spinner before optional Drive metadata refres
   const backgroundRefreshIndex = main.indexOf("void Promise.all([", syncedStateIndex);
   assert.ok(syncedStateIndex > -1);
   assert.ok(backgroundRefreshIndex > syncedStateIndex);
-  assert.match(main.slice(syncedStateIndex, backgroundRefreshIndex), /status: asCopy \? \(current\.conflict \? "conflict" : "ready"\) : "synced"[\s\S]*busy: false/);
+  assert.match(main.slice(syncedStateIndex, backgroundRefreshIndex), /status: asCopy[\s\S]*"synced-local-warning" : "synced"[\s\S]*busy: false/);
 });
 
 test("autosync waits while Drive is busy and retries recoverable errors on the queued deadline", () => {
@@ -36,11 +36,36 @@ test("autosync waits while Drive is busy and retries recoverable errors on the q
 test("Drive failures always settle the spinner before queue recovery work", () => {
   const saveStart = main.indexOf("const saveBoardToGoogleDrive = useCallback");
   const failureStart = main.indexOf("const isConflict = error?.code === \"drive/conflict\"", saveStart);
-  const queueStart = main.indexOf("if (linkedFile && driveSettings.autoSync && !localRecoveryFailed)", failureStart);
+  const queueStart = main.indexOf("if (linkedFile && driveSettings.autoSync)", failureStart);
   const failureBlock = main.slice(failureStart, queueStart);
   assert.ok(saveStart > -1 && failureStart > saveStart && queueStart > failureStart);
   assert.match(failureBlock, /setDriveSession\(\(current\) => \{[\s\S]*busy: false/);
   assert.match(main.slice(failureStart, main.indexOf("return false;", queueStart)), /isGoogleDriveRetryableError\(error\)[\s\S]*nextAttemptAt: retryable/);
   assert.match(main, /DRIVE_LOCAL_RECOVERY_TIMEOUT_MS = 30_000/);
-  assert.match(main, /\["drive\/local-save", "drive\/local-save-timeout"\]\.includes\(error\?\.code\)/);
+  assert.match(main, /retainSnapshot: Boolean\(localRecoveryWarning\)/);
+});
+
+test("a local recovery-copy failure warns but does not block the Drive upload", () => {
+  const saveStart = main.indexOf("const saveBoardToGoogleDrive = useCallback");
+  const warningStart = main.indexOf("noteLocalRecoveryFailure(error instanceof DriveApiError", saveStart);
+  const driveAboutStart = main.indexOf("const about = await getGoogleDriveAbout(accessToken);", warningStart);
+  const uploadStart = main.indexOf("const savedFile = await uploadGoogleDriveMoodboard", driveAboutStart);
+  const localFailureBlock = main.slice(warningStart, driveAboutStart);
+
+  assert.ok(saveStart > -1 && warningStart > saveStart && driveAboutStart > warningStart && uploadStart > driveAboutStart);
+  assert.doesNotMatch(localFailureBlock, /throw new DriveApiError/);
+  assert.match(main.slice(uploadStart, main.indexOf("return true;", uploadStart)), /"synced-local-warning"[\s\S]*Google Drive 已同步/);
+});
+
+test("sync-queue bookkeeping failures never masquerade as local recovery-copy failures", () => {
+  const saveStart = main.indexOf("const saveBoardToGoogleDrive = useCallback");
+  const queueReadStart = main.indexOf("const queuedJob = await getSyncJob(snapshot.id);", saveStart);
+  const driveAboutStart = main.indexOf("const about = await getGoogleDriveAbout(accessToken);", queueReadStart);
+  const queueRemovalStart = main.indexOf("await removeSyncJob(snapshot.id);", driveAboutStart);
+  const syncedStateStart = main.indexOf("const syncedAt = new Date().toISOString();", queueRemovalStart);
+
+  assert.match(main.slice(queueReadStart, driveAboutStart), /catch \(error\) \{\s*noteQueueStateFailure\(error\);/);
+  assert.doesNotMatch(main.slice(queueReadStart, driveAboutStart), /noteLocalRecoveryFailure\(error\)/);
+  assert.match(main.slice(queueRemovalStart, syncedStateStart), /noteQueueStateFailure\(error\)[\s\S]*setSyncJobs[\s\S]*setTimeout[\s\S]*removeSyncJob/);
+  assert.match(main.slice(syncedStateStart, main.indexOf("return true;", syncedStateStart)), /queueStateWarning[\s\S]*Google Drive 已同步；本機同步佇列待整理/);
 });

@@ -29,6 +29,45 @@ test("persistent sync state takes priority over location labels", () => {
   assert.equal(item.status, "conflict");
 });
 
+test("a compact queue record remains identifiable without duplicating the board payload", () => {
+  const [item] = mergeMoodboardLibrary({
+    syncJobs: [{
+      id: "board-queued",
+      boardId: "board-queued",
+      name: "等待同步",
+      snapshotRevision: 12,
+      snapshotUpdatedAt: "2026-10-20T05:00:00.000Z",
+      state: "offline",
+    }],
+  });
+  assert.equal(item.name, "等待同步");
+  assert.equal(item.updatedAt, "2026-10-20T05:00:00.000Z");
+  assert.equal(item.status, "offline");
+});
+
+test("a stale syncing queue entry cannot override a newer confirmed Drive link", () => {
+  const [item] = mergeMoodboardLibrary({
+    localBoards: [{ id: "board-1", name: "研究", revision: 12, updatedAt: "2026-10-20T05:00:00.000Z" }],
+    remoteFiles: [{ id: "drive-1", boardId: "board-1", name: "研究.moodboard", version: "21" }],
+    syncJobs: [{
+      id: "board-1",
+      boardId: "board-1",
+      snapshotRevision: 12,
+      snapshotUpdatedAt: "2026-10-20T05:00:00.000Z",
+      state: "syncing",
+    }],
+    links: {
+      "board-1": {
+        fileId: "drive-1",
+        version: "21",
+        syncedRevision: 12,
+        syncedUpdatedAt: "2026-10-20T05:00:00.000Z",
+      },
+    },
+  });
+  assert.equal(item.status, "synced");
+});
+
 test("legacy Drive links merge files that predate boardId app properties", () => {
   const [item] = mergeMoodboardLibrary({
     localBoards: [{ id: "board-legacy", name: "Legacy" }],

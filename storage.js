@@ -52,6 +52,48 @@ function localBoardRecord(board, savedAt = new Date().toISOString()) {
   };
 }
 
+function compactSyncJobRecord(job, fallbackBoard = null) {
+  const snapshot = job?.board || fallbackBoard;
+  const compacted = {
+    ...job,
+    name: String(job?.name || snapshot?.name || "未命名 Infinite Moodboard"),
+    snapshotRevision: Number.isFinite(Number(job?.snapshotRevision))
+      ? Number(job.snapshotRevision)
+      : Number(snapshot?.revision || 0),
+    snapshotUpdatedAt: String(job?.snapshotUpdatedAt || snapshot?.updatedAt || ""),
+    snapshotObjectCount: Number.isFinite(Number(job?.snapshotObjectCount))
+      ? Number(job.snapshotObjectCount)
+      : Array.isArray(snapshot?.objects) ? snapshot.objects.length : 0,
+  };
+  delete compacted.board;
+  return compacted;
+}
+
+function boardRecordCoversSnapshot(record, snapshot) {
+  if (!record?.board?.id || !snapshot?.id || String(record.board.id) !== String(snapshot.id)) return false;
+  const recordRevision = Number(record.revision ?? record.board.revision ?? 0);
+  const snapshotRevision = Number(snapshot.revision ?? 0);
+  if (recordRevision !== snapshotRevision) return recordRevision > snapshotRevision;
+  const recordUpdatedAt = String(record.updatedAt || record.board.updatedAt || "");
+  const snapshotUpdatedAt = String(snapshot.updatedAt || "");
+  return !snapshotUpdatedAt || !recordUpdatedAt || recordUpdatedAt >= snapshotUpdatedAt;
+}
+
+export function describeLocalPersistenceError(error) {
+  const name = String(error?.name || error?.details?.name || "");
+  const message = String(error?.message || error?.details?.message || "");
+  if (name === "QuotaExceededError" || /quota|space|storage/i.test(message)) {
+    return "這個瀏覽器的本機儲存空間不足。";
+  }
+  if (name === "DataCloneError" || /clone/i.test(message)) {
+    return "目前內容含有瀏覽器無法寫入本機復原副本的資料。";
+  }
+  if (name === "InvalidStateError" || /blocked|transaction|database|indexeddb/i.test(message)) {
+    return "本機資料庫暫時無法寫入，可能有其他 Infinite Moodboard 分頁正在使用。";
+  }
+  return "這個瀏覽器的本機復原副本未能更新。";
+}
+
 function ensureIndex(store, name, keyPath) {
   if (!store.indexNames.contains(name)) store.createIndex(name, keyPath, { unique: false });
 }
@@ -214,12 +256,61 @@ export async function loadCurrentBoard() {
   });
 }
 
+export async function compactLocalRecoveryStorage(boardId) {
+  const id = String(boardId || "");
+  if (!id) return { removedLegacyCopy: false, compactedSyncJob: false };
+  return withDatabase(async (database) => {
+    const transaction = database.transaction([STATE_STORE, BOARD_STORE, SYNC_QUEUE_STORE], "readwrite");
+    const stateStore = transaction.objectStore(STATE_STORE);
+    const boardStore = transaction.objectStore(BOARD_STORE);
+    const queueStore = transaction.objectStore(SYNC_QUEUE_STORE);
+    const boardRequest = boardStore.get(id);
+    const legacyRequest = stateStore.get(CURRENT_BOARD_KEY);
+    const queueRequest = queueStore.get(id);
+    let pendingRequests = 3;
+    let boardRecord;
+    let legacyRecord;
+    let queuedJob;
+    let removedLegacyCopy = false;
+    let compactedSyncJob = false;
+    const applyCompaction = () => {
+      pendingRequests -= 1;
+      if (pendingRequests > 0) return;
+      const hasAuthoritativeBoard = Boolean(boardRecord?.board?.id);
+      const legacyMatches = String(legacyRecord?.board?.id || "") === id;
+      const legacyIsCovered = legacyMatches && boardRecordCoversSnapshot(boardRecord, legacyRecord.board);
+      const queuedSnapshotIsCovered = queuedJob?.board && boardRecordCoversSnapshot(boardRecord, queuedJob.board);
+      removedLegacyCopy = Boolean(hasAuthoritativeBoard && legacyIsCovered);
+      compactedSyncJob = Boolean(hasAuthoritativeBoard && queuedSnapshotIsCovered);
+      if (removedLegacyCopy) stateStore.delete(CURRENT_BOARD_KEY);
+      if (compactedSyncJob) queueStore.put(compactSyncJobRecord(queuedJob, boardRecord.board));
+    };
+    boardRequest.onsuccess = () => {
+      boardRecord = boardRequest.result;
+      applyCompaction();
+    };
+    legacyRequest.onsuccess = () => {
+      legacyRecord = legacyRequest.result;
+      applyCompaction();
+    };
+    queueRequest.onsuccess = () => {
+      queuedJob = queueRequest.result;
+      applyCompaction();
+    };
+    await transactionToPromise(transaction);
+    return {
+      removedLegacyCopy,
+      compactedSyncJob,
+    };
+  });
+}
+
 export async function saveCurrentBoard(board) {
   const savedAt = new Date().toISOString();
   const record = localBoardRecord(board, savedAt);
+  await compactLocalRecoveryStorage(record.id).catch(() => undefined);
   await withDatabase(async (database) => {
-    const transaction = database.transaction([STATE_STORE, BOARD_STORE, META_STORE], "readwrite");
-    transaction.objectStore(STATE_STORE).put({ key: CURRENT_BOARD_KEY, board, savedAt });
+    const transaction = database.transaction([BOARD_STORE, META_STORE], "readwrite");
     transaction.objectStore(BOARD_STORE).put(record);
     transaction.objectStore(META_STORE).put({ key: ACTIVE_BOARD_KEY, value: record.id, updatedAt: savedAt });
     await transactionToPromise(transaction);
@@ -268,10 +359,13 @@ export async function enqueueSync(board, metadata = {}) {
     const existingRequest = store.get(id);
     existingRequest.onsuccess = () => {
       const existing = existingRequest.result;
-      store.put({
+      const next = compactSyncJobRecord({
         id,
         boardId: id,
-        board,
+        name: String(board.name || existing?.name || "未命名 Infinite Moodboard"),
+        snapshotRevision: Number(board.revision || 0),
+        snapshotUpdatedAt: String(board.updatedAt || ""),
+        snapshotObjectCount: Array.isArray(board.objects) ? board.objects.length : 0,
         fileId: String(metadata.fileId || existing?.fileId || ""),
         expectedVersion: String(metadata.expectedVersion || existing?.expectedVersion || ""),
         state: "pending",
@@ -280,7 +374,9 @@ export async function enqueueSync(board, metadata = {}) {
         createdAt: String(existing?.createdAt || now),
         updatedAt: now,
         nextAttemptAt: now,
-      });
+      }, board);
+      if (metadata.retainSnapshot) next.board = board;
+      store.put(next);
     };
     await transactionToPromise(transaction);
   });

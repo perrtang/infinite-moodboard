@@ -19,9 +19,9 @@ test("Drive conflict is presented once with explicit safe and overwrite choices"
 
 test("saving a Drive copy creates an independent board and keeps the current Drive link", () => {
   assert.match(source, /const uploadSnapshot = asCopy \? createRecoveredMoodboard\(snapshot, \{ label: "Drive 複本" \}\) : snapshot/);
-  assert.match(source, /if \(!asCopy\) \{\s*updateDriveSettings\([\s\S]*?setBoardPrimaryStorage\(snapshot\.id, "drive"\);\s*\}/);
+  assert.match(source, /if \(!asCopy\) \{\s*updateDriveSettings\([\s\S]*?setBoardPrimaryStorage\(snapshot\.id, "drive"\);[\s\S]*?await removeSyncJob\(snapshot\.id\);/);
   assert.match(source, /conflict: asCopy \? current\.conflict : null/);
-  assert.match(source, /if \(!asCopy\) \{\s*const queuedJob = await getSyncJob/);
+  assert.match(source, /if \(!asCopy\) \{\s*try \{\s*const queuedJob = await getSyncJob/);
   assert.match(source, /conflict: asCopy \|\| forceOverwrite \? current\.conflict : null/);
   assert.match(source, /\(asCopy \|\| forceOverwrite\) && current\.conflict/);
   assert.match(source, /status: authorizationRequired \? "authorization-required" : preservesExistingConflict \? "conflict" : status/);

@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   LOCAL_DATABASE_NAME,
+  compactLocalRecoveryStorage,
   deleteLocalBoard,
+  describeLocalPersistenceError,
   enqueueSync,
   getActiveBoardId,
   getDueSyncJobs,
@@ -115,7 +117,9 @@ test("offline sync queue coalesces to the newest snapshot and keeps recoverable 
 
   let jobs = await listSyncJobs();
   assert.equal(jobs.length, 1);
-  assert.equal(jobs[0].board.revision, 2);
+  assert.equal(jobs[0].board, undefined);
+  assert.equal(jobs[0].snapshotRevision, 2);
+  assert.equal(jobs[0].snapshotObjectCount, 0);
   assert.equal(jobs[0].fileId, "drive-1");
 
   await updateSyncJob("queued", {
@@ -131,9 +135,11 @@ test("offline sync queue coalesces to the newest snapshot and keeps recoverable 
   assert.equal(await getSyncJob("queued"), null);
 });
 
-test("a page refresh recovers an interrupted syncing job without losing its snapshot", async () => {
+test("a page refresh recovers an interrupted syncing job while the board store keeps the snapshot", async () => {
   await deleteDatabase();
-  await enqueueSync(board("interrupted", { revision: 8 }), { fileId: "drive-8", expectedVersion: "21" });
+  const snapshot = board("interrupted", { revision: 8 });
+  await saveCurrentBoard(snapshot);
+  await enqueueSync(snapshot, { fileId: "drive-8", expectedVersion: "21" });
   await updateSyncJob("interrupted", {
     state: "syncing",
     attemptCount: 2,
@@ -146,7 +152,9 @@ test("a page refresh recovers an interrupted syncing job without losing its snap
   const job = recovered.find((entry) => entry.boardId === "interrupted");
 
   assert.equal(job.state, "pending");
-  assert.equal(job.board.revision, 8);
+  assert.equal(job.board, undefined);
+  assert.equal(job.snapshotRevision, 8);
+  assert.equal((await loadCurrentBoard()).revision, 8);
   assert.equal(job.fileId, "drive-8");
   assert.equal(job.nextAttemptAt, recoveredAt.toISOString());
   assert.match(job.lastError, /頁面更新或關閉而中斷/);
@@ -207,4 +215,66 @@ test("local library summary reports board and pending sync counts", async () => 
   assert.equal(summary.pendingSyncCount, 1);
   assert.ok(summary.estimatedBoardBytes > 0);
   assert.equal(typeof summary.storage, "object");
+});
+
+test("large boards are stored once while the sync queue keeps only scheduling metadata", async () => {
+  await deleteDatabase();
+  const large = board("large", {
+    revision: 42,
+    objects: [{ id: "image-1", type: "image", source: `data:image/png;base64,${"a".repeat(2 * 1024 * 1024)}` }],
+  });
+
+  await saveCurrentBoard(large);
+  await enqueueSync(large, { fileId: "drive-large", expectedVersion: "7" });
+
+  const local = await getLocalBoard("large");
+  const queued = await getSyncJob("large");
+  assert.equal(local.board.objects[0].source.length > 2 * 1024 * 1024, true);
+  assert.equal(queued.board, undefined);
+  assert.equal(queued.snapshotRevision, 42);
+  assert.equal(queued.snapshotObjectCount, 1);
+});
+
+test("compaction removes legacy and queued full-board copies only after an authoritative board exists", async () => {
+  await deleteDatabase();
+  const snapshot = board("compact", { revision: 9, objects: [{ id: "object-9" }] });
+  await saveCurrentBoard(snapshot);
+  await enqueueSync(snapshot, { fileId: "drive-compact", retainSnapshot: true });
+
+  await new Promise((resolve, reject) => {
+    const request = indexedDB.open(LOCAL_DATABASE_NAME, 2);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const database = request.result;
+      const transaction = database.transaction("state", "readwrite");
+      transaction.objectStore("state").put({ key: "current-board", board: snapshot, savedAt: snapshot.updatedAt });
+      transaction.oncomplete = () => { database.close(); resolve(); };
+      transaction.onerror = () => reject(transaction.error);
+    };
+  });
+
+  const result = await compactLocalRecoveryStorage(snapshot.id);
+  assert.deepEqual(result, { removedLegacyCopy: true, compactedSyncJob: true });
+  assert.equal((await getSyncJob(snapshot.id)).board, undefined);
+  assert.equal((await loadCurrentBoard()).revision, 9);
+});
+
+test("compaction never removes a queued snapshot newer than the authoritative local board", async () => {
+  await deleteDatabase();
+  await saveCurrentBoard(board("newer-queue", { revision: 3, updatedAt: "2026-10-20T03:00:00.000Z" }));
+  await enqueueSync(board("newer-queue", { revision: 4, updatedAt: "2026-10-20T04:00:00.000Z" }), {
+    fileId: "drive-newer",
+    retainSnapshot: true,
+  });
+
+  const result = await compactLocalRecoveryStorage("newer-queue");
+  assert.equal(result.compactedSyncJob, false);
+  assert.equal((await getSyncJob("newer-queue")).board.revision, 4);
+});
+
+test("local persistence failures are classified into actionable messages", () => {
+  assert.match(describeLocalPersistenceError(new DOMException("quota", "QuotaExceededError")), /空間不足/);
+  assert.match(describeLocalPersistenceError(new DOMException("clone", "DataCloneError")), /無法寫入/);
+  assert.match(describeLocalPersistenceError(new DOMException("transaction inactive", "InvalidStateError")), /其他 Infinite Moodboard 分頁/);
+  assert.match(describeLocalPersistenceError(new Error("unknown")), /未能更新/);
 });

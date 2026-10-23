@@ -1,9 +1,9 @@
 {
   "product": "Infinite Moodboard",
   "channel": "stable",
-  "version": "0.51.0",
+  "version": "0.52.0",
   "releasedAt": "2026-10-23",
-  "summary": "選擇 Google Drive 後，登入與 drive.file 授權會在同一流程完成；連結成功即回到工作畫面，並移除雙擊刪除導引線。",
-  "notesUrl": "release-notes/v0.51.0.html",
+  "summary": "大型 Moodboard 的本機復原副本失敗時，Google Drive 同步仍會繼續；同步佇列不再重複保存完整畫布或卡在同步中。",
+  "notesUrl": "release-notes/v0.52.0.html",
   "url": "https://moodboard.petfashion.tw/"
 }
