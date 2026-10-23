@@ -183,6 +183,7 @@ import {
   listSyncJobs,
   loadCurrentBoard,
   listVersions,
+  recoverInterruptedSyncJobs,
   removeSyncJob,
   saveLocalFileHandle,
   saveCurrentBoard,
@@ -204,6 +205,7 @@ import {
   evaluateDriveQuota,
   isGoogleDriveAuthorizationError,
   isGoogleDriveConfigured,
+  isGoogleDriveRetryableError,
   isGoogleDriveTokenUsable,
   linkDriveFile,
   loadDriveState,
@@ -416,8 +418,17 @@ function isSharedDriveFileAccessError(error) {
 }
 const MIN_ZOOM = 0.08;
 const MAX_ZOOM = 4;
+const DRIVE_LOCAL_RECOVERY_TIMEOUT_MS = 30_000;
 const SESSION_ADJECTIVES = ["青色", "安靜", "敏捷", "明亮", "琥珀", "深夜"];
 const SESSION_NOUNS = ["編輯者", "觀察者", "整理者", "策展人", "設計者", "夥伴"];
+
+function withOperationTimeout(promise, timeoutMs, createError) {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = globalThis.setTimeout(() => reject(createError()), timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => globalThis.clearTimeout(timeoutId));
+}
 
 const FONT_OPTIONS = [
   { label: "介面黑體", value: DEFAULT_TEXT_FONT },
@@ -5682,7 +5693,8 @@ function VersionModal({
 
 function driveStatusPresentation(driveSession) {
   if (driveSession.status === "connecting") return { icon: RefreshCw, label: "正在連結 Google Drive…", tone: "working" };
-  if (driveSession.status === "syncing" || driveSession.status === "checking") return { icon: RefreshCw, label: "正在同步到 Google Drive…", tone: "working" };
+  if (driveSession.status === "checking") return { icon: RefreshCw, label: "正在確認 Google Drive…", tone: "working" };
+  if (driveSession.status === "syncing") return { icon: RefreshCw, label: "正在同步到 Google Drive…", tone: "working" };
   if (driveSession.status === "synced") return { icon: Check, label: "Google Drive 已同步", tone: "success" };
   if (driveSession.status === "pending") return { icon: CloudUpload, label: "等待同步到 Google Drive", tone: "warning" };
   if (driveSession.status === "offline") return { icon: CloudOff, label: "目前離線；變更已留在本機", tone: "warning" };
@@ -5866,7 +5878,7 @@ function DriveLibraryModal({
             <div><HardDrive size={23} aria-hidden="true" /><span><strong>本機安全副本永遠先寫入</strong><small>離線、額滿或授權失效時可以繼續工作，之後再重試同步或下載 `.moodboard`。</small></span></div>
             <button className="primary-button" type="button" onClick={onConnect} disabled={!configured || busy}>
               {busy ? <RefreshCw size={17} className="is-spinning" /> : <Cloud size={17} />}
-              {configured ? "連結 Google Drive" : "Google Drive 尚未設定"}
+              {configured ? (driveSettings.enabled ? "重新授權 Google Drive" : "連結 Google Drive") : "Google Drive 尚未設定"}
             </button>
           </section>
         ) : (
@@ -7151,10 +7163,10 @@ function App() {
   const [driveSettings, setDriveSettings] = useState(initialDriveSettingsRef.current);
   const [storagePreferences, setStoragePreferences] = useState(initialStoragePreferencesRef.current);
   const [driveSession, setDriveSession] = useState(() => ({
-    status: initialDriveSettingsRef.current.enabled ? "checking" : "disconnected",
+    status: initialDriveSettingsRef.current.enabled ? "authorization-required" : "disconnected",
     connected: false,
-    busy: initialDriveSettingsRef.current.enabled,
-    message: initialDriveSettingsRef.current.enabled ? "正在恢復 Google Drive 連線…" : "",
+    busy: false,
+    message: initialDriveSettingsRef.current.enabled ? "Drive 檔案連結仍已保留；登入完成後會自動恢復授權。" : "",
     user: null,
     quota: null,
     files: [],
@@ -7982,7 +7994,7 @@ function App() {
       }));
       return { accessToken, folderId, about, files };
     } catch (error) {
-      if (operationEpoch !== driveOperationEpochRef.current || error?.name === "AbortError") return null;
+      if (operationEpoch !== driveOperationEpochRef.current) return null;
       const authorizationRequired = isGoogleDriveAuthorizationError(error);
       if (authorizationRequired) driveTokenRef.current = null;
       setDriveSession((current) => ({
@@ -8024,7 +8036,7 @@ function App() {
       if (result) announce("Google Drive 已連結；尚未主動儲存前不會上傳畫布。", "success");
       return result;
     } catch (error) {
-      if (operationEpoch !== driveOperationEpochRef.current || error?.name === "AbortError") return null;
+      if (operationEpoch !== driveOperationEpochRef.current) return null;
       const authorizationRequired = isGoogleDriveAuthorizationError(error);
       if (authorizationRequired) driveTokenRef.current = null;
       setDriveSession((current) => ({
@@ -8060,9 +8072,40 @@ function App() {
   }, [announce, cancelDriveOperations, updateDriveSettings]);
 
   useEffect(() => {
-    if (!authReady || !driveSettings.enabled || !online || currentDriveAccessToken()) return undefined;
+    if (!driveSettings.enabled || currentDriveAccessToken()) return undefined;
+    if (!online) {
+      setDriveSession((current) => ({
+        ...current,
+        status: "offline",
+        connected: false,
+        busy: false,
+        message: "Drive 檔案連結仍已保留；回復網路後會再嘗試恢復授權。",
+      }));
+      return undefined;
+    }
+    if (!authReady) {
+      if (authSession.status !== "loading") {
+        setDriveSession((current) => ({
+          ...current,
+          status: "authorization-required",
+          connected: false,
+          busy: false,
+          message: "Drive 檔案連結仍已保留；登入後可恢復同步。",
+        }));
+      }
+      return undefined;
+    }
     const connectionOwnerUid = String(authSession.user?.uid || "");
-    if (!connectionOwnerUid) return undefined;
+    if (!connectionOwnerUid) {
+      setDriveSession((current) => ({
+        ...current,
+        status: "authorization-required",
+        connected: false,
+        busy: false,
+        message: "Drive 檔案連結仍已保留；請重新登入後恢復同步。",
+      }));
+      return undefined;
+    }
     if (driveSettings.connectionOwnerUid && driveSettings.connectionOwnerUid !== connectionOwnerUid) {
       setDriveSession((current) => ({
         ...current,
@@ -8099,7 +8142,7 @@ function App() {
         driveTokenRef.current = token;
         await refreshGoogleDrive(token.accessToken, driveSettings.folderId);
       } catch (error) {
-        if (!active || operationEpoch !== driveOperationEpochRef.current || error?.name === "AbortError") return;
+        if (!active || operationEpoch !== driveOperationEpochRef.current) return;
         const authorizationRequired = isGoogleDriveAuthorizationError(error);
         if (authorizationRequired) driveTokenRef.current = null;
         setDriveSession((current) => ({
@@ -8114,9 +8157,13 @@ function App() {
       }
     };
     restoreDriveConnection();
-    return () => { active = false; };
+    return () => {
+      active = false;
+      if (driveRestoreAttemptRef.current === attemptKey) driveRestoreAttemptRef.current = "";
+    };
   }, [
     authReady,
+    authSession.status,
     authSession.user?.email,
     authSession.user?.uid,
     currentDriveAccessToken,
@@ -8822,8 +8869,9 @@ function App() {
 
   useEffect(() => {
     let cancelled = false;
-    loadCurrentBoard()
-      .then((saved) => {
+    const hydrateWorkspace = async () => {
+      try {
+        const saved = await loadCurrentBoard();
         if (cancelled) return;
         if (saved) {
           const normalized = ensureBoard(saved);
@@ -8838,13 +8886,16 @@ function App() {
           setSaveState("本機自動儲存");
           setShowStorageLocation(true);
         }
-      })
-      .catch(() => setSaveState("自動儲存不可用"))
-      .finally(() => {
+      } catch {
+        if (!cancelled) setSaveState("自動儲存不可用");
+      } finally {
+        await recoverInterruptedSyncJobs().catch(() => []);
         if (cancelled) return;
         setHydrated(true);
         refreshLocalLibrarySummary();
-      });
+      }
+    };
+    hydrateWorkspace();
     return () => { cancelled = true; };
   }, [refreshLocalLibrarySummary, setBoardPrimaryStorage]);
 
@@ -9827,10 +9878,15 @@ function App() {
           uploadGoogleDriveMoodboard,
         } = await loadDriveRuntime();
         try {
-          await persistBoardLocally(snapshot);
+          await withOperationTimeout(
+            persistBoardLocally(snapshot),
+            DRIVE_LOCAL_RECOVERY_TIMEOUT_MS,
+            () => new DriveApiError("本機安全副本在 30 秒內未完成寫入，因此未開始雲端同步。", { code: "drive/local-save-timeout" }),
+          );
           setSaveState(`本機已儲存 ${new Date().toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" })}`);
         } catch (error) {
           if (error?.name === "AbortError") throw error;
+          if (error instanceof DriveApiError) throw error;
           throw new DriveApiError("本機安全副本寫入失敗，因此未開始雲端同步。", { code: "drive/local-save", details: error });
         }
         if (!asCopy) {
@@ -9908,9 +9964,12 @@ function App() {
         );
         return true;
       } catch (error) {
-        if (operationEpoch !== driveOperationEpochRef.current || error?.name === "AbortError") return false;
+        if (operationEpoch !== driveOperationEpochRef.current) return false;
         const isConflict = error?.code === "drive/conflict";
         const authorizationRequired = isGoogleDriveAuthorizationError(error);
+        const retryable = isGoogleDriveRetryableError(error);
+        const localRecoveryFailed = ["drive/local-save", "drive/local-save-timeout"].includes(error?.code);
+        const errorMessage = driveErrorMessage(error);
         const status = isConflict
           ? "conflict"
           : error?.code === "drive/quota"
@@ -9921,15 +9980,6 @@ function App() {
                 ? "authorization-required"
                 : "error";
         if (authorizationRequired) driveTokenRef.current = null;
-        if (linkedFile && driveSettings.autoSync) {
-          await enqueueSync(snapshot, { fileId: linkedFile.fileId, expectedVersion: linkedFile.version });
-          await updateSyncJob(snapshot.id, {
-            state: status,
-            lastError: driveErrorMessage(error),
-            nextAttemptAt: new Date(Date.now() + (status === "offline" ? 15_000 : 60_000)).toISOString(),
-          });
-          await refreshLocalLibrarySummary();
-        }
         setDriveSession((current) => {
           const preservesExistingConflict = Boolean((asCopy || forceOverwrite) && current.conflict);
           return {
@@ -9937,18 +9987,33 @@ function App() {
             status: authorizationRequired ? "authorization-required" : preservesExistingConflict ? "conflict" : status,
             connected: status !== "authorization-required",
             busy: false,
-            message: driveErrorMessage(error),
+            message: errorMessage,
             conflict: isConflict
               ? { ...error.remoteFile, boardId: snapshot.id, fileId: linkedFile?.fileId || error.remoteFile?.id || "" }
               : preservesExistingConflict
                 ? current.conflict
                 : null,
-            conflictActionError: preservesExistingConflict && !isConflict ? driveErrorMessage(error) : "",
+            conflictActionError: preservesExistingConflict && !isConflict ? errorMessage : "",
           };
         });
+        if (linkedFile && driveSettings.autoSync && !localRecoveryFailed) {
+          try {
+            await enqueueSync(snapshot, { fileId: linkedFile.fileId, expectedVersion: linkedFile.version });
+            await updateSyncJob(snapshot.id, {
+              state: status,
+              lastError: errorMessage,
+              nextAttemptAt: retryable
+                ? new Date(Date.now() + (status === "offline" ? 15_000 : 60_000)).toISOString()
+                : "",
+            });
+            await refreshLocalLibrarySummary();
+          } catch {
+            setSaveState("雲端同步失敗；本機內容仍已保留");
+          }
+        }
         if (!silent || isConflict) {
           setShowDriveLibrary(true);
-          announce(driveErrorMessage(error), status === "offline" ? "warning" : "error");
+          announce(errorMessage, status === "offline" ? "warning" : "error");
         }
         return false;
       } finally {
@@ -10026,7 +10091,7 @@ function App() {
       announce(`已從 Google Drive 開啟「${imported.name}」；切換前版本已保留。`, "success");
       return { board: imported, metadata };
     } catch (error) {
-      if (operationEpoch !== driveOperationEpochRef.current || error?.name === "AbortError") return;
+      if (operationEpoch !== driveOperationEpochRef.current) return;
       const isConflict = error?.code === "drive/conflict";
       if (sharedLink && isSharedDriveFileAccessError(error)) {
         const message = "目前帳號或 Infinite Moodboard 尚未獲得這份檔案的存取權。請確認擁有者已分享給這個 Google 帳號，再重新選取。";
@@ -13096,6 +13161,24 @@ function App() {
             ? "主要位置：這個瀏覽器"
             : "尚未指定 .moodboard 檔案")
       : "尚未選擇主要儲存位置";
+  const hasBlockingDialog = Boolean(
+    isBooting
+    || escapeCancellationRequest
+    || pendingObjectDeletion
+    || showStorageLocation
+    || (showLocalFileLocation && currentPrimaryStorageTarget === "local")
+    || showGridBuilder
+    || showAnnotationBuilder
+    || showSettings
+    || pendingAdvancedFeature
+    || showDeleteLocalData
+    || showInterfaceThemes
+    || showVersions
+    || showShortcuts
+    || showDriveLibrary
+    || showCollaboration
+    || preparedDownloads.length,
+  );
 
   return (
     <main
@@ -13694,7 +13777,7 @@ function App() {
       </div>
 
       {mobilePanel ? <button className="mobile-scrim" type="button" aria-label="關閉面板" onClick={() => setMobilePanel(null)} /> : null}
-      {!updateNoticeDismissed && !showSettings ? (
+      {!updateNoticeDismissed && !hasBlockingDialog ? (
         <AppUpdateNotice
           updateCheck={updateCheck}
           updateAction={updateAction}

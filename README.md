@@ -26,6 +26,13 @@ Infinite Moodboard runs the canvas, imported media, transforms, exports, and ver
 - Optional Google Drive file storage and Drive-native sharing with viewer/editor permissions on the same file.
 - 3D, Drive sharing, and export runtimes are loaded only when used, keeping the opening bundle smaller.
 
+## v0.50.0 — Drive recovery and quiet update release
+
+- Preserves each board's Google Drive link across app updates while restoring OAuth authorization safely after sign-in or refresh.
+- Always ends the active sync state after authorization, local recovery, upload, or queue failures, so the interface cannot remain stuck on “syncing”.
+- Recovers interrupted queued sync jobs after a page reload and automatically retries only temporary network or service failures.
+- Pauses the app-update notice whenever a work dialog is open, with a clearer title, readable explanation, and consistently sized actions.
+
 ## v0.49.0 — safe shared-file opening release
 
 - Opens a recipient's first Drive share through Google Picker while preserving the least-privilege `drive.file` scope.

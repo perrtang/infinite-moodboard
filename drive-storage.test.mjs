@@ -13,6 +13,7 @@ import {
   listGoogleDriveRevisions,
   loadDriveState,
   isGoogleDriveAuthorizationError,
+  isGoogleDriveRetryableError,
   isGoogleDriveTokenUsable,
   normalizeDriveFile,
   normalizeDriveQuota,
@@ -69,10 +70,21 @@ test("Google Drive tokens require the exact drive.file scope and expire safely",
 test("Google Drive authorization failures include missing and excessive permissions", () => {
   assert.equal(isGoogleDriveAuthorizationError({ status: 401 }), true);
   assert.equal(isGoogleDriveAuthorizationError({ code: "drive/permission", status: 403 }), true);
-  assert.equal(isGoogleDriveAuthorizationError({ reason: "insufficientPermissions" }), false);
+  assert.equal(isGoogleDriveAuthorizationError({ reason: "insufficientPermissions" }), true);
   assert.equal(isGoogleDriveAuthorizationError({ status: 403, reason: "rateLimitExceeded" }), false);
   assert.equal(isGoogleDriveAuthorizationError({ status: 403, reason: "forbidden" }), false);
   assert.equal(isGoogleDriveAuthorizationError({ code: "drive/quota", reason: "storageQuotaExceeded" }), false);
+});
+
+test("only transient Google Drive failures are automatically retried", () => {
+  assert.equal(isGoogleDriveRetryableError({ code: "drive/offline" }), true);
+  assert.equal(isGoogleDriveRetryableError({ code: "drive/timeout" }), true);
+  assert.equal(isGoogleDriveRetryableError({ status: 429, reason: "rateLimitExceeded" }), true);
+  assert.equal(isGoogleDriveRetryableError({ status: 503, reason: "backendError" }), true);
+  assert.equal(isGoogleDriveRetryableError({ reason: "insufficientPermissions" }), false);
+  assert.equal(isGoogleDriveRetryableError({ code: "drive/quota", reason: "storageQuotaExceeded" }), false);
+  assert.equal(isGoogleDriveRetryableError({ code: "drive/conflict" }), false);
+  assert.equal(isGoogleDriveRetryableError({ status: 403, reason: "appNotAuthorizedToFile" }), false);
 });
 
 test("normalizes finite and unlimited Drive quota", () => {

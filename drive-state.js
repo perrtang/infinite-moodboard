@@ -44,7 +44,16 @@ export function isGoogleDriveAuthorizationError(error) {
   return error?.code === "drive/authorization"
     || error?.code === "drive/permission"
     || error?.status === 401
-    || ["authError", "invalidCredentials"].includes(reason);
+    || ["authError", "invalidCredentials", "insufficientPermissions"].includes(reason);
+}
+
+export function isGoogleDriveRetryableError(error) {
+  const reason = error?.reason || error?.details?.error?.errors?.[0]?.reason || "";
+  const status = Number(error?.status || 0);
+  if (isGoogleDriveAuthorizationError(error)) return false;
+  if (["drive/offline", "drive/timeout", "drive/network"].includes(error?.code)) return true;
+  if (["rateLimitExceeded", "userRateLimitExceeded", "backendError"].includes(reason)) return true;
+  return status === 408 || status === 425 || status === 429 || status >= 500;
 }
 
 export function serializeMoodboardSnapshot(snapshot) {

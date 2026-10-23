@@ -32,3 +32,15 @@ test("autosync waits while Drive is busy and retries recoverable errors on the q
   assert.match(main, /if \(driveSession\.status === "error"\) \{[\s\S]*currentSyncJob[\s\S]*nextAttemptAt[\s\S]*saveBoardToGoogleDrive\(\{ silent: true \}\);/);
   assert.match(main, /if \(driveSession\.busy \|\| \["checking", "connecting", "syncing", "quota"\]\.includes\(driveSession\.status\)\) return undefined;/);
 });
+
+test("Drive failures always settle the spinner before queue recovery work", () => {
+  const saveStart = main.indexOf("const saveBoardToGoogleDrive = useCallback");
+  const failureStart = main.indexOf("const isConflict = error?.code === \"drive/conflict\"", saveStart);
+  const queueStart = main.indexOf("if (linkedFile && driveSettings.autoSync && !localRecoveryFailed)", failureStart);
+  const failureBlock = main.slice(failureStart, queueStart);
+  assert.ok(saveStart > -1 && failureStart > saveStart && queueStart > failureStart);
+  assert.match(failureBlock, /setDriveSession\(\(current\) => \{[\s\S]*busy: false/);
+  assert.match(main.slice(failureStart, main.indexOf("return false;", queueStart)), /isGoogleDriveRetryableError\(error\)[\s\S]*nextAttemptAt: retryable/);
+  assert.match(main, /DRIVE_LOCAL_RECOVERY_TIMEOUT_MS = 30_000/);
+  assert.match(main, /\["drive\/local-save", "drive\/local-save-timeout"\]\.includes\(error\?\.code\)/);
+});

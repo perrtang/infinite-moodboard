@@ -15,6 +15,7 @@ import {
   listVersions,
   loadLocalFileHandle,
   loadCurrentBoard,
+  recoverInterruptedSyncJobs,
   removeLocalFileHandle,
   removeSyncJob,
   saveCurrentBoard,
@@ -128,6 +129,40 @@ test("offline sync queue coalesces to the newest snapshot and keeps recoverable 
 
   await removeSyncJob("queued");
   assert.equal(await getSyncJob("queued"), null);
+});
+
+test("a page refresh recovers an interrupted syncing job without losing its snapshot", async () => {
+  await deleteDatabase();
+  await enqueueSync(board("interrupted", { revision: 8 }), { fileId: "drive-8", expectedVersion: "21" });
+  await updateSyncJob("interrupted", {
+    state: "syncing",
+    attemptCount: 2,
+    lastError: "",
+    nextAttemptAt: "",
+  });
+
+  const recoveredAt = new Date("2026-10-23T02:00:00.000Z");
+  const recovered = await recoverInterruptedSyncJobs(recoveredAt);
+  const job = recovered.find((entry) => entry.boardId === "interrupted");
+
+  assert.equal(job.state, "pending");
+  assert.equal(job.board.revision, 8);
+  assert.equal(job.fileId, "drive-8");
+  assert.equal(job.nextAttemptAt, recoveredAt.toISOString());
+  assert.match(job.lastError, /頁面更新或關閉而中斷/);
+  assert.equal((await getDueSyncJobs(recoveredAt)).length, 1);
+});
+
+test("terminal Drive queue states never become due without an explicit retry deadline", async () => {
+  await deleteDatabase();
+  const now = new Date("2026-10-23T03:00:00.000Z");
+  for (const state of ["authorization-required", "quota", "conflict"]) {
+    const id = `terminal-${state}`;
+    await enqueueSync(board(id), { fileId: `drive-${state}` });
+    await updateSyncJob(id, { state, nextAttemptAt: "" });
+  }
+
+  assert.deepEqual(await getDueSyncJobs(now), []);
 });
 
 test("deleting a local board also removes its queued sync and versions", async () => {

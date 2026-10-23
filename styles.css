@@ -8887,7 +8887,7 @@ button.status-label:hover {
   position: fixed;
   transform: translateX(-50%);
   width: max-content;
-  z-index: 126;
+  z-index: 90;
 }
 
 .app-update-notice.is-error {
@@ -8895,7 +8895,7 @@ button.status-label:hover {
 }
 
 .app-update-notice-heading {
-  align-items: center;
+  align-items: flex-start;
   display: flex;
   gap: 10px;
   min-width: 0;
@@ -8908,14 +8908,15 @@ button.status-label:hover {
 }
 
 .app-update-notice-heading strong {
-  font-size: calc(12px + var(--ui-font-offset, 0px));
+  font-size: calc(14px + var(--ui-font-offset, 0px));
+  line-height: 1.35;
 }
 
 .app-update-notice-heading small,
 .app-update-auto-note,
 .app-update-notice > p {
   color: var(--text-muted);
-  font-size: calc(9px + var(--ui-font-offset, 0px));
+  font-size: calc(11px + var(--ui-font-offset, 0px));
   line-height: 1.5;
 }
 
@@ -8941,8 +8942,14 @@ button.status-label:hover {
 }
 
 .app-update-notice-actions .text-button {
-  min-height: 36px;
+  margin-top: 0;
   padding-inline: 9px;
+}
+
+.app-update-notice-actions button {
+  font-size: calc(11px + var(--ui-font-offset, 0px));
+  font-weight: 700;
+  min-height: 38px;
 }
 
 .app-update-action-status {
@@ -8951,7 +8958,7 @@ button.status-label:hover {
   border-radius: 6px;
   color: var(--text-muted);
   display: flex;
-  font-size: calc(9px + var(--ui-font-offset, 0px));
+  font-size: calc(11px + var(--ui-font-offset, 0px));
   gap: 7px;
   line-height: 1.45;
   padding: 8px 9px;

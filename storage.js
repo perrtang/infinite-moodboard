@@ -10,6 +10,7 @@ const CURRENT_BOARD_KEY = "current-board";
 const ACTIVE_BOARD_KEY = "active-board-id";
 const LOCAL_FILE_HANDLE_PREFIX = "local-file-handle:";
 const MAX_VERSIONS_PER_BOARD = 24;
+const RETRYABLE_SYNC_STATES = new Set(["pending", "offline", "error"]);
 
 function localFileHandleKey(boardId) {
   return `${LOCAL_FILE_HANDLE_PREFIX}${String(boardId || "")}`;
@@ -302,10 +303,38 @@ export async function listSyncJobs() {
   });
 }
 
+export async function recoverInterruptedSyncJobs(now = new Date()) {
+  const recoveredAt = now instanceof Date ? now.toISOString() : new Date(now).toISOString();
+  return withDatabase(async (database) => {
+    const transaction = database.transaction(SYNC_QUEUE_STORE, "readwrite");
+    const store = transaction.objectStore(SYNC_QUEUE_STORE);
+    const records = await requestToPromise(store.getAll());
+    const recovered = records.map((job) => {
+      if (job.state !== "syncing") return job;
+      const next = {
+        ...job,
+        state: "pending",
+        lastError: "上次同步因頁面更新或關閉而中斷，本機內容仍已保留。",
+        nextAttemptAt: recoveredAt,
+        updatedAt: recoveredAt,
+      };
+      store.put(next);
+      return next;
+    });
+    await transactionToPromise(transaction);
+    return recovered.sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+  });
+}
+
 export async function getDueSyncJobs(now = new Date()) {
-  const timestamp = now instanceof Date ? now.toISOString() : new Date(now).toISOString();
+  const timestamp = now instanceof Date ? now.getTime() : new Date(now).getTime();
   const jobs = await listSyncJobs();
-  return jobs.filter((job) => job.state !== "syncing" && String(job.nextAttemptAt || "") <= timestamp);
+  return jobs.filter((job) => {
+    const retryAt = Date.parse(String(job.nextAttemptAt || ""));
+    return RETRYABLE_SYNC_STATES.has(job.state)
+      && Number.isFinite(retryAt)
+      && retryAt <= timestamp;
+  });
 }
 
 export async function updateSyncJob(boardId, patch = {}) {

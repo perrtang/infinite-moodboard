@@ -1,8 +1,8 @@
 {
   "product": "Infinite Moodboard",
   "channel": "stable",
-  "version": "0.49.0",
+  "version": "0.50.0",
   "releasedAt": "2026-10-23",
-  "summary": "修正第二個 Google 帳號開啟 Drive 分享連結時可能看到空白內容；首次開啟會安全選取並驗證同一份檔案。",
+  "summary": "修正 Google Drive 重新授權與同步失敗後持續轉圈，並避免更新提示和工作對話框重疊。",
   "url": "https://moodboard.petfashion.tw/"
 }

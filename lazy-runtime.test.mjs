@@ -9,6 +9,8 @@ import {
 } from "./collaboration-state.js";
 import {
   contentByteLength,
+  isGoogleDriveAuthorizationError,
+  isGoogleDriveRetryableError,
   linkDriveFile,
   loadDriveState,
   saveDriveState,
@@ -52,6 +54,14 @@ test("startup-safe Drive state preserves local links without loading the network
   assert.deepEqual(loadDriveState(storage), linked);
   const serialized = serializeMoodboardSnapshot(board);
   assert.equal(contentByteLength(serialized), new TextEncoder().encode(serialized).byteLength);
+});
+
+test("startup-safe Drive error policy matches the lazy network runtime", () => {
+  assert.equal(isGoogleDriveAuthorizationError({ reason: "insufficientPermissions" }), true);
+  assert.equal(isGoogleDriveRetryableError({ code: "drive/offline" }), true);
+  assert.equal(isGoogleDriveRetryableError({ status: 429, reason: "rateLimitExceeded" }), true);
+  assert.equal(isGoogleDriveRetryableError({ code: "drive/quota", reason: "storageQuotaExceeded" }), false);
+  assert.equal(isGoogleDriveRetryableError({ code: "drive/conflict" }), false);
 });
 
 test("startup-safe collaboration state keeps invite and resume behavior", () => {
