@@ -7,7 +7,7 @@ const styles = await readFile(new URL("./styles.css", import.meta.url), "utf8");
 
 test("file menu consolidates file, output, and management actions", () => {
   assert.match(main, /function FileMenu\(/);
-  assert.match(main, /另存為 \.moodboard…/);
+  assert.match(main, /下載本機副本…/);
   assert.match(main, /匯出瀏覽器版（HTML）/);
   assert.match(main, /匯出選取素材…/);
   assert.match(main, /輸出選取合成圖…/);

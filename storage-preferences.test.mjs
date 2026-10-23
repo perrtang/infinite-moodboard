@@ -23,6 +23,8 @@ test("storage preferences default to safe autosave and visible status", () => {
     autoSave: true,
     showSaveStatus: true,
     targets: {},
+    uploadPaused: {},
+    loadRecoveries: {},
   });
 });
 
@@ -49,6 +51,8 @@ test("storage preferences persist without changing safe defaults", () => {
     autoSave: false,
     showSaveStatus: false,
     targets: { board: "drive" },
+    uploadPaused: {},
+    loadRecoveries: {},
   });
 });
 

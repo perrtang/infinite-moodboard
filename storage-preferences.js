@@ -7,6 +7,8 @@ function defaultStoragePreferences() {
     autoSave: true,
     showSaveStatus: true,
     targets: {},
+    uploadPaused: {},
+    loadRecoveries: {},
   };
 }
 
@@ -24,6 +26,8 @@ export function normalizeStoragePreferences(value) {
     autoSave: value.autoSave !== false,
     showSaveStatus: value.showSaveStatus !== false,
     targets,
+    uploadPaused: Object.fromEntries(Object.entries(value.uploadPaused || {}).filter(([id, paused]) => id && paused === true)),
+    loadRecoveries: Object.fromEntries(Object.entries(value.loadRecoveries || {}).filter(([id, record]) => id && record?.boardId && record?.versionId).map(([id, record]) => [id, { boardId: String(record.boardId), versionId: String(record.versionId), target: record.target === "drive" ? "drive" : "local" }])),
   };
 }
 

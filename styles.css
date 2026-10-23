@@ -756,6 +756,61 @@ button:disabled {
   min-width: 0;
 }
 
+.topbar-save-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-strong);
+  color: var(--text);
+  font: inherit;
+  font-size: calc(12px + var(--ui-font-offset, 0px));
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.topbar-save-button:disabled { opacity: .5; cursor: default; }
+.topbar-save-button:hover:not(:disabled) { background: var(--surface-hover, var(--surface)); }
+.topbar-save-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+@media (max-width: 620px) {
+  .moodboard-app:not(.is-focus-mode) { grid-template-rows: 96px minmax(0, 1fr); }
+  .moodboard-app .app-topbar { grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: 40px 56px; }
+  .app-topbar .board-title-field { grid-column: 1 / -1; grid-row: 1; width: 100%; }
+  .app-topbar .topbar-primary { grid-column: 1; grid-row: 2; }
+  .app-topbar .topbar-secondary { grid-column: 2; grid-row: 2; }
+  .app-topbar .brand-block, .app-topbar .topbar-cloud-status { display: none; }
+  .app-topbar .topbar-save-button { min-height: 44px; padding: 0 8px; font-size: 12px; }
+}
+
+.workspace-storage-notice {
+  position: absolute;
+  z-index: 35;
+  top: 80px;
+  left: 32px;
+  right: 12px;
+  width: fit-content;
+  max-width: calc(100% - 44px);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 4px 16px #0002;
+}
+.workspace-storage-notice > span { display: grid; gap: 4px; }
+.workspace-storage-notice strong { font-size: calc(13px + var(--ui-font-offset, 0px)); }
+.workspace-storage-notice small { font-size: calc(12px + var(--ui-font-offset, 0px)); color: var(--text-muted); }
+.workspace-storage-notice button { min-height: 44px; }
+
 .topbar-secondary {
   justify-self: end;
   min-width: 0;
@@ -7596,6 +7651,7 @@ html[lang="en"] .sidebar-tabs button svg {
   display: grid;
   min-width: 0;
 }
+.version-list article > .version-actions { display: flex; flex-wrap: wrap; gap: 4px; }
 
 .version-list article strong {
   font-size: calc(12px + var(--ui-font-offset, 0px));
@@ -8123,6 +8179,17 @@ html[lang="en"] .sidebar-tabs button svg {
   display: grid;
   gap: 7px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.drive-save-confirmation { display: grid; gap: 16px; }
+.drive-save-confirmation > strong { overflow-wrap: anywhere; font-size: calc(14px + var(--ui-font-offset, 0px)); }
+.drive-save-confirmation p { margin: 0; color: var(--text-muted); font-size: calc(13px + var(--ui-font-offset, 0px)); line-height: 1.65; }
+.drive-save-confirmation-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.drive-save-confirmation-actions button { min-height: 44px; font-size: calc(13px + var(--ui-font-offset, 0px)); }
+
+@media (max-width: 620px) {
+  .drive-save-confirmation-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .drive-save-confirmation-actions button { padding: 10px; }
 }
 
 .drive-conflict-actions button {
@@ -10583,6 +10650,9 @@ button.status-label:hover {
     grid-template-columns: minmax(0, 1fr) auto;
   }
 
+  .version-list article > .version-actions { flex-direction: column; }
+  .version-actions button { min-height: 44px; }
+
   .version-section-heading {
     align-items: stretch;
     flex-direction: column;
@@ -10915,7 +10985,7 @@ button.status-label:hover {
 @media (max-width: 420px) {
   .canvas-toolbar,
   .canvas-toolbar.has-custom-position {
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     gap: 0;
     padding: 2px;
   }
@@ -10923,7 +10993,12 @@ button.status-label:hover {
   .canvas-toolbar .tool-group,
   .canvas-toolbar .insert-tools {
     gap: 0;
+    flex-shrink: 0;
   }
+
+  .canvas-bottom-hud,
+  .canvas-bottom-hud.has-rulers { --canvas-hud-status-top: 112px; }
+  .workspace-storage-notice { top: 140px; left: 12px; max-width: calc(100% - 24px); }
 
   .canvas-toolbar .zoom-group {
     display: none;

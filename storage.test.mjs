@@ -24,6 +24,7 @@ import {
   saveLocalFileHandle,
   saveVersion,
   setActiveBoardId,
+  setVersionPinned,
   updateSyncJob,
   upsertLocalBoard,
 } from "./storage.js";
@@ -189,6 +190,74 @@ test("deleting a local board also removes its queued sync and versions", async (
   assert.equal(await loadLocalFileHandle(current.id), null);
   assert.equal(await getActiveBoardId(), "");
   assert.equal(await loadCurrentBoard(), null);
+});
+
+test("a stable recovery slot replaces only its latest snapshot", async () => {
+  await deleteDatabase();
+  const first = await saveVersion(board("stable-slot", { revision: 1 }), "Tab recovery", "automatic", { slot: "tab-a" });
+  const latest = await saveVersion(board("stable-slot", { revision: 2 }), "Tab recovery", "automatic", { slot: "tab-a" });
+
+  const versions = await listVersions("stable-slot");
+  assert.equal(versions.length, 1);
+  assert.equal(first.id, latest.id);
+  assert.equal(versions[0].slot, "tab-a");
+  assert.equal(versions[0].board.revision, 2);
+});
+
+test("separate recovery source slots coexist for one board", async () => {
+  await deleteDatabase();
+  await saveVersion(board("two-slots", { revision: 3 }), "Tab A", "automatic", { slot: "tab-a" });
+  await saveVersion(board("two-slots", { revision: 4 }), "Tab B", "automatic", { slot: "tab-b" });
+
+  const versions = await listVersions("two-slots");
+  assert.equal(versions.length, 2);
+  assert.deepEqual(new Set(versions.map((entry) => entry.slot)), new Set(["tab-a", "tab-b"]));
+});
+
+test("stable recovery slots do not replace ordinary manual versions", async () => {
+  await deleteDatabase();
+  const current = board("manual-unaffected", { revision: 5 });
+  const firstManual = await saveVersion(current, "Manual one");
+  const recovery = await saveVersion(board("manual-unaffected", { revision: 6 }), "Tab recovery", "automatic", { slot: "tab-a" });
+  const secondManual = await saveVersion(board("manual-unaffected", { revision: 7 }), "Manual two");
+
+  const versions = await listVersions("manual-unaffected");
+  assert.equal(versions.length, 3);
+  assert.notEqual(firstManual.id, secondManual.id);
+  assert.equal(versions.filter((entry) => entry.kind === "manual").length, 2);
+  assert.equal(versions.find((entry) => entry.id === recovery.id).board.revision, 6);
+});
+
+test("the same recovery slot is isolated between board IDs", async () => {
+  await deleteDatabase();
+  const first = await saveVersion(board("slot-board-a", { revision: 8 }), "Tab recovery", "automatic", { slot: "tab-a" });
+  const second = await saveVersion(board("slot-board-b", { revision: 9 }), "Tab recovery", "automatic", { slot: "tab-a" });
+
+  assert.notEqual(first.id, second.id);
+  assert.equal((await listVersions("slot-board-a"))[0].board.revision, 8);
+  assert.equal((await listVersions("slot-board-b"))[0].board.revision, 9);
+});
+
+test("a pinned oldest recovery survives retention and becomes evictable after unpinning", async () => {
+  await deleteDatabase();
+  const boardId = "pinned-retention";
+  const recovery = await saveVersion(board(boardId, { revision: 0 }), "Before loading", "automatic", { pinned: true });
+  await new Promise((resolve) => setTimeout(resolve, 2));
+
+  for (let revision = 1; revision <= 30; revision += 1) {
+    await saveVersion(board(boardId, { revision }), `Version ${revision}`);
+  }
+
+  let versions = await listVersions(boardId);
+  assert.equal(versions.length, 24);
+  assert.equal(versions.find((entry) => entry.id === recovery.id)?.pinned, true);
+
+  await setVersionPinned(recovery.id, false);
+  await saveVersion(board(boardId, { revision: 31 }), "Version 31");
+
+  versions = await listVersions(boardId);
+  assert.equal(versions.length, 24);
+  assert.equal(versions.some((entry) => entry.id === recovery.id), false);
 });
 
 test("local file handles are stored per board and can be removed independently", async () => {

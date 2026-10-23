@@ -495,14 +495,34 @@ export async function listVersions(boardId) {
   });
 }
 
-export async function saveVersion(board, label, kind = "manual") {
+async function pruneVersions(boardId) {
+  const versions = await listVersions(boardId);
+  const pinnedCount = versions.filter((item) => item.pinned).length;
+  const unpinnedLimit = Math.max(0, MAX_VERSIONS_PER_BOARD - pinnedCount);
+  const overflow = versions.filter((item) => !item.pinned).slice(unpinnedLimit);
+  if (!overflow.length) return;
+
+  await withDatabase(async (database) => {
+    const transaction = database.transaction(VERSION_STORE, "readwrite");
+    overflow.forEach((item) => transaction.objectStore(VERSION_STORE).delete(item.id));
+    await transactionToPromise(transaction);
+  });
+}
+
+export async function saveVersion(board, label, kind = "manual", { slot = "", pinned = false } = {}) {
   const createdAt = new Date().toISOString();
+  const versionSlot = String(slot ?? "").trim();
+  if (versionSlot.length > 128) throw new Error("版本儲存位置名稱過長。");
   const version = {
-    id: `version-${board.id}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    id: versionSlot
+      ? `version-slot:${JSON.stringify([String(board.id), versionSlot])}`
+      : `version-${board.id}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     boardId: board.id,
     createdAt,
     label: String(label || "未命名版本").trim().slice(0, 80) || "未命名版本",
     kind,
+    pinned: Boolean(pinned),
+    ...(versionSlot ? { slot: versionSlot } : {}),
     objectCount: board.objects.length,
     board,
   };
@@ -513,17 +533,29 @@ export async function saveVersion(board, label, kind = "manual") {
     await transactionToPromise(transaction);
   });
 
-  const versions = await listVersions(board.id);
-  const overflow = versions.slice(MAX_VERSIONS_PER_BOARD);
-  if (overflow.length) {
-    await withDatabase(async (database) => {
-      const transaction = database.transaction(VERSION_STORE, "readwrite");
-      overflow.forEach((item) => transaction.objectStore(VERSION_STORE).delete(item.id));
-      await transactionToPromise(transaction);
-    });
-  }
+  await pruneVersions(board.id);
 
   return version;
+}
+
+export async function setVersionPinned(versionId, pinned) {
+  if (!versionId) return null;
+  const updated = await withDatabase(async (database) => {
+    const transaction = database.transaction(VERSION_STORE, "readwrite");
+    const completed = transactionToPromise(transaction);
+    const store = transaction.objectStore(VERSION_STORE);
+    const existing = await requestToPromise(store.get(String(versionId)));
+    if (!existing) {
+      await completed;
+      return null;
+    }
+    const record = { ...existing, pinned: Boolean(pinned) };
+    store.put(record);
+    await completed;
+    return record;
+  });
+  if (updated) await pruneVersions(updated.boardId);
+  return updated;
 }
 
 export async function deleteVersion(versionId) {

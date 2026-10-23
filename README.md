@@ -26,6 +26,16 @@ Infinite Moodboard runs the canvas, imported media, transforms, exports, and ver
 - Optional Google Drive file storage and Drive-native sharing with viewer/editor permissions on the same file.
 - 3D, Drive sharing, and export runtimes are loaded only when used, keeping the opening bundle smaller.
 
+## v0.54.0 — explicit saving and recoverable cloud loading
+
+[Read the complete v0.54.0 release notes.](./public/release-notes/v0.54.0.html)
+
+- The labeled top-left action is **Save** for local files and **Update to cloud** for Drive documents. Both preserve the current canvas; cloud saving only uploads.
+- Cloud content differences prompt an explicit load choice. Loading first creates a pinned recovery checkpoint, with a restore action that survives refresh and pauses automatic uploads.
+- Downloading a local copy does not change the primary destination. Switching to local opens an independent document and preserves the original Drive file and share link.
+- Stale reads and cross-tab updates cannot replace the active canvas. Conflicting saves use one target-bound confirmation.
+- Isolated browser acceptance: `NODE_PATH=<directory containing playwright> node scripts/test-storage-workflow.cjs` against the local Vite service. It blocks external requests and mocks Drive; real account integration requires separate acceptance.
+
 ## v0.53.0 — direct layers and safer Drive decisions release
 
 [Read the complete v0.53.0 release notes.](./public/release-notes/v0.53.0.html)

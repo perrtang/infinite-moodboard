@@ -54,7 +54,7 @@ test("Drive becomes primary only after verified connection success and then retu
   assert.match(completion, /setShowDriveLibrary\(false\)/);
   assert.match(completion, /setShowSettings\(false\)/);
   assert.match(completion, /已回到工作畫面/);
-  assert.match(completion, /completedBySync[\s\S]*Google Drive 已同步/);
+  assert.match(completion, /completedBySync[\s\S]*已儲存至 Google Drive/);
 
   assert.match(choice, /if \(target === "local"\) \{[\s\S]*setBoardPrimaryStorage\(boardId, target\)/);
   assert.match(choice, /setDriveOnboardingIntent\(\{ boardId, operationEpoch \}\)/);

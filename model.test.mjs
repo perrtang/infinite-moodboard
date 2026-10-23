@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   BOARD_SCHEMA_VERSION,
@@ -108,7 +109,9 @@ import {
 test("application version remains explicit and independent from board revisions", () => {
   assert.match(APP_VERSION, /^\d+\.\d+\.\d+$/);
   assert.equal(APP_VERSION_LABEL, `App v${APP_VERSION}`);
-  assert.equal(APP_RELEASE_DATE, "2026-10-23");
+  const manifest = JSON.parse(readFileSync(new URL("./public/infinite-moodboard-update.json", import.meta.url), "utf8"));
+  assert.equal(APP_RELEASE_DATE, manifest.releasedAt);
+  assert.equal(APP_VERSION, manifest.version);
   assert.equal(APP_RELEASE_NOTES_URL, `/release-notes/v${APP_VERSION}.html`);
 });
 

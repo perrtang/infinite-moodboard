@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light dark" />
+  <title>Infinite Moodboard v0.54.0 更新說明</title>
+  <style>
+    :root { color-scheme: light dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    * { box-sizing: border-box; }
+    body { background: #f4f4f2; color: #171717; margin: 0; }
+    main { margin: 0 auto; max-width: 760px; padding: 64px 24px 96px; }
+    header { border-bottom: 1px solid #cfcfca; padding-bottom: 28px; }
+    .eyebrow { font-size: 12px; font-weight: 750; letter-spacing: .12em; margin: 0 0 14px; text-transform: uppercase; }
+    h1 { font-size: clamp(32px, 7vw, 56px); letter-spacing: -.045em; line-height: 1.08; margin: 0; }
+    .meta { color: #666; font-size: 14px; margin: 16px 0 0; }
+    section { border-bottom: 1px solid #d9d9d4; padding: 30px 0; }
+    h2 { font-size: 18px; margin: 0 0 14px; }
+    p, li { font-size: 16px; line-height: 1.7; }
+    ul { margin: 0; padding-left: 1.25em; }
+    li + li { margin-top: 8px; }
+    .note { background: #e8e8e4; border-left: 3px solid currentColor; padding: 14px 16px; }
+    a { color: inherit; font-weight: 720; text-underline-offset: 3px; }
+    footer { padding-top: 28px; }
+    @media (prefers-color-scheme: dark) {
+      body { background: #0d0d0d; color: #f2f2ef; }
+      header, section { border-color: #363636; }
+      .meta { color: #aaa; }
+      .note { background: #1b1b1b; }
+    }
+  </style>
+</head>
+<body><main>
+  <header>
+    <p class="eyebrow">Infinite Moodboard · Release notes</p>
+    <h1>v0.54.0 更新說明</h1>
+    <p class="meta">發布日期：2026-10-24</p>
+  </header>
+  <section>
+    <h2>更新內容</h2>
+    <ul>
+      <li>左上方新增可直接操作的儲存按鈕。本機文件顯示「儲存」；雲端文件顯示「更新至雲端」，只上傳目前畫布至同一份 Drive 檔案，不會下載或取代正在編輯的內容。</li>
+      <li>偵測到 Drive 內容不同時，提供「載入雲端版本」與「保留目前工作」。不再把版本編號較高直接說成內容較新。</li>
+      <li>載入雲端前先建立固定的復原版本；載入後可按「復原載入前內容」，重新整理後仍可使用，也可從版本紀錄找到。復原後暫停自動上傳，等你確認並按「更新至雲端」。</li>
+      <li>「下載本機副本」只產生備份，不改變主要儲存位置。從雲端改用本機時會另開獨立文件，保留原雲端檔案與分享連結。</li>
+      <li>每份文件仍只有一個主要儲存位置。自動儲存沿用同一方向，雲端檔案的狀態明確區分「尚未儲存」「上傳中」與「已儲存至 Google Drive」。</li>
+    </ul>
+  </section>
+  <section>
+    <h2>修正</h2>
+    <ul>
+      <li>阻擋較早開始的雲端讀取，在你繼續編輯、儲存或關閉檔案視窗後覆蓋目前畫布。</li>
+      <li>跨分頁更新改為獨立的待檢視版本，不再直接換掉正在編輯的畫面。</li>
+      <li>儲存發現真正版本衝突時，只顯示「取消」與「以目前內容更新」；確認綁定目前文件、Drive 檔案與檢查過的版本。寫入前仍會保留可復原的 Drive 版本。</li>
+      <li>上傳中不允許切換文件或還原版本；較舊的檔案列表回應也不會把成功狀態改回檢查中。</li>
+      <li>修正狹窄手機畫面的工具列溢出，統一確認按鈕字級與觸控範圍，避免重複衝突通知覆蓋對話框。</li>
+    </ul>
+  </section>
+  <section>
+    <h2>注意事項</h2>
+    <div class="note">
+      <p>「更新至雲端」會更新同一檔案，分享連結不變；它不等於載入遠端內容。本機復原成功也不代表已上傳成功，請確認雲端儲存狀態。</p>
+      <p>本機復原版本保存在目前瀏覽器。清除網站資料或切換裝置後不保證可取得，重要內容仍建議下載 .moodboard 備份。若無法建立載入前備份，會停止載入並保留目前畫布。</p>
+      <p>Google 登入、Drive 授權及檔案編輯權仍是必要條件。隔離測試使用模擬 Drive；正式雙帳號與跨裝置驗收、GitHub 推送及正式部署須另外完成。</p>
+    </div>
+  </section>
+  <section>
+    <h2>回復與備份</h2>
+    <p>此版本封版時建立 <code>backup/v0.54.0</code> Git 標籤與原始碼 ZIP，保留前版 <code>v0.53.0</code> 供程式回退。畫布內容請使用「復原載入前內容」、版本紀錄或下載的 .moodboard 備份復原；程式版本回退不會自動還原使用者文件。</p>
+  </section>
+  <footer><a href="../">回到 Infinite Moodboard</a></footer>
+</main></body>
+</html>

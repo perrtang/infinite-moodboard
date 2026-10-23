@@ -6,7 +6,7 @@ const main = await readFile(new URL("./main.jsx", import.meta.url), "utf8");
 const styles = await readFile(new URL("./styles.css", import.meta.url), "utf8");
 
 test("Drive autosync status appears immediately before undo and only for an active linked Drive target", () => {
-  assert.match(main, /const showTopbarDriveStatus = currentPrimaryStorageTarget === "drive"[\s\S]*storagePreferences\.autoSave[\s\S]*driveSettings\.autoSync[\s\S]*Boolean\(currentDriveLink\)/);
+  assert.match(main, /const showTopbarDriveStatus = currentPrimaryStorageTarget === "drive";/);
   assert.match(main, /<div className="topbar-secondary">\s*\{showTopbarDriveStatus \? \(/);
   assert.match(main, /className=\{`topbar-cloud-status is-\$\{drivePresentation\.tone\}`\}/);
   assert.match(main, /aria-label=\{`\$\{drivePresentation\.label\}；開啟 Google Drive 檔案與同步狀態`\}/);
@@ -54,7 +54,7 @@ test("a local recovery-copy failure warns but does not block the Drive upload", 
 
   assert.ok(saveStart > -1 && warningStart > saveStart && driveAboutStart > warningStart && uploadStart > driveAboutStart);
   assert.doesNotMatch(localFailureBlock, /throw new DriveApiError/);
-  assert.match(main.slice(uploadStart, main.indexOf("return true;", uploadStart)), /"synced-local-warning"[\s\S]*Google Drive 已同步/);
+  assert.match(main.slice(uploadStart, main.indexOf("return true;", uploadStart)), /"synced-local-warning"[\s\S]*已儲存至 Google Drive/);
 });
 
 test("sync-queue bookkeeping failures never masquerade as local recovery-copy failures", () => {
@@ -67,5 +67,5 @@ test("sync-queue bookkeeping failures never masquerade as local recovery-copy fa
   assert.match(main.slice(queueReadStart, driveAboutStart), /catch \(error\) \{\s*noteQueueStateFailure\(error\);/);
   assert.doesNotMatch(main.slice(queueReadStart, driveAboutStart), /noteLocalRecoveryFailure\(error\)/);
   assert.match(main.slice(queueRemovalStart, syncedStateStart), /noteQueueStateFailure\(error\)[\s\S]*setSyncJobs[\s\S]*setTimeout[\s\S]*removeSyncJob/);
-  assert.match(main.slice(syncedStateStart, main.indexOf("return true;", syncedStateStart)), /queueStateWarning[\s\S]*Google Drive 已同步；本機同步佇列待整理/);
+  assert.match(main.slice(syncedStateStart, main.indexOf("return true;", syncedStateStart)), /queueStateWarning[\s\S]*已儲存至 Google Drive；本機同步佇列待整理/);
 });

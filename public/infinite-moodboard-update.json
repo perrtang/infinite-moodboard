@@ -1,9 +1,9 @@
 {
   "product": "Infinite Moodboard",
   "channel": "stable",
-  "version": "0.53.0",
-  "releasedAt": "2026-10-23",
-  "summary": "圖層整列可直接多選與批次排序；Drive 版本衝突改為安全的分層決策，並輪替及驗證 Google Picker 設定。",
-  "notesUrl": "release-notes/v0.53.0.html",
+  "version": "0.54.0",
+  "releasedAt": "2026-10-24",
+  "summary": "左上方直接更新至雲端；載入雲端與儲存明確分開，提供載入前復原與獨立本機副本，防止較早的讀取覆蓋目前編輯。",
+  "notesUrl": "release-notes/v0.54.0.html",
   "url": "https://moodboard.petfashion.tw/"
 }
