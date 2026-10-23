@@ -258,7 +258,7 @@ Older releases used a separate Firestore sharing-room prototype. The current pro
 
 - A push to `main` runs tests and a production build before GitHub Pages deployment.
 - A `vX.Y.Z` tag runs tests again and creates a GitHub Release with a self-hosted ZIP and checksum.
-- Every accepted milestone also has a `backup/vX.Y.Z` Git tag plus an external Git bundle and source snapshot.
+- Every accepted milestone also has a `backup/vX.Y.Z` Git tag plus an external, verified source snapshot that remains recoverable even when macOS has offloaded older Git objects.
 - See [SELF_HOSTING.md](SELF_HOSTING.md) for the downloaded web build and [RELEASING.md](RELEASING.md) for the maintainer checklist.
 
 ## License status

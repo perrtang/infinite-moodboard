@@ -37,15 +37,15 @@ else
 fi
 
 mkdir -p "$backup_dir"
-bundle_path="$backup_dir/Infinite-Moodboard-v$version.bundle"
 archive_path="$backup_dir/Infinite-Moodboard-v$version-source.zip"
+archive_tmp="$backup_dir/.Infinite-Moodboard-v$version-source.tmp.zip"
 
-# Bundle the verified release tag and its complete history. Avoid `--all` here:
-# an unrelated malformed or stale local ref must not block a release backup.
-git bundle create "$bundle_path" "$tag"
-git archive --format=zip --output="$archive_path" "$tag"
-git bundle verify "$bundle_path" >/dev/null
+# The clean working tree is identical to the verified tag. Archive tracked files
+# from disk so macOS iCloud-evicted historical Git objects cannot stall backup.
+rm -f "$archive_tmp"
+git ls-files | zip -q -y "$archive_tmp" -@
+unzip -tq "$archive_tmp" >/dev/null
+mv -f "$archive_tmp" "$archive_path"
 
 echo "已建立 $tag"
-echo "Git 備份：$bundle_path"
 echo "原始碼快照：$archive_path"
