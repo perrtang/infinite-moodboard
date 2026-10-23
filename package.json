@@ -1,6 +1,6 @@
 {
   "name": "infinite-moodboard",
-  "version": "0.50.0",
+  "version": "0.51.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "node --test *.test.mjs",
+    "release:verify": "node ./scripts/verify-release-notes.mjs",
     "release:package": "./scripts/package-release.sh"
   },
   "dependencies": {

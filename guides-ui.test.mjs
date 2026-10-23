@@ -40,6 +40,13 @@ test("each guide exposes a keyboard-accessible right-click menu for lock and del
   assert.match(styles, /\.guide-context-menu button:focus-visible/);
 });
 
+test("guides are never deleted by double-click", () => {
+  assert.doesNotMatch(main, /onDoubleClick=\{\(event\) => \{ event\.stopPropagation\(\); onDeleteGuide\(guide\.id\); \}\}/);
+  assert.doesNotMatch(main, /連按兩下刪除/);
+  assert.match(main, /拖曳移動，按右鍵更多/);
+  assert.match(main, /onDeleteGuide\(guide\.id, true\)/);
+});
+
 test("the unexplained world-origin corner is removed", () => {
   assert.doesNotMatch(main, /className="world-origin"/);
   assert.doesNotMatch(styles, /\.world-origin/);
@@ -90,6 +97,10 @@ test("guides use a dedicated selectable layer above ordinary object layers", () 
 });
 
 test("dragging a selected guide previews and moves every selected guide on the same axis", () => {
+  assert.match(main, /resolveDraggedGuidePosition\(\{/);
+  assert.match(main, /startClientPosition: guideAxis === "x" \? startPointer\.x : startPointer\.y/);
+  assert.match(main, /if \(moved \|\| !existing\) update\(\)/);
+  assert.match(main, /if \(!existing\) update\(\)/);
   assert.match(main, /activeSelection\.includes\(guide\.id\) && guide\.axis === guideAxis && !guide\.locked/);
   assert.match(main, /const delta = existing \? position - primaryStartPosition : 0/);
   assert.match(main, /members: baselines/);

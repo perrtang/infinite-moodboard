@@ -1,4 +1,4 @@
-export const APP_VERSION = "0.50.0";
+export const APP_VERSION = "0.51.0";
 export const APP_VERSION_LABEL = `App v${APP_VERSION}`;
 export const APP_RELEASE_DATE = "2026-10-23";
 export const APP_UPDATE_PREFERENCE_STORAGE_KEY = "infinite-moodboard-update-preference-v1";
@@ -6,6 +6,7 @@ export const APP_UPDATE_SNOOZE_STORAGE_KEY = "infinite-moodboard-update-snooze-v
 export const APP_UPDATE_ATTEMPT_STORAGE_KEY = "infinite-moodboard-update-attempt-v1";
 export const APP_UPDATE_SNOOZE_DURATION_MS = 24 * 60 * 60 * 1000;
 const APP_BASE_URL = import.meta.env?.BASE_URL || "/";
+export const APP_RELEASE_NOTES_URL = `${APP_BASE_URL.endsWith("/") ? APP_BASE_URL : `${APP_BASE_URL}/`}release-notes/v${APP_VERSION}.html`;
 export const APP_UPDATE_MANIFEST_URL = import.meta.env?.VITE_MOODBOARD_UPDATE_MANIFEST_URL
   || `${APP_BASE_URL.endsWith("/") ? APP_BASE_URL : `${APP_BASE_URL}/`}infinite-moodboard-update.json`;
 
@@ -31,6 +32,10 @@ export function normalizeUpdateManifest(value) {
   if (!value || typeof value !== "object") throw new Error("更新資訊格式不正確。");
   const version = String(value.version || "").trim();
   semanticVersionParts(version);
+  const notesUrl = String(value.notesUrl || "").trim();
+  if (notesUrl && notesUrl !== `release-notes/v${version}.html`) {
+    throw new Error("更新說明連結格式不正確。");
+  }
   return {
     product: String(value.product || "Infinite Moodboard").trim(),
     channel: String(value.channel || "stable").trim(),
@@ -38,7 +43,15 @@ export function normalizeUpdateManifest(value) {
     releasedAt: String(value.releasedAt || "").trim(),
     summary: String(value.summary || "").trim(),
     url: String(value.url || "").trim(),
+    notesUrl,
   };
+}
+
+export function resolveUpdateNotesUrl(notesUrl, manifestUrl) {
+  const value = String(notesUrl || "").trim();
+  if (!value) return "";
+  const resolved = new URL(value, manifestUrl);
+  return ["http:", "https:"].includes(resolved.protocol) ? resolved.href : "";
 }
 
 export function normalizeUpdatePreference(value) {

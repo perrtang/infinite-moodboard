@@ -108,16 +108,23 @@ export async function observeMoodboardSession(callback) {
   }
 }
 
-export async function signInMoodboardWithGoogle(locale = "zh-Hant", { rememberSession = false } = {}) {
+export async function signInMoodboardWithGoogle(locale = "zh-Hant", {
+  rememberSession = false,
+  additionalScopes = [],
+} = {}) {
   const auth = await moodboardAuth();
   await setMoodboardAuthPersistence(auth, rememberSession);
   setMoodboardAuthLanguage(auth, locale);
   const provider = new GoogleAuthProvider();
+  [...new Set(additionalScopes.map((scope) => String(scope || "").trim()).filter(Boolean))]
+    .forEach((scope) => provider.addScope(scope));
   provider.setCustomParameters({ prompt: "select_account" });
   const credential = await signInWithPopup(auth, provider);
+  const oauthCredential = GoogleAuthProvider.credentialFromResult(credential);
   return {
     user: normalizeAccountUser(credential.user),
     isNewUser: Boolean(getAdditionalUserInfo(credential)?.isNewUser),
+    oauthAccessToken: String(oauthCredential?.accessToken || ""),
   };
 }
 

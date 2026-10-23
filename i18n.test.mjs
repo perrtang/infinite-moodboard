@@ -3,6 +3,8 @@ import test from "node:test";
 import { translateInterfaceText } from "./i18n.js";
 
 test("account access copy is available in all built-in locales", () => {
+  assert.equal(translateInterfaceText("查看更新說明", "en"), "View release notes");
+  assert.equal(translateInterfaceText("版本資訊與更新方式", "en"), "Version details and update options");
   assert.equal(translateInterfaceText("帳號與隱私", "en"), "Account & privacy");
   assert.equal(translateInterfaceText("使用 Google 帳號登入", "en"), "Sign in with Google");
   assert.equal(translateInterfaceText("Email 驗證登入", "en"), "Verified email sign-in");
@@ -123,6 +125,12 @@ test("Google Drive storage and recovery copy is localized", () => {
   assert.equal(translateInterfaceText("儲存與同步", "en"), "Storage & sync");
   assert.equal(translateInterfaceText("選擇主要儲存位置", "en"), "Choose the primary storage location");
   assert.equal(translateInterfaceText("這台裝置", "en"), "This device");
+  assert.equal(translateInterfaceText("登入並連結 Google Drive", "en"), "Sign in and connect Google Drive");
+  assert.equal(translateInterfaceText("使用這台裝置", "en"), "Use this device");
+  assert.equal(translateInterfaceText("適合跨裝置開啟；登入與 Drive 授權會在同一流程完成。", "en"), "Best for cross-device access. Sign-in and Drive authorization complete in one flow.");
+  assert.match(translateInterfaceText("切換時不會刪除原本檔案；選擇 Drive 後會先說明，並在同一流程完成登入與授權。", "en"), /one flow/);
+  assert.match(translateInterfaceText("PETFASHION 身分與 Drive 權限彼此獨立，但會在同一個連結流程完成。", "en"), /stay independent/);
+  assert.match(translateInterfaceText("繼續後會登入 PETFASHION，並由 Google 授予 drive.file 權限；只存取 Infinite Moodboard 建立或你指定的檔案。連結完成不會立即上傳，第一次儲存才會建立 Drive 工作檔，本機安全副本仍會保留。", "en"), /Connecting does not upload immediately/);
   assert.equal(translateInterfaceText("我的 Moodboards", "en"), "My Moodboards");
   assert.equal(translateInterfaceText("下載 `.moodboard` 備份", "en"), "Download `.moodboard` backup");
   assert.equal(translateInterfaceText("已儲存在這台裝置 · 上午10:42", "en"), "Saved on this device · 10:42");

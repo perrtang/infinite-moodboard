@@ -83,6 +83,7 @@ import {
 } from "./ui-preferences.js";
 import {
   APP_RELEASE_DATE,
+  APP_RELEASE_NOTES_URL,
   APP_UPDATE_PREFERENCE_STORAGE_KEY,
   APP_VERSION,
   APP_VERSION_LABEL,
@@ -91,6 +92,7 @@ import {
   isAppUpdateSnoozed,
   loadUpdatePreference,
   normalizeUpdateManifest,
+  resolveUpdateNotesUrl,
   saveUpdatePreference,
   snoozeAppUpdate,
 } from "./version.js";
@@ -105,6 +107,7 @@ test("application version remains explicit and independent from board revisions"
   assert.match(APP_VERSION, /^\d+\.\d+\.\d+$/);
   assert.equal(APP_VERSION_LABEL, `App v${APP_VERSION}`);
   assert.equal(APP_RELEASE_DATE, "2026-10-23");
+  assert.equal(APP_RELEASE_NOTES_URL, `/release-notes/v${APP_VERSION}.html`);
 });
 
 test("imported images keep their intrinsic pixel dimensions while videos retain a bounded preview", () => {
@@ -201,7 +204,10 @@ test("application update manifests compare stable semantic versions", () => {
     releasedAt: "",
     summary: "最新版本",
     url: "",
+    notesUrl: "",
   });
+  assert.equal(resolveUpdateNotesUrl("release-notes/v0.2.0.html", "https://moodboard.petfashion.tw/infinite-moodboard-update.json?checked=1"), "https://moodboard.petfashion.tw/release-notes/v0.2.0.html");
+  assert.throws(() => normalizeUpdateManifest({ version: "0.2.0", notesUrl: "javascript:alert(1)" }), /更新說明連結格式不正確/);
   assert.throws(() => normalizeUpdateManifest({ version: "next" }), /版本編號格式不正確/);
 });
 

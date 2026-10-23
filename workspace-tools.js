@@ -59,6 +59,23 @@ export function resolveGuidePosition({
   return snap ? safeOrigin + snapGuidePosition(position - safeOrigin, unit, { zoom: safeZoom }) : position;
 }
 
+export function resolveDraggedGuidePosition({
+  initialPosition = 0,
+  startClientPosition = 0,
+  clientPosition = 0,
+  zoom = 1,
+  unit = "px",
+  snap = false,
+  origin = 0,
+} = {}) {
+  const safeZoom = Math.max(0.01, Number(zoom) || 1);
+  const position = (Number(initialPosition) || 0) + (
+    (Number(clientPosition) || 0) - (Number(startClientPosition) || 0)
+  ) / safeZoom;
+  const safeOrigin = Number(origin) || 0;
+  return snap ? safeOrigin + snapGuidePosition(position - safeOrigin, unit, { zoom: safeZoom }) : position;
+}
+
 export function formatGuideValue(value, unit = "px") {
   const resolvedUnit = normalizeRulerUnit(unit);
   const resolved = RULER_UNITS[resolvedUnit];

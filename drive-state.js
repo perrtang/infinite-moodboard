@@ -39,6 +39,18 @@ export function isGoogleDriveTokenUsable(token, now = Date.now()) {
   return Boolean(token?.accessToken && Number(token.expiresAt) > now);
 }
 
+export function googleDriveTokenFromOAuthAccessToken(accessToken, now = Date.now()) {
+  const normalizedAccessToken = String(accessToken || "").trim();
+  if (!normalizedAccessToken) return null;
+  return {
+    accessToken: normalizedAccessToken,
+    // Google access tokens normally last one hour. Keep a conservative in-memory
+    // window because Firebase does not expose the exact expiry for this credential.
+    expiresAt: Number(now) + 50 * 60 * 1000,
+    scope: GOOGLE_DRIVE_SCOPE,
+  };
+}
+
 export function isGoogleDriveAuthorizationError(error) {
   const reason = error?.reason || error?.details?.error?.errors?.[0]?.reason || "";
   return error?.code === "drive/authorization"

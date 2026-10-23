@@ -200,9 +200,11 @@ import {
 import {
   DriveApiError,
   DriveConflictError,
+  GOOGLE_DRIVE_SCOPE,
   contentByteLength,
   driveErrorMessage,
   evaluateDriveQuota,
+  googleDriveTokenFromOAuthAccessToken,
   isGoogleDriveAuthorizationError,
   isGoogleDriveConfigured,
   isGoogleDriveRetryableError,
@@ -303,6 +305,7 @@ import {
 import { resolveSmartAlignment, selectionSpacingMeasurements } from "./alignment.js";
 import {
   APP_RELEASE_DATE,
+  APP_RELEASE_NOTES_URL,
   APP_UPDATE_ATTEMPT_STORAGE_KEY,
   APP_UPDATE_MANIFEST_URL,
   APP_VERSION,
@@ -312,6 +315,7 @@ import {
   isAppUpdateSnoozed,
   loadUpdatePreference,
   normalizeUpdateManifest,
+  resolveUpdateNotesUrl,
   saveUpdatePreference,
   snoozeAppUpdate,
 } from "./version.js";
@@ -336,6 +340,7 @@ import {
   matchesListQuery,
   normalizeCanvasToolbarPosition,
   normalizeRulerUnit,
+  resolveDraggedGuidePosition,
   resolveGuidePosition,
   shouldConfirmEscapeCancellation,
 } from "./workspace-tools.js";
@@ -1839,15 +1844,14 @@ function WorkspaceRulers({
                   ? `${guide.axis === "x" ? "垂直" : "水平"}導引線 ${formatGuideValue(relativePosition, unit)}；目前僅檢視`
                   : guidesLocked || guide.locked
                   ? `${guide.axis === "x" ? "垂直" : "水平"}導引線 ${formatGuideValue(relativePosition, unit)}；已鎖定`
-                  : `${guide.axis === "x" ? "垂直" : "水平"}導引線 ${formatGuideValue(relativePosition, unit)}；拖曳移動，連按兩下刪除，按右鍵更多`}
-                title={readOnly ? "目前為僅檢視；無法調整導引線" : guidesLocked ? "所有導引線已鎖定；請從「檔案」解除鎖定" : guide.locked ? "此導引線已鎖定；按右鍵解除或刪除" : "拖曳移動；連按兩下刪除；按右鍵更多"}
+                  : `${guide.axis === "x" ? "垂直" : "水平"}導引線 ${formatGuideValue(relativePosition, unit)}；拖曳移動，按右鍵更多`}
+                title={readOnly ? "目前為僅檢視；無法調整導引線" : guidesLocked ? "所有導引線已鎖定；請從「檔案」解除鎖定" : guide.locked ? "此導引線已鎖定；按右鍵解除或刪除" : "拖曳移動；按右鍵更多"}
                 onPointerDown={(event) => onStartGuide(event, guide.axis, guide.id)}
                 onContextMenu={(event) => openGuideMenu(event, guide, screenPosition)}
                 onKeyDown={(event) => {
                   if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
                   openGuideMenu(event, guide, screenPosition);
                 }}
-                onDoubleClick={(event) => { event.stopPropagation(); onDeleteGuide(guide.id); }}
                 key={guide.id}
               />
             );
@@ -5297,7 +5301,8 @@ function AuthGate({
   onRetry,
   onClose,
 }) {
-  const [accepted, setAccepted] = useState(false);
+  const isDriveOnboarding = feature === "drive-onboarding";
+  const [accepted, setAccepted] = useState(isDriveOnboarding);
   const [marketingOptIn, setMarketingOptIn] = useState(false);
   const [rememberSession, setRememberSession] = useState(false);
   const [email, setEmail] = useState("");
@@ -5322,6 +5327,11 @@ function AuthGate({
       ? {
         title: "登入後開啟 Drive 分享檔案",
         description: "登入並連結 Google Drive 後，會依檔案擁有者授予的檢視或編輯權限開啟。",
+      }
+    : isDriveOnboarding
+      ? {
+        title: "登入並連結 Google Drive",
+        description: "這是一個連續流程：Google 登入完成後會直接授權 Drive，成功後回到工作畫面，不需要再按一次連結。",
       }
     : feature === "drive"
       ? {
@@ -5348,12 +5358,12 @@ function AuthGate({
           : null;
 
   useEffect(() => {
-    setAccepted(false);
+    setAccepted(isDriveOnboarding);
     setMarketingOptIn(false);
     setRememberSession(false);
     setEmail("");
     setEmailNotice("");
-  }, [session.status, session.user?.uid]);
+  }, [isDriveOnboarding, session.status, session.user?.uid]);
 
   const submitEmail = async (event) => {
     event.preventDefault();
@@ -5400,8 +5410,10 @@ function AuthGate({
         <label className="auth-consent-check">
           <input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} />
           <span>
-            <strong>同意使用 PETFASHION 帳號登入 <em>必填</em></strong>
-            <small>只使用名稱、頭像與 Email；Moodboard 不會因登入自動上傳。</small>
+            <strong>{isDriveOnboarding ? "同意登入並連結 Google Drive" : "同意使用 PETFASHION 帳號登入"} <em>必填</em></strong>
+            <small>{isDriveOnboarding
+              ? "登入只使用名稱、頭像與 Email；Drive 僅要求 drive.file。完成連結不會自動上傳 Moodboard。"
+              : "只使用名稱、頭像與 Email；Moodboard 不會因登入自動上傳。"}</small>
           </span>
         </label>
 
@@ -5437,7 +5449,7 @@ function AuthGate({
             onClick={() => onAccept({ marketingOptIn })}
           >
             {busy || loading ? <RefreshCw size={17} className="is-spinning" /> : <UserRound size={17} />}
-            {loading ? "正在確認登入狀態…" : busy ? "登入處理中…" : "同意並繼續"}
+            {loading ? "正在確認登入狀態…" : busy ? (isDriveOnboarding ? "正在連結 Google Drive…" : "登入處理中…") : (isDriveOnboarding ? "同意並連結 Google Drive" : "同意並繼續")}
           </button>
         ) : (
           <div className="auth-methods">
@@ -5450,7 +5462,7 @@ function AuthGate({
                   onClick={() => onGoogleSignIn({ marketingOptIn, rememberSession })}
                 >
                   {busy || loading ? <RefreshCw size={17} className="is-spinning" /> : <span className="auth-google-mark" aria-hidden="true">G</span>}
-                  {loading ? "正在確認登入狀態…" : busy ? "登入處理中…" : "使用 Google 帳號登入"}
+                  {loading ? "正在確認登入狀態…" : busy ? (isDriveOnboarding ? "正在連結 Google Drive…" : "登入處理中…") : (isDriveOnboarding ? "使用 Google 登入並連結 Drive" : "使用 Google 帳號登入")}
                 </button>
                 <div className="auth-method-divider"><span>或使用 Email 驗證連結</span></div>
               </>
@@ -5484,6 +5496,7 @@ function AuthGate({
           <div>
             <ul>
               <li>PETFASHION 只使用名稱、頭像與 Email 登入及辨識帳號。</li>
+              {isDriveOnboarding ? <li>Google Drive 只授予 drive.file 權限；連結不等於上傳，第一次儲存前不會建立雲端工作檔。</li> : null}
               <li>會員由 PETFASHION 統一管理，並記錄 Infinite Moodboard 啟用來源。</li>
               <li>作品、素材與版本預設保存在這台裝置，不會自動上傳。</li>
             </ul>
@@ -5726,6 +5739,11 @@ function libraryItemPresentation(item) {
 }
 
 function StorageLocationModal({ currentTarget, onChoose, onClose }) {
+  const [draftTarget, setDraftTarget] = useState(currentTarget || "");
+  const [driveConsentAcknowledged, setDriveConsentAcknowledged] = useState(false);
+  const choosingDrive = draftTarget === "drive";
+  const canContinue = Boolean(draftTarget) && (!choosingDrive || driveConsentAcknowledged);
+
   return (
     <Modal
       title="選擇主要儲存位置"
@@ -5734,29 +5752,54 @@ function StorageLocationModal({ currentTarget, onChoose, onClose }) {
     >
       <div className="storage-location-options" role="radiogroup" aria-label="主要儲存位置">
         <button
-          className={`storage-location-option ${currentTarget === "local" ? "is-selected" : ""}`}
+          className={`storage-location-option ${draftTarget === "local" ? "is-selected" : ""}`}
           type="button"
           role="radio"
-          aria-checked={currentTarget === "local"}
-          onClick={() => onChoose("local")}
+          aria-checked={draftTarget === "local"}
+          onClick={() => setDraftTarget("local")}
         >
           <span className="storage-location-option-icon"><HardDrive size={22} /></span>
           <span><strong>這台裝置</strong><small>選擇一份 .moodboard 檔案供自動儲存；瀏覽器另保留復原副本。</small></span>
-          {currentTarget === "local" ? <Check size={17} /> : <ChevronRight size={17} />}
+          {draftTarget === "local" ? <Check size={17} /> : <ChevronRight size={17} />}
         </button>
         <button
-          className={`storage-location-option ${currentTarget === "drive" ? "is-selected" : ""}`}
+          className={`storage-location-option ${draftTarget === "drive" ? "is-selected" : ""}`}
           type="button"
           role="radio"
-          aria-checked={currentTarget === "drive"}
-          onClick={() => onChoose("drive")}
+          aria-checked={draftTarget === "drive"}
+          onClick={() => setDraftTarget("drive")}
         >
           <span className="storage-location-option-icon"><Cloud size={22} /></span>
-          <span><strong>Google Drive</strong><small>適合跨裝置開啟；會另外詢問 Drive 權限，並保留本機安全副本。</small></span>
-          {currentTarget === "drive" ? <Check size={17} /> : <ChevronRight size={17} />}
+          <span><strong>Google Drive</strong><small>適合跨裝置開啟；登入與 Drive 授權會在同一流程完成。</small></span>
+          {draftTarget === "drive" ? <Check size={17} /> : <ChevronRight size={17} />}
         </button>
       </div>
+      {choosingDrive ? (
+        <label className="storage-drive-consent">
+          <input
+            type="checkbox"
+            checked={driveConsentAcknowledged}
+            onChange={(event) => setDriveConsentAcknowledged(event.target.checked)}
+          />
+          <span>
+            <strong>我同意登入並自動連結 Google Drive <em>必填</em></strong>
+            <small>繼續後會登入 PETFASHION，並由 Google 授予 drive.file 權限；只存取 Infinite Moodboard 建立或你指定的檔案。連結完成不會立即上傳，第一次儲存才會建立 Drive 工作檔，本機安全副本仍會保留。</small>
+          </span>
+        </label>
+      ) : null}
       <p className="storage-location-note"><ShieldCheck size={16} />切換位置不會刪除另一端的檔案；未同步變更會先留在這台裝置。</p>
+      <div className="storage-location-actions">
+        <button className="quiet-button" type="button" onClick={onClose}>取消</button>
+        <button
+          className="primary-button"
+          type="button"
+          disabled={!canContinue}
+          onClick={() => onChoose(draftTarget, { driveConsentAcknowledged })}
+        >
+          {choosingDrive ? <Cloud size={16} /> : <HardDrive size={16} />}
+          {choosingDrive ? "登入並連結 Google Drive" : "使用這台裝置"}
+        </button>
+      </div>
     </Modal>
   );
 }
@@ -6267,6 +6310,11 @@ function AppUpdateNotice({
         </div>
       ) : null}
       <div className="app-update-notice-actions">
+        {updateCheck.manifest.notesUrl ? (
+          <a className="secondary-button app-update-notes-link" href={updateCheck.manifest.notesUrl} target="_blank" rel="noreferrer">
+            <ExternalLink size={15} />查看更新說明
+          </a>
+        ) : null}
         <button className="primary-button" type="button" onClick={onUpdateNow} disabled={busy}>
           <RefreshCw size={15} className={busy ? "is-spinning" : ""} />
           {busy ? "正在安全更新…" : "立即更新"}
@@ -6487,7 +6535,7 @@ function SettingsModal({
               </div>
               <div className="settings-subsection-heading">
                 <Save size={17} />
-                <div><strong>目前 Moodboard 的主要儲存位置</strong><small>切換時不會刪除原本檔案；選擇 Drive 後才會另外要求登入與授權。</small></div>
+                <div><strong>目前 Moodboard 的主要儲存位置</strong><small>切換時不會刪除原本檔案；選擇 Drive 後會先說明，並在同一流程完成登入與授權。</small></div>
               </div>
               <div className="settings-storage-targets" role="radiogroup" aria-label="主要儲存位置">
                 <button className={primaryStorageTarget === "local" ? "is-active" : ""} type="button" role="radio" aria-checked={primaryStorageTarget === "local"} onClick={() => onSetStorageTarget("local")}>
@@ -6519,7 +6567,7 @@ function SettingsModal({
                 return (
                   <div className={`settings-drive-status is-${status.tone}`}>
                     <span aria-hidden="true"><StatusIcon size={20} className={["connecting", "syncing", "checking"].includes(driveSession.status) ? "is-spinning" : ""} /></span>
-                    <div><strong>{status.label}</strong><small>{driveSession.message || (driveSession.user?.emailAddress ? `目前 Drive 帳號：${driveSession.user.emailAddress}` : "Drive 授權和 PETFASHION 登入分開管理。")}</small></div>
+                    <div><strong>{status.label}</strong><small>{driveSession.message || (driveSession.user?.emailAddress ? `目前 Drive 帳號：${driveSession.user.emailAddress}` : "PETFASHION 身分與 Drive 權限彼此獨立，但會在同一個連結流程完成。")}</small></div>
                   </div>
                 );
               })()}
@@ -6817,15 +6865,18 @@ function SettingsModal({
                 <span><RefreshCw size={18} /><span><strong>安全自動更新</strong><small>只在下一次安全開啟時套用；編輯途中不會突然重新載入。</small></span></span>
                 <b>{autoUpdateEnabled ? "已開啟" : "關閉"}</b>
               </button>
-              {updateCheck.status === "available" ? (
-                <div className="settings-update-actions" role="group" aria-label="更新方式">
+              <div className="settings-update-actions" role="group" aria-label="版本資訊與更新方式">
+                <a className="secondary-button" href={updateCheck.manifest?.notesUrl || APP_RELEASE_NOTES_URL} target="_blank" rel="noreferrer"><ExternalLink size={15} />查看更新說明</a>
+                {updateCheck.status === "available" ? (
+                  <>
                   <button className="primary-button" type="button" onClick={onUpdateNow} disabled={updateAction.status === "saving" || updateAction.status === "reloading"}>
                     <RefreshCw size={16} className={updateAction.status === "saving" || updateAction.status === "reloading" ? "is-spinning" : ""} />
                     {updateAction.status === "saving" || updateAction.status === "reloading" ? "正在安全更新…" : "立即更新"}
                   </button>
                   <button className="quiet-button" type="button" onClick={onSnoozeUpdate} disabled={updateAction.status === "saving" || updateAction.status === "reloading"}>稍後更新</button>
-                </div>
-              ) : null}
+                  </>
+                ) : null}
+              </div>
               {updateAction.message ? <p className={`settings-update-action-message is-${updateAction.status}`} role="status">{updateAction.message}</p> : null}
               <p className="settings-update-note">版本檢查不會上傳 Moodboard、素材或使用紀錄；若目前離線，可以繼續編輯並稍後重試。</p>
             </section>
@@ -7137,6 +7188,7 @@ function App() {
   const [showCollaboration, setShowCollaboration] = useState(false);
   const [showDriveLibrary, setShowDriveLibrary] = useState(false);
   const [showStorageLocation, setShowStorageLocation] = useState(false);
+  const [driveOnboardingIntent, setDriveOnboardingIntent] = useState(null);
   const [showLocalFileLocation, setShowLocalFileLocation] = useState(false);
   const [localFileBinding, setLocalFileBinding] = useState(() => ({
     status: typeof window !== "undefined" && window.showSaveFilePicker ? "checking" : "unsupported",
@@ -7958,9 +8010,13 @@ function App() {
     }
   }, []);
 
-  const refreshGoogleDrive = useCallback(async (providedToken = "", providedFolderId = "", { resetLinks = false } = {}) => {
+  const refreshGoogleDrive = useCallback(async (providedToken = "", providedFolderId = "", {
+    resetLinks = false,
+    connectionUser = null,
+  } = {}) => {
     const operationEpoch = driveOperationEpochRef.current;
     const accessToken = providedToken || currentDriveAccessToken();
+    const resolvedConnectionUser = connectionUser || authSession.user;
     if (!accessToken) {
       setDriveSession((current) => ({ ...current, status: "authorization-required", connected: false, busy: false, message: "請重新連結 Google Drive；本機變更仍安全保留。" }));
       return null;
@@ -7978,8 +8034,8 @@ function App() {
         ...current,
         enabled: true,
         folderId,
-        connectionOwnerUid: String(authSession.user?.uid || current.connectionOwnerUid || ""),
-        connectionEmail: String(about.user?.emailAddress || authSession.user?.email || current.connectionEmail || ""),
+        connectionOwnerUid: String(resolvedConnectionUser?.uid || current.connectionOwnerUid || ""),
+        connectionEmail: String(about.user?.emailAddress || resolvedConnectionUser?.email || current.connectionEmail || ""),
         links: resetLinks ? {} : current.links,
       }));
       setDriveSession((current) => ({
@@ -8006,17 +8062,23 @@ function App() {
       }));
       return null;
     }
-  }, [authSession.user?.email, authSession.user?.uid, currentDriveAccessToken, driveSettings.folderId, updateDriveSettings]);
+  }, [authSession.user, currentDriveAccessToken, driveSettings.folderId, updateDriveSettings]);
 
-  const connectGoogleDrive = useCallback(async () => {
-    if (!authReady) {
+  const connectGoogleDrive = useCallback(async ({
+    allowIdentitySession = false,
+    connectionUser = null,
+    onboarding = false,
+  } = {}) => {
+    const resolvedConnectionUser = connectionUser || authSession.user;
+    const isOnboarding = onboarding || Boolean(driveOnboardingIntent);
+    if (!authReady && !(allowIdentitySession && isMoodboardIdentityEligible(resolvedConnectionUser))) {
       setShowSettings(false);
       setShowDriveLibrary(false);
-      setPendingAdvancedFeature("drive");
+      setPendingAdvancedFeature(isOnboarding ? "drive-onboarding" : "drive");
       return null;
     }
     const operationEpoch = driveOperationEpochRef.current;
-    const connectionOwnerUid = String(authSession.user?.uid || "");
+    const connectionOwnerUid = String(resolvedConnectionUser?.uid || "");
     const ownerChanged = Boolean(
       driveSettings.connectionOwnerUid
       && connectionOwnerUid
@@ -8025,15 +8087,15 @@ function App() {
     setDriveSession((current) => ({ ...current, status: "connecting", busy: true, message: "Google 會另外詢問 Drive 檔案權限。" }));
     try {
       const { requestGoogleDriveToken } = await loadDriveRuntime();
-      const token = await requestGoogleDriveToken({ loginHint: authSession.user?.email || "" });
+      const token = await requestGoogleDriveToken({ loginHint: resolvedConnectionUser?.email || "" });
       if (operationEpoch !== driveOperationEpochRef.current) return null;
       driveTokenRef.current = token;
       const result = await refreshGoogleDrive(
         token.accessToken,
         ownerChanged ? "" : driveSettings.folderId,
-        { resetLinks: ownerChanged },
+        { resetLinks: ownerChanged, connectionUser: resolvedConnectionUser },
       );
-      if (result) announce("Google Drive 已連結；尚未主動儲存前不會上傳畫布。", "success");
+      if (result && !isOnboarding) announce("Google Drive 已連結；尚未主動儲存前不會上傳畫布。", "success");
       return result;
     } catch (error) {
       if (operationEpoch !== driveOperationEpochRef.current) return null;
@@ -8049,7 +8111,7 @@ function App() {
       announce(driveErrorMessage(error), "error");
       return null;
     }
-  }, [announce, authReady, authSession.user?.email, authSession.user?.uid, driveSettings.connectionOwnerUid, driveSettings.folderId, refreshGoogleDrive]);
+  }, [announce, authReady, authSession.user, driveOnboardingIntent, driveSettings.connectionOwnerUid, driveSettings.folderId, refreshGoogleDrive]);
 
   const disconnectGoogleDrive = useCallback(() => {
     cancelDriveOperations();
@@ -8070,6 +8132,55 @@ function App() {
     });
     announce("已中斷這個分頁的 Google Drive；雲端檔案、本機畫布與 PETFASHION 登入都未受影響。", "success");
   }, [announce, cancelDriveOperations, updateDriveSettings]);
+
+  useEffect(() => {
+    const driveConnectionReady = driveSession.connected
+      && !driveSession.busy
+      && ["ready", "synced"].includes(driveSession.status);
+    const driveConflictNeedsDecision = driveSession.connected
+      && !driveSession.busy
+      && driveSession.status === "conflict";
+    if (driveOnboardingIntent && driveConflictNeedsDecision) {
+      setPendingAdvancedFeature(null);
+      setShowStorageLocation(false);
+      setShowDriveLibrary(true);
+      setAuthMessage("");
+      return;
+    }
+    if (!driveOnboardingIntent || !driveConnectionReady) return;
+    const intentIsCurrent = isCurrentStorageTargetOperation({
+      expectedEpoch: driveOnboardingIntent.operationEpoch,
+      currentEpoch: storageTargetOperationEpochRef.current,
+      expectedBoardId: driveOnboardingIntent.boardId,
+      currentBoardId: boardRef.current.id,
+    });
+    if (!intentIsCurrent) {
+      setDriveOnboardingIntent(null);
+      return;
+    }
+    setBoardPrimaryStorage(driveOnboardingIntent.boardId, "drive");
+    setDriveOnboardingIntent(null);
+    setPendingAdvancedFeature(null);
+    setShowStorageLocation(false);
+    setShowDriveLibrary(false);
+    setShowSettings(false);
+    setAuthMessage("");
+    const completedBySync = driveSession.status === "synced";
+    setSaveState(completedBySync ? "Google Drive 已同步" : "Google Drive 已連結；第一次儲存前不會上傳");
+    announce(completedBySync
+      ? "Drive 版本已處理完成；已回到工作畫面。"
+      : "Google Drive 已連結；已回到工作畫面。第一次儲存前不會上傳，且本機安全副本會持續保留。", "success");
+  }, [announce, driveOnboardingIntent, driveSession.busy, driveSession.connected, driveSession.status, setBoardPrimaryStorage]);
+
+  const closeDriveLibrary = useCallback(() => {
+    setShowDriveLibrary(false);
+    if (!driveOnboardingIntent) return;
+    storageTargetOperationEpochRef.current += 1;
+    cancelDriveOperations();
+    setDriveOnboardingIntent(null);
+    if (pendingAdvancedFeature === "drive-onboarding") setPendingAdvancedFeature(null);
+    setSaveState("Google Drive 尚未設為主要位置；本機安全副本持續保留");
+  }, [cancelDriveOperations, driveOnboardingIntent, pendingAdvancedFeature]);
 
   useEffect(() => {
     if (!driveSettings.enabled || currentDriveAccessToken()) return undefined;
@@ -8191,6 +8302,7 @@ function App() {
       setShowDriveLibrary(true);
       return;
     }
+    if (feature === "drive-onboarding") return;
     if (feature === "3d") {
       if (selectedIdsRef.current.length) setTool("3d");
       else announce("請先選取要進行 3D 操作的物件。", "warning");
@@ -8215,18 +8327,20 @@ function App() {
 
   const closeAdvancedFeatureGate = useCallback(() => {
     if (authBusy) return;
+    if (pendingAdvancedFeature === "drive-onboarding") setDriveOnboardingIntent(null);
     setPendingAdvancedFeature(null);
     setAuthMessage("");
-  }, [authBusy]);
+  }, [authBusy, pendingAdvancedFeature]);
 
   useEffect(() => {
     if (!authReady || !pendingAdvancedFeature) return;
     const feature = pendingAdvancedFeature;
+    if (feature === "drive-onboarding") return;
     setPendingAdvancedFeature(null);
     completeAdvancedFeature(feature);
   }, [authReady, completeAdvancedFeature, pendingAdvancedFeature]);
 
-  const acceptMoodboardAccess = useCallback(({ marketingOptIn = false } = {}) => {
+  const acceptMoodboardAccess = useCallback(async ({ marketingOptIn = false } = {}) => {
     if (!authSession.user) return;
     try {
       const receipt = saveMoodboardAccessConsent(localStorage, authSession.user, {
@@ -8237,17 +8351,34 @@ function App() {
       setAuthReceipt(receipt);
       setAuthConsentGranted(true);
       setAuthMessage("");
-      announce("帳號授權完成；Moodboard 仍保存在這台裝置。", "success");
+      if (pendingAdvancedFeature === "drive-onboarding") {
+        setAuthBusy(true);
+        setAuthMessage("帳號登入完成，正在連結 Google Drive…");
+        const result = await connectGoogleDrive({
+          allowIdentitySession: true,
+          connectionUser: authSession.user,
+          onboarding: true,
+        });
+        if (!result) setAuthMessage("帳號已登入，但 Google Drive 尚未連結。請重試；本機內容仍安全保留。");
+      } else {
+        announce("帳號授權完成；Moodboard 仍保存在這台裝置。", "success");
+      }
     } catch (error) {
       setAuthMessage(error.message || "無法保存帳號授權，請再試一次。");
+    } finally {
+      setAuthBusy(false);
     }
-  }, [announce, authSession.user, pendingAdvancedFeature]);
+  }, [announce, authSession.user, connectGoogleDrive, pendingAdvancedFeature]);
 
   const signInToMoodboard = useCallback(async ({ marketingOptIn = false, rememberSession = false } = {}) => {
     setAuthBusy(true);
     setAuthMessage("");
     try {
-      const { user, isNewUser } = await signInMoodboardWithGoogle(interfaceLocale, { rememberSession });
+      const isDriveOnboarding = pendingAdvancedFeature === "drive-onboarding";
+      const { user, isNewUser, oauthAccessToken } = await signInMoodboardWithGoogle(interfaceLocale, {
+        rememberSession,
+        additionalScopes: isDriveOnboarding ? [GOOGLE_DRIVE_SCOPE] : [],
+      });
       if (!isMoodboardIdentityEligible(user)) {
         const identityError = new Error("登入身份尚未通過驗證。");
         identityError.code = user?.emailVerified === false ? "auth/unverified-email" : "auth/provider-not-allowed";
@@ -8262,13 +8393,40 @@ function App() {
       setAuthSession({ status: "signed-in", user, error: null });
       setAuthReceipt(receipt);
       setAuthConsentGranted(true);
-      announce("已使用 PETFASHION 帳號登入；本機作品保持不變。", "success");
+      if (isDriveOnboarding) {
+        setAuthMessage("Google 登入完成，正在確認 Drive 權限…");
+        const token = googleDriveTokenFromOAuthAccessToken(oauthAccessToken);
+        let driveResult = null;
+        if (token) {
+          const connectionOwnerUid = String(user.uid || "");
+          const ownerChanged = Boolean(
+            driveSettings.connectionOwnerUid
+            && connectionOwnerUid
+            && driveSettings.connectionOwnerUid !== connectionOwnerUid
+          );
+          driveTokenRef.current = token;
+          driveResult = await refreshGoogleDrive(
+            token.accessToken,
+            ownerChanged ? "" : driveSettings.folderId,
+            { resetLinks: ownerChanged, connectionUser: user },
+          );
+        } else {
+          driveResult = await connectGoogleDrive({
+            allowIdentitySession: true,
+            connectionUser: user,
+            onboarding: true,
+          });
+        }
+        if (!driveResult) setAuthMessage("Google 帳號已登入，但 Drive 尚未連結。請重試；本機內容仍安全保留。");
+      } else {
+        announce("已使用 PETFASHION 帳號登入；本機作品保持不變。", "success");
+      }
     } catch (error) {
       setAuthMessage(moodboardAuthErrorMessage(error, navigator.onLine !== false));
     } finally {
       setAuthBusy(false);
     }
-  }, [announce, interfaceLocale, pendingAdvancedFeature]);
+  }, [announce, connectGoogleDrive, driveSettings.connectionOwnerUid, driveSettings.folderId, interfaceLocale, pendingAdvancedFeature, refreshGoogleDrive]);
 
   const sendEmailLinkToMoodboard = useCallback(async ({
     email,
@@ -8443,6 +8601,8 @@ function App() {
       setAuthSession({ status: "signed-out", user: null, error: null });
       setAuthReceipt(null);
       setAuthConsentGranted(false);
+      storageTargetOperationEpochRef.current += 1;
+      setDriveOnboardingIntent(null);
       setPendingAdvancedFeature(null);
       setShowCollaboration(false);
       setShowDriveLibrary(false);
@@ -8556,7 +8716,11 @@ function App() {
         manifestUrl.searchParams.set("checked", String(Date.now()));
         const response = await fetch(manifestUrl, { cache: "no-store", signal: controller.signal });
         if (!response.ok) throw new Error(`更新服務回應 ${response.status}`);
-        manifest = normalizeUpdateManifest(await response.json());
+        const normalizedManifest = normalizeUpdateManifest(await response.json());
+        manifest = {
+          ...normalizedManifest,
+          notesUrl: resolveUpdateNotesUrl(normalizedManifest.notesUrl, manifestUrl),
+        };
       }
       const comparison = compareSemanticVersions(APP_VERSION, manifest.version);
       const next = {
@@ -9293,15 +9457,26 @@ function App() {
       const origin = guideAxis === "x"
         ? Number(boardRef.current.rulerOrigin?.x) || 0
         : Number(boardRef.current.rulerOrigin?.y) || 0;
-      const position = resolveGuidePosition({
-        clientPosition: guideAxis === "x" ? latestPointer.clientX : latestPointer.clientY,
-        canvasStart: guideAxis === "x" ? rect.left : rect.top,
-        viewOffset,
-        zoom: currentView.zoom,
-        unit: rulerUnit,
-        snap: snapActive,
-        origin,
-      });
+      const clientPosition = guideAxis === "x" ? latestPointer.clientX : latestPointer.clientY;
+      const position = existing
+        ? resolveDraggedGuidePosition({
+          initialPosition: primaryStartPosition,
+          startClientPosition: guideAxis === "x" ? startPointer.x : startPointer.y,
+          clientPosition,
+          zoom: currentView.zoom,
+          unit: rulerUnit,
+          snap: snapActive,
+          origin,
+        })
+        : resolveGuidePosition({
+          clientPosition,
+          canvasStart: guideAxis === "x" ? rect.left : rect.top,
+          viewOffset,
+          zoom: currentView.zoom,
+          unit: rulerUnit,
+          snap: snapActive,
+          origin,
+        });
       const delta = existing ? position - primaryStartPosition : 0;
       const members = baselines.map((guide) => ({
         ...guide,
@@ -9327,12 +9502,12 @@ function App() {
     const keyDown = (keyEvent) => {
       if (keyEvent.key !== "Shift" || snapActive) return;
       snapActive = true;
-      update();
+      if (moved || !existing) update();
     };
     const keyUp = (keyEvent) => {
       if (keyEvent.key !== "Shift" || !snapActive) return;
       snapActive = false;
-      update();
+      if (moved || !existing) update();
     };
 
     const cleanup = () => {
@@ -9386,7 +9561,7 @@ function App() {
       cleanup();
       setGuideDrag(null);
     };
-    update();
+    if (!existing) update();
     releaseGesture = registerPointerGesture({
       label: existing ? "移動導引線" : "建立導引線",
       affectsDocument: false,
@@ -10659,13 +10834,19 @@ function App() {
     saveBoardToGoogleDrive();
   }, [authReady, currentDriveAccessToken, currentPrimaryStorageTarget, driveSettings.enabled, localFileBinding.status, requestAdvancedFeature, saveBoardToGoogleDrive, saveBoardToLocalPrimary]);
 
-  const choosePrimaryStorageTarget = useCallback(async (target) => {
+  const choosePrimaryStorageTarget = useCallback(async (target, { driveConsentAcknowledged = false } = {}) => {
+    if (target === "drive" && !driveConsentAcknowledged) {
+      setShowSettings(false);
+      setShowStorageLocation(true);
+      return;
+    }
     const operationEpoch = storageTargetOperationEpochRef.current + 1;
     storageTargetOperationEpochRef.current = operationEpoch;
     const boardId = boardRef.current.id;
-    setBoardPrimaryStorage(boardId, target);
     setShowStorageLocation(false);
     if (target === "local") {
+      setDriveOnboardingIntent(null);
+      setBoardPrimaryStorage(boardId, target);
       cancelDriveOperations();
       window.clearTimeout(driveSyncTimerRef.current);
       await removeSyncJob(boardId).catch(() => undefined);
@@ -10696,14 +10877,23 @@ function App() {
       return;
     }
 
-    setSaveState("Google Drive 尚未連結；本機安全副本持續保留");
+    setDriveOnboardingIntent({ boardId, operationEpoch });
+    setSaveState("正在連結 Google Drive；本機安全副本持續保留");
     setShowSettings(false);
     if (!authReady) {
-      requestAdvancedFeature("drive");
+      requestAdvancedFeature("drive-onboarding");
       return;
     }
-    openGoogleDriveLibrary();
-  }, [authReady, boardSnapshot, cancelDriveOperations, openGoogleDriveLibrary, persistBoardLocally, refreshLocalLibrarySummary, requestAdvancedFeature, setBoardPrimaryStorage]);
+    const existingDriveToken = currentDriveAccessToken();
+    if (driveSession.connected && existingDriveToken && ["ready", "synced"].includes(driveSession.status)) return;
+    setShowDriveLibrary(true);
+    if (existingDriveToken && ["checking", "connecting", "syncing", "conflict"].includes(driveSession.status)) return;
+    if (existingDriveToken) {
+      await refreshGoogleDrive();
+      return;
+    }
+    await connectGoogleDrive({ onboarding: true });
+  }, [authReady, boardSnapshot, cancelDriveOperations, connectGoogleDrive, currentDriveAccessToken, driveSession.connected, driveSession.status, persistBoardLocally, refreshGoogleDrive, refreshLocalLibrarySummary, requestAdvancedFeature, setBoardPrimaryStorage]);
 
   const setAutoSavePreference = useCallback((enabled) => {
     updateStoragePreferences((current) => ({ ...current, autoSave: Boolean(enabled) }));
@@ -12715,7 +12905,7 @@ function App() {
       }
       if (event.key === "Escape" && showDriveLibrary) {
         event.preventDefault();
-        setShowDriveLibrary(false);
+        closeDriveLibrary();
         return;
       }
       if (event.key === "Escape" && showSettings) {
@@ -12859,7 +13049,7 @@ function App() {
       window.removeEventListener("keyup", keyUp);
       window.removeEventListener("blur", blur);
     };
-  }, [announce, cancelPendingObjectDeletion, closeAdvancedFeatureGate, closeDriveSharing, closeInterfaceThemes, closePreparedDownloads, copySelectedObjects, cutSelectedObjects, deleteSelected, dismissLocalFileLocation, dragActive, duplicateSelected, escapeCancellationRequest, filters.colors.length, filters.symbols.length, finishZoomWindowTool, focusMode, isClearingLocalData, keepEscapeAdjustment, leftPanelVisible, leftTab, loadedTextFlow, mobilePanel, openBoardFile, openListSearch, pasteCopiedObjects, pendingAdvancedFeature, pendingObjectDeletion, preparedDownloads.length, redo, requestActivePointerCancellation, requestAdvancedFeature, restoreWorkspaceChrome, rightPanelVisible, savePreferredBoard, shapeMenuOpen, showAnnotationBuilder, showBothPanels, showCollaboration, showDeleteLocalData, showDriveLibrary, showGridBuilder, showInterfaceThemes, showLocalFileLocation, showSettings, showShortcuts, showStorageLocation, showVersions, toggleBothPanels, toggleCanvasBackground, toggleFocusMode, toggleGuides, toggleLeftPanel, toggleRightPanel, toggleRulers, toggleSelectionGroup, tool, undo]);
+  }, [announce, cancelPendingObjectDeletion, closeAdvancedFeatureGate, closeDriveLibrary, closeDriveSharing, closeInterfaceThemes, closePreparedDownloads, copySelectedObjects, cutSelectedObjects, deleteSelected, dismissLocalFileLocation, dragActive, duplicateSelected, escapeCancellationRequest, filters.colors.length, filters.symbols.length, finishZoomWindowTool, focusMode, isClearingLocalData, keepEscapeAdjustment, leftPanelVisible, leftTab, loadedTextFlow, mobilePanel, openBoardFile, openListSearch, pasteCopiedObjects, pendingAdvancedFeature, pendingObjectDeletion, preparedDownloads.length, redo, requestActivePointerCancellation, requestAdvancedFeature, restoreWorkspaceChrome, rightPanelVisible, savePreferredBoard, shapeMenuOpen, showAnnotationBuilder, showBothPanels, showCollaboration, showDeleteLocalData, showDriveLibrary, showGridBuilder, showInterfaceThemes, showLocalFileLocation, showSettings, showShortcuts, showStorageLocation, showVersions, toggleBothPanels, toggleCanvasBackground, toggleFocusMode, toggleGuides, toggleLeftPanel, toggleRightPanel, toggleRulers, toggleSelectionGroup, tool, undo]);
 
   const exportObjects = useCallback(async (scopeOverride) => {
     const scope = typeof scopeOverride === "string" ? scopeOverride : exportScope;
@@ -13998,7 +14188,7 @@ function App() {
           onSaveCopy={() => saveBoardToGoogleDrive({ asCopy: true })}
           onOverwrite={(overwriteTarget) => saveBoardToGoogleDrive({ forceOverwrite: true, overwriteTarget })}
           onSetAutoSync={setDriveAutoSync}
-          onClose={() => setShowDriveLibrary(false)}
+          onClose={closeDriveLibrary}
         />
       ) : null}
       {showCollaboration ? (

@@ -9,6 +9,7 @@ import {
   matchesListQuery,
   normalizeCanvasToolbarPosition,
   normalizeRulerUnit,
+  resolveDraggedGuidePosition,
   pixelsToUnit,
   resolveGuidePosition,
   resolveRulerScale,
@@ -70,6 +71,37 @@ test("guide pointer positions use canvas pan and zoom before optional Shift snap
     snap: true,
     origin: 12,
   }) - (12 + unitToPixels(65, "mm"))) < 0.0001);
+});
+
+test("dragged guides preserve their grab offset and snap the guide rather than the pointer", () => {
+  assert.equal(resolveDraggedGuidePosition({
+    initialPosition: 100,
+    startClientPosition: 95,
+    clientPosition: 95,
+    zoom: 1,
+  }), 100);
+  assert.equal(resolveDraggedGuidePosition({
+    initialPosition: 100,
+    startClientPosition: 95,
+    clientPosition: 99,
+    zoom: 2,
+  }), 102);
+  assert.equal(resolveDraggedGuidePosition({
+    initialPosition: 103,
+    startClientPosition: 95,
+    clientPosition: 97,
+    zoom: 1,
+    unit: "px",
+    snap: true,
+  }), 110);
+  assert.ok(Math.abs(resolveDraggedGuidePosition({
+    initialPosition: unitToPixels(10.4, "mm"),
+    startClientPosition: 200,
+    clientPosition: 202,
+    zoom: 1,
+    unit: "mm",
+    snap: true,
+  }) - unitToPixels(10, "mm")) < 0.0001);
 });
 
 test("ruler ticks adapt to zoom and always expose major labels", () => {

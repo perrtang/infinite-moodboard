@@ -20,6 +20,8 @@ if [[ "$package_version" != "$version" ]]; then
   exit 3
 fi
 
+node ./scripts/verify-release-notes.mjs "$version"
+
 if [[ -n "$(git status --porcelain)" ]]; then
   echo "工作目錄仍有未提交變更；請先完成測試與提交再封版。" >&2
   exit 4

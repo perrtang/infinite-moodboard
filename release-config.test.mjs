@@ -15,7 +15,15 @@ test("release version stays aligned across runtime and update metadata", async (
   assert.equal(lockJson.version, packageJson.version);
   assert.equal(lockJson.packages[""].version, packageJson.version);
   assert.equal(manifestJson.version, packageJson.version);
+  assert.equal(manifestJson.notesUrl, `release-notes/v${packageJson.version}.html`);
+  const releaseNotes = await read(`./public/${manifestJson.notesUrl}`);
+  assert.match(releaseNotes, new RegExp(`<title>[^<]*v${packageJson.version.replaceAll(".", "\\.")}[^<]*<\\/title>`));
+  assert.match(releaseNotes, /更新內容/);
+  assert.match(releaseNotes, /修正/);
+  assert.match(releaseNotes, /注意事項/);
+  assert.match(releaseNotes, new RegExp(`發布日期：${manifestJson.releasedAt}`));
   assert.match(versionSource, new RegExp(`APP_VERSION = ["']${packageJson.version.replaceAll(".", "\\.")}["']`));
+  assert.match(versionSource, /APP_RELEASE_NOTES_URL/);
 });
 
 test("production authentication uses the PETFASHION branded handler domain", async () => {
@@ -30,16 +38,19 @@ test("production authentication uses the PETFASHION branded handler domain", asy
 });
 
 test("GitHub release assets are built from a verified tag without cloud rule deployment", async () => {
-  const [releaseWorkflow, pagesWorkflow, packageScript] = await Promise.all([
+  const [releaseWorkflow, pagesWorkflow, packageScript, checkpointScript, notesVerifier] = await Promise.all([
     read("./.github/workflows/release.yml"),
     read("./.github/workflows/deploy-pages.yml"),
     read("./scripts/package-release.sh"),
+    read("./scripts/checkpoint-version.sh"),
+    read("./scripts/verify-release-notes.mjs"),
   ]);
 
   assert.match(releaseWorkflow, /npm test/);
   assert.match(releaseWorkflow, /package-release\.sh/);
   assert.match(releaseWorkflow, /gh release create/);
   assert.match(releaseWorkflow, /SHA256SUMS\.txt/);
+  assert.match(releaseWorkflow, /release-notes\.html/);
   assert.doesNotMatch(`${releaseWorkflow}\n${pagesWorkflow}`, /firebase(?:-tools)?\s+deploy|firestore:rules/);
   assert.match(pagesWorkflow, /VITE_BASE_PATH:\s*\//);
   assert.doesNotMatch(pagesWorkflow, /VITE_BASE_PATH:\s*\/infinite-moodboard\//);
@@ -49,6 +60,9 @@ test("GitHub release assets are built from a verified tag without cloud rule dep
   assert.match(pagesWorkflow, /\$\{UPDATE_MANIFEST_URL\}\?deployment=\$\{GITHUB_SHA\}-\$\{attempt\}/);
   assert.match(releaseWorkflow, /https:\/\/moodboard\.petfashion\.tw\//);
   assert.match(packageScript, /VITE_BASE_PATH=\.\/ npm run build/);
+  assert.match(packageScript, /verify-release-notes\.mjs/);
+  assert.match(checkpointScript, /verify-release-notes\.mjs/);
+  assert.match(notesVerifier, /release-notes\/v\$\{version\}\.html/);
 });
 
 test("standalone rules file carries an explicit central-rules safety warning", async () => {

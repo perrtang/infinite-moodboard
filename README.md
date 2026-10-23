@@ -26,6 +26,17 @@ Infinite Moodboard runs the canvas, imported media, transforms, exports, and ver
 - Optional Google Drive file storage and Drive-native sharing with viewer/editor permissions on the same file.
 - 3D, Drive sharing, and export runtimes are loaded only when used, keeping the opening bundle smaller.
 
+## v0.51.0 — continuous Drive onboarding release
+
+[Read the complete v0.51.0 release notes.](./public/release-notes/v0.51.0.html)
+
+- Turns the Google Drive storage choice into one explicit flow: disclosure, PETFASHION sign-in, and least-privilege `drive.file` authorization without a second Connect action.
+- Commits Drive as the primary location only after the connection is verified; failures and cancellation retain the previous target and local recovery copy.
+- Automatically closes My Moodboards and returns to the workspace after successful connection or conflict resolution.
+- Keeps connection separate from upload: no Drive project file is created until the first explicit save.
+- Removes double-click deletion from guides; deletion remains an explicit right-click, layer, or keyboard action.
+- Keeps an existing guide fixed on pointer-down, preserves the grab offset during a real drag, and publishes a required per-version release-notes file from now on.
+
 ## v0.50.0 — Drive recovery and quiet update release
 
 - Preserves each board's Google Drive link across app updates while restoring OAuth authorization safely after sign-in or refresh.
