@@ -40,7 +40,9 @@ mkdir -p "$backup_dir"
 bundle_path="$backup_dir/Infinite-Moodboard-v$version.bundle"
 archive_path="$backup_dir/Infinite-Moodboard-v$version-source.zip"
 
-git bundle create "$bundle_path" --all
+# Bundle the verified release tag and its complete history. Avoid `--all` here:
+# an unrelated malformed or stale local ref must not block a release backup.
+git bundle create "$bundle_path" "$tag"
 git archive --format=zip --output="$archive_path" "$tag"
 git bundle verify "$bundle_path" >/dev/null
 
