@@ -7,6 +7,8 @@ import {
 const runtimeEnv = import.meta.env || {};
 const GOOGLE_PICKER_SCRIPT = "https://apis.google.com/js/api.js";
 const GOOGLE_PICKER_LOAD_TIMEOUT_MS = 15_000;
+const GOOGLE_API_KEY_PATTERN = /^AIza[0-9A-Za-z_-]{35}$/;
+const GOOGLE_PROJECT_NUMBER_PATTERN = /^\d{6,20}$/;
 
 export const GOOGLE_DRIVE_PICKER_API_KEY = runtimeEnv.VITE_GOOGLE_DRIVE_PICKER_API_KEY || "";
 export const GOOGLE_DRIVE_PROJECT_NUMBER = runtimeEnv.VITE_GOOGLE_DRIVE_PROJECT_NUMBER || "";
@@ -29,7 +31,27 @@ export function getGoogleDrivePickerConfiguration({
   const missing = Object.entries(configuration)
     .filter(([, value]) => !value)
     .map(([key]) => key);
-  return { ...configuration, missing, configured: missing.length === 0 };
+  const invalid = [];
+  if (configuration.apiKey && !GOOGLE_API_KEY_PATTERN.test(configuration.apiKey)) invalid.push("apiKey");
+  if (configuration.projectNumber && !GOOGLE_PROJECT_NUMBER_PATTERN.test(configuration.projectNumber)) {
+    invalid.push("projectNumber");
+  }
+  if (configuration.origin) {
+    try {
+      const parsedOrigin = new URL(configuration.origin);
+      if (!["http:", "https:"].includes(parsedOrigin.protocol) || parsedOrigin.origin !== configuration.origin) {
+        invalid.push("origin");
+      }
+    } catch {
+      invalid.push("origin");
+    }
+  }
+  return {
+    ...configuration,
+    missing,
+    invalid,
+    configured: missing.length === 0 && invalid.length === 0,
+  };
 }
 
 export function isGoogleDrivePickerConfigured(configuration = getGoogleDrivePickerConfiguration()) {
@@ -177,7 +199,7 @@ export async function openGoogleDriveMoodboardPicker({
     throw new DriveApiError("Google Drive 檔案選擇器尚未完成網站設定。", {
       code: "drive/picker-unconfigured",
       reason: "pickerConfigurationMissing",
-      details: { missing: configuration.missing },
+      details: { missing: configuration.missing, invalid: configuration.invalid },
     });
   }
   if (!accessToken) {

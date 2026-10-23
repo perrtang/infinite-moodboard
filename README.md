@@ -26,6 +26,15 @@ Infinite Moodboard runs the canvas, imported media, transforms, exports, and ver
 - Optional Google Drive file storage and Drive-native sharing with viewer/editor permissions on the same file.
 - 3D, Drive sharing, and export runtimes are loaded only when used, keeping the opening bundle smaller.
 
+## v0.53.0 — direct layers and safer Drive decisions release
+
+[Read the complete v0.53.0 release notes.](./public/release-notes/v0.53.0.html)
+
+- Uses the full layer row for selection and drag ordering, removing the narrow grip and its stray focus line.
+- Adds Shift range selection, Command/Ctrl discontiguous selection, and ordered batch movement for selected layers.
+- Shows only two safe Drive-conflict choices first; defer is secondary and overwrite stays behind an advanced disclosure plus confirmation.
+- Rejects malformed Picker credentials before opening Google and verifies production credential format before deployment.
+
 ## v0.52.0 — large-board Drive sync recovery release
 
 [Read the complete v0.52.0 release notes.](./public/release-notes/v0.52.0.html)

@@ -1327,15 +1327,75 @@ export function objectIntersectsWorldRect(object, rect) {
   return bounds.right >= rect.left && bounds.left <= rect.right && bounds.bottom >= rect.top && bounds.top <= rect.bottom;
 }
 
-export function reorderObjectsByVisualDrop(objects, movingId, targetId, placement = "before") {
-  if (movingId === targetId) return [...objects];
+export function resolveLayerSelection({
+  visibleIds = [],
+  currentIds = [],
+  targetId = "",
+  anchorId = "",
+  shiftKey = false,
+  toggleKey = false,
+  defaultIds = [],
+} = {}) {
+  const visible = [...new Set(visibleIds)].filter(Boolean);
+  const current = [...new Set(currentIds)].filter(Boolean);
+  const target = String(targetId || "");
+
+  if (!target) return { ids: current, anchorId: anchorId || null, keyId: current[0] || null };
+
+  if (toggleKey) {
+    const selected = current.includes(target);
+    const ids = selected ? current.filter((id) => id !== target) : [...current, target];
+    return { ids, anchorId: target, keyId: selected ? ids[0] || null : target };
+  }
+
+  const anchorIndex = visible.indexOf(anchorId);
+  const targetIndex = visible.indexOf(target);
+  if (shiftKey && anchorIndex >= 0 && targetIndex >= 0) {
+    const start = Math.min(anchorIndex, targetIndex);
+    const end = Math.max(anchorIndex, targetIndex);
+    return { ids: visible.slice(start, end + 1), anchorId, keyId: target };
+  }
+
+  const ids = [...new Set(defaultIds.length ? defaultIds : [target])].filter(Boolean);
+  return { ids, anchorId: target, keyId: ids.includes(target) ? target : ids[0] || null };
+}
+
+export function reorderObjectsByVisualDrop(objects, movingIdOrIds, targetId, placement = "before") {
+  const movingIds = new Set(
+    (Array.isArray(movingIdOrIds) ? movingIdOrIds : [movingIdOrIds]).filter(Boolean),
+  );
+  if (!movingIds.size || movingIds.has(targetId)) return [...objects];
   const visualOrder = [...objects].reverse();
-  const movingIndex = visualOrder.findIndex((object) => object.id === movingId);
-  if (movingIndex < 0 || !visualOrder.some((object) => object.id === targetId)) return [...objects];
-  const [moving] = visualOrder.splice(movingIndex, 1);
-  const targetIndex = visualOrder.findIndex((object) => object.id === targetId);
+  const moving = visualOrder.filter((object) => movingIds.has(object.id));
+  const remaining = visualOrder.filter((object) => !movingIds.has(object.id));
+  const targetIndex = remaining.findIndex((object) => object.id === targetId);
+  if (!moving.length || targetIndex < 0) return [...objects];
   const insertIndex = targetIndex + (placement === "after" ? 1 : 0);
-  visualOrder.splice(insertIndex, 0, moving);
+  remaining.splice(insertIndex, 0, ...moving);
+  return remaining.reverse();
+}
+
+export function moveObjectsByVisualStep(objects, movingIdOrIds, direction) {
+  const movingIds = new Set(
+    (Array.isArray(movingIdOrIds) ? movingIdOrIds : [movingIdOrIds]).filter(Boolean),
+  );
+  const visualOrder = [...objects].reverse();
+  if (!movingIds.size || !visualOrder.some((object) => movingIds.has(object.id))) return [...objects];
+
+  if (direction > 0) {
+    for (let index = 1; index < visualOrder.length; index += 1) {
+      if (movingIds.has(visualOrder[index].id) && !movingIds.has(visualOrder[index - 1].id)) {
+        [visualOrder[index - 1], visualOrder[index]] = [visualOrder[index], visualOrder[index - 1]];
+      }
+    }
+  } else if (direction < 0) {
+    for (let index = visualOrder.length - 2; index >= 0; index -= 1) {
+      if (movingIds.has(visualOrder[index].id) && !movingIds.has(visualOrder[index + 1].id)) {
+        [visualOrder[index], visualOrder[index + 1]] = [visualOrder[index + 1], visualOrder[index]];
+      }
+    }
+  }
+
   return visualOrder.reverse();
 }
 

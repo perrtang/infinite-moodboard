@@ -4,12 +4,15 @@ import test from "node:test";
 
 const source = fs.readFileSync(new URL("./main.jsx", import.meta.url), "utf8");
 
-test("Drive conflict is presented once with explicit safe and overwrite choices", () => {
+test("Drive conflict prioritizes two safe choices and keeps overwrite behind a disclosure", () => {
   assert.match(source, /!driveSession\.conflict \? \(\s*<section className=\{`drive-status-panel/);
   assert.match(source, /同步已暫停：選擇要保留的版本/);
   assert.match(source, /將 Drive 版本開成新 Moodboard/);
-  assert.match(source, /儲存目前內容為新的 Drive 檔案/);
+  assert.match(source, /將目前內容另存新檔/);
+  assert.match(source, /<details className="drive-conflict-more"/);
+  assert.match(source, /更多處理方式/);
   assert.match(source, /以目前內容覆寫 Drive…/);
+  assert.match(source, /className="quiet-button"[^>]*>稍後處理<\/button>/);
   assert.match(source, /disabled=\{!overwriteAcknowledged \|\| busy\}/);
   assert.match(source, /driveSession\.conflictActionError/);
   assert.match(source, /上次操作未完成：/);

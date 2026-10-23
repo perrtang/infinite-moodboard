@@ -36,6 +36,11 @@ jobs:
           echo "version=${version}" >> "$GITHUB_OUTPUT"
       - name: Run tests
         run: npm test
+      - name: Verify Google Drive Picker production configuration
+        run: npm run drive-picker:verify
+        env:
+          VITE_GOOGLE_DRIVE_PICKER_API_KEY: ${{ secrets.GOOGLE_DRIVE_PICKER_API_KEY }}
+          VITE_GOOGLE_DRIVE_PROJECT_NUMBER: ${{ vars.GOOGLE_DRIVE_PROJECT_NUMBER }}
       - name: Build GitHub Pages site
         run: npm run build
         env:

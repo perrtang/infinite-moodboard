@@ -132,6 +132,7 @@ import {
   markerKey,
   matchesFilters,
   minimumObjectDimension,
+  moveObjectsByVisualStep,
   movePivotPreservingPlacement,
   objectIntersectsWorldRect,
   objectLocalPointToWorld,
@@ -149,6 +150,7 @@ import {
   resizePivotAnchor,
   resizeTextFrameToDimension,
   resizeTransformFromHandle,
+  resolveLayerSelection,
   rotateObjectsAroundPoint,
   safeFilename,
   shapeClipPath,
@@ -2696,7 +2698,7 @@ function LayersPanel({
   board,
   selectedIds,
   selectedGuideIds,
-  onSelect,
+  onSelectLayers,
   onSelectGroup,
   onSelectGuide,
   onSelectGuideGroup,
@@ -2725,6 +2727,8 @@ function LayersPanel({
   readOnly,
 }) {
   const [layerDrag, setLayerDrag] = useState(null);
+  const layerSelectionAnchorRef = useRef(null);
+  const suppressLayerClickRef = useRef(false);
   const [guideLayerExpanded, setGuideLayerExpanded] = useState(false);
   const [objectLayerExpanded, setObjectLayerExpanded] = useState(true);
   const guideLayerContentId = useId();
@@ -2785,19 +2789,39 @@ function LayersPanel({
     if (query || !["all", "guide"].includes(layerTypeFilter)) setObjectLayerExpanded(true);
   }, [layerTypeFilter, query]);
 
+  const selectLayerRow = (event, object) => {
+    if (suppressLayerClickRef.current) {
+      event.preventDefault();
+      suppressLayerClickRef.current = false;
+      return;
+    }
+    const result = resolveLayerSelection({
+      visibleIds: objects.map((item) => item.id),
+      currentIds: selectedIds,
+      targetId: object.id,
+      anchorId: layerSelectionAnchorRef.current,
+      shiftKey: event.shiftKey,
+      toggleKey: event.metaKey || event.ctrlKey,
+      defaultIds: selectionIdsForObject(board, object.id),
+    });
+    layerSelectionAnchorRef.current = result.anchorId;
+    onSelectLayers(result.ids, result.keyId);
+  };
+
   const startLayerDrag = (event, movingId) => {
     if (event.button !== 0) return;
-    event.preventDefault();
     event.stopPropagation();
-    event.currentTarget.focus();
     const movingObject = objects.find((object) => object.id === movingId);
+    const movingIds = selectedIds.includes(movingId) ? [...selectedIds] : [movingId];
+    const movingSet = new Set(movingIds);
+    const start = { x: event.clientX, y: event.clientY };
+    let dragging = false;
     let dropTarget = null;
-    setLayerDrag({ id: movingId, name: movingObject?.layerName || "圖層", targetId: null, placement: "before" });
 
     const resolveTarget = (clientX, clientY) => {
       const row = document.elementFromPoint(clientX, clientY)?.closest("[data-layer-id]");
       const targetId = row?.dataset.layerId;
-      if (!row || !targetId || targetId === movingId) return null;
+      if (!row || !targetId || movingSet.has(targetId)) return null;
       const rect = row.getBoundingClientRect();
       return {
         targetId,
@@ -2806,9 +2830,21 @@ function LayersPanel({
     };
 
     const move = (moveEvent) => {
+      if (!dragging) {
+        const distance = Math.hypot(moveEvent.clientX - start.x, moveEvent.clientY - start.y);
+        if (distance < 5) return;
+        dragging = true;
+        if (!selectedIds.includes(movingId)) {
+          layerSelectionAnchorRef.current = movingId;
+          onSelectLayers([movingId], movingId);
+        }
+        window.getSelection()?.removeAllRanges();
+        setLayerDrag({ ids: movingIds, name: movingObject?.layerName || "圖層", targetId: null, placement: "before" });
+      }
+      moveEvent.preventDefault();
       dropTarget = resolveTarget(moveEvent.clientX, moveEvent.clientY);
       setLayerDrag({
-        id: movingId,
+        ids: movingIds,
         name: movingObject?.layerName || "圖層",
         targetId: dropTarget?.targetId || null,
         placement: dropTarget?.placement || "before",
@@ -2821,9 +2857,13 @@ function LayersPanel({
       window.removeEventListener("keydown", cancelOnEscape, true);
     };
     const up = (upEvent) => {
-      dropTarget = resolveTarget(upEvent.clientX, upEvent.clientY) || dropTarget;
+      if (dragging) dropTarget = resolveTarget(upEvent.clientX, upEvent.clientY) || dropTarget;
       cleanup();
-      if (dropTarget) onReorderLayer(movingId, dropTarget.targetId, dropTarget.placement);
+      if (dragging) {
+        suppressLayerClickRef.current = true;
+        globalThis.setTimeout(() => { suppressLayerClickRef.current = false; }, 0);
+        if (dropTarget) onReorderLayer(movingIds, dropTarget.targetId, dropTarget.placement);
+      }
       setLayerDrag(null);
     };
     const cancel = () => {
@@ -3018,31 +3058,23 @@ function LayersPanel({
               <React.Fragment key={object.id}>
                 {dropBefore ? renderPlaceholder("before") : null}
                 <div
-                  className={`layer-row ${selected ? "is-selected" : ""} ${layerDrag?.id === object.id ? "is-dragging" : ""} ${object.groupId ? "is-group-member" : ""} ${isArtboardObject(object) ? "is-artboard" : ""}`}
+                  className={`layer-row ${selected ? "is-selected" : ""} ${layerDrag?.ids?.includes(object.id) ? "is-dragging" : ""} ${object.groupId ? "is-group-member" : ""} ${isArtboardObject(object) ? "is-artboard" : ""}`}
                   data-layer-id={object.id}
                 >
                   <button
-                    className="layer-drag-handle"
-                    type="button"
-                    aria-label={`拖曳「${object.layerName}」調整圖層順序`}
-                    aria-pressed={layerDrag?.id === object.id}
-                    title="按住拖曳排序；鍵盤可用上下方向鍵"
-                    onClick={(event) => event.preventDefault()}
-                    onPointerDown={(event) => startLayerDrag(event, object.id)}
-                    onKeyDown={(event) => {
-                      if (event.key === "ArrowUp") { event.preventDefault(); onMoveLayer(object.id, 1); }
-                      if (event.key === "ArrowDown") { event.preventDefault(); onMoveLayer(object.id, -1); }
-                    }}
-                  >
-                    <GripVertical size={15} />
-                  </button>
-                  <button
                     className="layer-main"
                     type="button"
-                    onClick={(event) => onSelect(object.id, event.shiftKey, event.metaKey || event.ctrlKey)}
+                    onClick={(event) => selectLayerRow(event, object)}
+                    onPointerDown={(event) => startLayerDrag(event, object.id)}
                     onDoubleClick={() => onLocate(object.id)}
+                    onKeyDown={(event) => {
+                      if (!event.altKey) return;
+                      const movingIds = selectedIds.includes(object.id) ? selectedIds : [object.id];
+                      if (event.key === "ArrowUp") { event.preventDefault(); onMoveLayer(movingIds, 1); }
+                      if (event.key === "ArrowDown") { event.preventDefault(); onMoveLayer(movingIds, -1); }
+                    }}
                     aria-pressed={selected}
-                    title="選取圖層；連按兩下可置中顯示"
+                    title="點擊選取；Shift 連續選取；Command/Ctrl 個別加入；按住拖曳排序；Option/Alt + ↑/↓ 微調順序；連按兩下置中顯示"
                   >
                     <MediaElement object={object} decorative />
                     <span>
@@ -5961,9 +5993,17 @@ function DriveLibraryModal({
                 ) : null}
                 <div className="drive-conflict-actions">
                   <button className="primary-button" type="button" onClick={() => onRecoverRemote(driveSession.conflict)} disabled={busy}>將 Drive 版本開成新 Moodboard</button>
-                  <button className="secondary-button" type="button" onClick={onSaveCopy} disabled={busy}>儲存目前內容為新的 Drive 檔案</button>
-                  <button className="quiet-button drive-overwrite-trigger" type="button" onClick={() => setShowOverwriteConfirmation(true)} disabled={busy}>以目前內容覆寫 Drive…</button>
-                  <button className="text-button" type="button" onClick={onClose} disabled={busy}>稍後處理</button>
+                  <button className="secondary-button" type="button" onClick={onSaveCopy} disabled={busy}>將目前內容另存新檔</button>
+                </div>
+                <div className="drive-conflict-secondary-actions">
+                  <button className="quiet-button" type="button" onClick={onClose} disabled={busy}>稍後處理</button>
+                  <details className="drive-conflict-more" key={driveSession.conflict.version}>
+                    <summary><Ellipsis size={15} aria-hidden="true" />更多處理方式</summary>
+                    <div className="drive-conflict-more-panel">
+                      <span><strong>進階操作</strong><small>只有確定這台裝置是正確版本時，才覆寫原本的 Drive 檔案。</small></span>
+                      <button className="quiet-button drive-overwrite-trigger" type="button" onClick={() => setShowOverwriteConfirmation(true)} disabled={busy}>以目前內容覆寫 Drive…</button>
+                    </div>
+                  </details>
                 </div>
                 {showOverwriteConfirmation ? (
                   <div className="drive-overwrite-confirmation" role="group" aria-label="確認覆寫 Google Drive">
@@ -9613,6 +9653,19 @@ function App() {
     if (!additive || !current.length) setKeyObjectId(next[0] || null);
   }, [announce, loadedTextFlow]);
 
+  const selectLayerObjects = useCallback((ids, keyId = null) => {
+    if (loadedTextFlow) {
+      setLoadedTextFlow(null);
+      announce("已取消放置溢出文字。", "warning");
+    }
+    setTool((current) => current === "3d" ? current : "select");
+    const existing = new Set(boardRef.current.objects.map((object) => object.id));
+    const next = [...new Set(ids)].filter((id) => existing.has(id));
+    selectedIdsRef.current = next;
+    setSelectedIds(next);
+    setKeyObjectId(next.includes(keyId) ? keyId : next[0] || null);
+  }, [announce, loadedTextFlow]);
+
   const addMediaFiles = useCallback(async (fileList, point) => {
     if (cloudReadOnly) {
       announce("目前為僅檢視；請先申請編輯權限。", "warning");
@@ -11775,22 +11828,17 @@ function App() {
     applyBoard((current) => ({ ...current, objects: current.objects.map((object) => object.id === id ? { ...object, visible: !object.visible } : object) }));
   }, [applyBoard]);
 
-  const moveLayer = useCallback((id, direction) => {
-    applyBoard((current) => {
-      const objects = [...current.objects];
-      const index = objects.findIndex((object) => object.id === id);
-      const nextIndex = clamp(index + direction, 0, objects.length - 1);
-      if (index < 0 || nextIndex === index) return current;
-      const [item] = objects.splice(index, 1);
-      objects.splice(nextIndex, 0, item);
-      return { ...current, objects };
-    });
-  }, [applyBoard]);
-
-  const reorderLayer = useCallback((id, targetId, placement) => {
+  const moveLayer = useCallback((ids, direction) => {
     applyBoard((current) => ({
       ...current,
-      objects: reorderObjectsByVisualDrop(current.objects, id, targetId, placement),
+      objects: moveObjectsByVisualStep(current.objects, ids, direction),
+    }));
+  }, [applyBoard]);
+
+  const reorderLayer = useCallback((ids, targetId, placement) => {
+    applyBoard((current) => ({
+      ...current,
+      objects: reorderObjectsByVisualDrop(current.objects, ids, targetId, placement),
     }));
   }, [applyBoard]);
 
@@ -13616,6 +13664,7 @@ function App() {
           selectedIds={selectedIds}
           selectedGuideIds={selectedGuideIds}
           onSelect={selectObject}
+          onSelectLayers={selectLayerObjects}
           onSelectGroup={selectGroup}
           onSelectGuide={selectGuide}
           onSelectGuideGroup={selectGuideGroup}

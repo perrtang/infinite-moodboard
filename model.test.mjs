@@ -17,6 +17,7 @@ import {
   findCompositionsAffectedByObjectDeletion,
   initialMediaDimensions,
   matchesFilters,
+  moveObjectsByVisualStep,
   movePivotPreservingPlacement,
   objectIntersectsWorldRect,
   objectsVisuallyOnArtboard,
@@ -31,6 +32,7 @@ import {
   resizeTextFrameToDimension,
   restoreViewCapture,
   restoreObjectSize,
+  resolveLayerSelection,
   rotateObjectsAroundPoint,
   safeFilename,
   scaleObjectsAroundPoint,
@@ -1348,6 +1350,66 @@ test("layer drag ordering follows the visible top-to-bottom list", () => {
   assert.deepEqual(
     reorderObjectsByVisualDrop(objects, "top", "bottom", "after").map((object) => object.id),
     ["top", "bottom", "middle"],
+  );
+});
+
+test("layer selection supports contiguous ranges and discontiguous toggles", () => {
+  const visibleIds = ["top", "upper", "lower", "bottom"];
+  assert.deepEqual(resolveLayerSelection({
+    visibleIds,
+    currentIds: ["top"],
+    targetId: "lower",
+    anchorId: "top",
+    shiftKey: true,
+  }), {
+    ids: ["top", "upper", "lower"],
+    anchorId: "top",
+    keyId: "lower",
+  });
+  assert.deepEqual(resolveLayerSelection({
+    visibleIds,
+    currentIds: ["top", "lower"],
+    targetId: "bottom",
+    toggleKey: true,
+  }).ids, ["top", "lower", "bottom"]);
+  assert.deepEqual(resolveLayerSelection({
+    visibleIds,
+    currentIds: ["top", "lower", "bottom"],
+    targetId: "lower",
+    toggleKey: true,
+  }).ids, ["top", "bottom"]);
+  assert.deepEqual(resolveLayerSelection({
+    visibleIds,
+    currentIds: ["bottom"],
+    targetId: "upper",
+    anchorId: "missing",
+    shiftKey: true,
+    defaultIds: ["upper", "lower"],
+  }).ids, ["upper", "lower"]);
+});
+
+test("multiple selected layers move together and keep their visual order", () => {
+  const objects = [
+    { id: "bottom" },
+    { id: "lower" },
+    { id: "upper" },
+    { id: "top" },
+  ];
+  assert.deepEqual(
+    reorderObjectsByVisualDrop(objects, ["upper", "lower"], "top", "before").map((object) => object.id),
+    ["bottom", "top", "lower", "upper"],
+  );
+  assert.deepEqual(
+    reorderObjectsByVisualDrop(objects, ["upper", "lower"], "lower", "before").map((object) => object.id),
+    objects.map((object) => object.id),
+  );
+  assert.deepEqual(
+    moveObjectsByVisualStep(objects, ["upper", "lower"], 1).map((object) => object.id),
+    ["bottom", "top", "lower", "upper"],
+  );
+  assert.deepEqual(
+    moveObjectsByVisualStep(objects, ["upper", "lower"], -1).map((object) => object.id),
+    ["lower", "upper", "bottom", "top"],
   );
 });
 

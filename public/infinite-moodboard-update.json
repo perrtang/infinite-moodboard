@@ -1,9 +1,9 @@
 {
   "product": "Infinite Moodboard",
   "channel": "stable",
-  "version": "0.52.0",
+  "version": "0.53.0",
   "releasedAt": "2026-10-23",
-  "summary": "大型 Moodboard 的本機復原副本失敗時，Google Drive 同步仍會繼續；同步佇列不再重複保存完整畫布或卡在同步中。",
-  "notesUrl": "release-notes/v0.52.0.html",
+  "summary": "圖層整列可直接多選與批次排序；Drive 版本衝突改為安全的分層決策，並輪替及驗證 Google Picker 設定。",
+  "notesUrl": "release-notes/v0.53.0.html",
   "url": "https://moodboard.petfashion.tw/"
 }

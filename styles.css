@@ -1700,8 +1700,7 @@ html[lang="en"] .sidebar-tabs button svg {
 .layer-row {
   border: 1px solid transparent;
   border-radius: 7px;
-  display: grid;
-  grid-template-columns: 27px minmax(0, 1fr);
+  display: block;
   overflow: hidden;
   position: relative;
 }
@@ -1764,39 +1763,30 @@ html[lang="en"] .sidebar-tabs button svg {
   width: 8px;
 }
 
-.layer-drag-handle {
-  align-items: center;
-  align-self: stretch;
-  background: transparent;
-  border: 0;
-  color: var(--text-muted);
-  cursor: grab;
-  display: flex;
-  justify-content: center;
-  padding: 0;
-}
-
-.layer-drag-handle:active {
-  cursor: grabbing;
-}
-
-.layer-row:hover .layer-drag-handle,
-.layer-drag-handle:focus-visible {
-  color: var(--accent-strong);
-}
-
 .layer-main {
   align-items: center;
   background: transparent;
   border: 0;
   color: var(--text);
-  cursor: pointer;
+  cursor: grab;
   display: grid;
   gap: 9px;
   grid-template-columns: 34px minmax(0, 1fr) auto;
   min-width: 0;
   padding: 7px;
   text-align: left;
+  user-select: none;
+  width: 100%;
+}
+
+.layer-main:active,
+.layer-row.is-dragging .layer-main {
+  cursor: grabbing;
+}
+
+.layer-main:focus-visible {
+  border-radius: 6px;
+  outline-offset: -3px;
 }
 
 .layer-main > img,
@@ -1828,6 +1818,12 @@ html[lang="en"] .sidebar-tabs button svg {
 
 .layer-main > video {
   pointer-events: none;
+}
+
+.layer-main > img,
+.layer-main > video {
+  -webkit-user-drag: none;
+  user-select: none;
 }
 
 .layer-main > span:not(.layer-markers) {
@@ -8103,6 +8099,7 @@ html[lang="en"] .sidebar-tabs button svg {
 }
 
 .drive-conflict-actions,
+.drive-conflict-secondary-actions,
 .drive-overwrite-confirmation,
 .drive-conflict-error {
   grid-column: 2;
@@ -8122,10 +8119,76 @@ html[lang="en"] .sidebar-tabs button svg {
 }
 
 .drive-conflict-actions {
+  align-items: stretch;
+  display: grid;
+  gap: 7px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.drive-conflict-actions button {
+  min-width: 0;
+}
+
+.drive-conflict-secondary-actions {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
   gap: 7px;
+  justify-content: flex-end;
+}
+
+.drive-conflict-more {
+  position: relative;
+}
+
+.drive-conflict-more summary {
+  align-items: center;
+  border-radius: 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: calc(11px + var(--ui-font-offset, 0px));
+  font-weight: 700;
+  gap: 7px;
+  justify-content: center;
+  list-style: none;
+  min-height: 38px;
+  padding: 0 10px;
+}
+
+.drive-conflict-more summary::-webkit-details-marker {
+  display: none;
+}
+
+.drive-conflict-more summary:hover,
+.drive-conflict-more summary:focus-visible,
+.drive-conflict-more[open] summary {
+  background: var(--quiet-bg);
+  color: var(--text);
+}
+
+.drive-conflict-more-panel {
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  display: flex;
+  gap: 10px;
+  margin-top: 7px;
+  padding: 9px;
+}
+
+.drive-conflict-more-panel > span {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  min-width: 180px;
+}
+
+.drive-conflict-more-panel small {
+  color: var(--text-muted);
+  font-size: calc(11px + var(--ui-font-offset, 0px));
+  line-height: 1.45;
 }
 
 .drive-overwrite-trigger {
@@ -10632,6 +10695,7 @@ button.status-label:hover {
   }
 
   .drive-conflict-actions,
+  .drive-conflict-secondary-actions,
   .drive-overwrite-confirmation,
   .drive-conflict-error {
     align-items: stretch;
@@ -10643,7 +10707,29 @@ button.status-label:hover {
     flex-direction: column;
   }
 
+  .drive-conflict-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .drive-conflict-secondary-actions {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .drive-conflict-more,
+  .drive-conflict-more summary,
+  .drive-conflict-more-panel {
+    width: 100%;
+  }
+
+  .drive-conflict-more-panel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .drive-conflict-actions button,
+  .drive-conflict-secondary-actions > button,
+  .drive-conflict-more-panel button,
   .drive-overwrite-confirmation > div:last-child button {
     justify-content: center;
     width: 100%;

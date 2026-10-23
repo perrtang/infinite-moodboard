@@ -16,6 +16,19 @@ test("Picker configuration reports every missing browser setting", () => {
   });
   assert.equal(configuration.configured, false);
   assert.deepEqual(configuration.missing, ["clientId", "apiKey", "projectNumber", "origin"]);
+  assert.deepEqual(configuration.invalid, []);
+});
+
+test("Picker configuration rejects malformed browser credentials before opening Google", () => {
+  const configuration = getGoogleDrivePickerConfiguration({
+    clientId: "client.apps.googleusercontent.com",
+    apiKey: "not-a-google-api-key",
+    projectNumber: "project-name",
+    origin: "https://moodboard.petfashion.tw/path",
+  });
+  assert.equal(configuration.configured, false);
+  assert.deepEqual(configuration.missing, []);
+  assert.deepEqual(configuration.invalid, ["apiKey", "projectNumber", "origin"]);
 });
 
 test("Picker documents normalize Drive identifiers and security resource keys", () => {
@@ -118,8 +131,8 @@ test("Picker cancellation never returns a file", async (t) => {
     accessToken: "token",
     expectedFileId: "drive-file-123",
     clientId: "client",
-    apiKey: "key",
-    projectNumber: "123",
+    apiKey: "AIza12345678901234567890123456789012345",
+    projectNumber: "1068479226042",
     origin: "https://moodboard.petfashion.tw",
     timeoutMs: 1_000,
   });
@@ -136,8 +149,8 @@ test("Picker returns only the exact shared file and configures least-privilege s
     expectedFileId: "drive-file-123",
     expectedResourceKey: "link-resource",
     clientId: "client",
-    apiKey: "key",
-    projectNumber: "123",
+    apiKey: "AIza12345678901234567890123456789012345",
+    projectNumber: "1068479226042",
     origin: "https://moodboard.petfashion.tw",
     timeoutMs: 1_000,
   });
