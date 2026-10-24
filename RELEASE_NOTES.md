@@ -4,6 +4,8 @@ Every stable release from v0.51.0 onward must include a version-matched public r
 
 ## Releases
 
+- [v0.54.2](./public/release-notes/v0.54.2.html) — browser-compatible conditional Drive updates, correct multipart uploads, shared-file resource keys, and clearer storage errors.
+- [v0.54.1](./public/release-notes/v0.54.1.html) — explicit cloud-update progress, verified success, and recoverable inline failures.
 - [v0.54.0](./public/release-notes/v0.54.0.html) — explicit one-way cloud saves, recoverable cloud loads, independent local copies, and stale-read / cross-tab safeguards.
 - [v0.53.0](./public/release-notes/v0.53.0.html) — direct layer-row multi-selection, safer Drive conflict decisions, and verified Google Picker configuration.
 - [v0.52.0](./public/release-notes/v0.52.0.html) — large-board Google Drive sync recovery, compact local queue storage, and truthful recovery warnings.

@@ -1,9 +1,9 @@
 {
   "product": "Infinite Moodboard",
   "channel": "stable",
-  "version": "0.54.1",
+  "version": "0.54.2",
   "releasedAt": "2026-10-24",
-  "summary": "雲端更新顯示進度與明確結果：確認成功後自動關閉；版本衝突、授權失效或無法確認結果時，原視窗提供原因與下一步。",
-  "notesUrl": "release-notes/v0.54.1.html",
+  "summary": "修正既有 Google Drive 檔案因版本驗證資料無法讀取而不能更新的問題，保留條件式更新、衝突保護與舊版本復原。",
+  "notesUrl": "release-notes/v0.54.2.html",
   "url": "https://moodboard.petfashion.tw/"
 }

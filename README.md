@@ -26,6 +26,16 @@ Infinite Moodboard runs the canvas, imported media, transforms, exports, and ver
 - Optional Google Drive file storage and Drive-native sharing with viewer/editor permissions on the same file.
 - 3D, Drive sharing, and export runtimes are loaded only when used, keeping the opening bundle smaller.
 
+## v0.54.2 — browser-compatible conditional Drive updates
+
+[Read the complete v0.54.2 release notes.](./public/release-notes/v0.54.2.html)
+
+- Existing files use a JSON ETag and conditional update on the same Drive API version, avoiding the unavailable v3 response header while retaining conflict protection.
+- Uploads use Google's multipart/related format, preserve the file link and private properties, and verify the saved version after upload.
+- Shared-file resource keys accompany updates, and remote renames cannot silently be replaced by an old local name.
+- Generic browser storage errors no longer claim that disk space is full.
+- The development-only `scripts/drive-cloud-acceptance.html` exercises a dedicated synthetic file with real OAuth: create, repeated save, stale multipart rejection, content readback and retained revisions. It is not part of the production app bundle. Use an OAuth-approved local origin, such as `http://localhost:5000` for this project.
+
 ## v0.54.1 — clear cloud-update outcomes
 
 [Read the complete v0.54.1 release notes.](./public/release-notes/v0.54.1.html)

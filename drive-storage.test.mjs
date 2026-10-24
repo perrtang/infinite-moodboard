@@ -309,7 +309,23 @@ test("an updated remote file stops the upload before any overwrite", async () =>
   }
 });
 
-test("an existing file requires an HTTP ETag before conditional update", async () => {
+test("a remote rename conflicts even when the media head is unchanged", async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    return new Response(JSON.stringify({ id: "drive-1", title: "Colleague renamed.moodboard", version: "9", headRevisionId: "same-head", etag: '"fresh"' }));
+  };
+  try {
+    await assert.rejects(uploadGoogleDriveMoodboard("token", {
+      board: { id: "board-1" }, content: "{}", filename: "Old title.moodboard",
+      existingFile: { id: "drive-1" }, expectedVersion: "8", expectedHeadRevisionId: "same-head",
+    }), DriveConflictError);
+    assert.equal(calls, 1);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+for (const etag of ["", 'W/"weak"', "*", '"bad\r\ntag"']) test(`an existing file fails closed with invalid JSON ETag ${JSON.stringify(etag)}`, async () => {
   const originalFetch = globalThis.fetch;
   const calls = [];
   globalThis.fetch = async (url, options = {}) => {
@@ -317,8 +333,8 @@ test("an existing file requires an HTTP ETag before conditional update", async (
     return {
       ok: true,
       status: 200,
-      headers: { get: () => "" },
-      json: async () => ({ id: "drive-1", name: "Board.moodboard", version: "8" }),
+      headers: { get: () => '"irrelevant-header"' },
+      json: async () => ({ id: "drive-1", title: "Board.moodboard", version: "8", etag }),
     };
   };
   try {
@@ -330,7 +346,7 @@ test("an existing file requires an HTTP ETag before conditional update", async (
         existingFile: { id: "drive-1" },
         expectedVersion: "8",
       }),
-      (error) => error?.code === "drive/safety-check" && /停止覆寫/.test(error.message),
+      (error) => error?.code === "drive/safety-check" && /更新已停止/.test(error.message),
     );
     assert.deepEqual(calls.map((call) => call.method), ["GET"]);
   } finally {
@@ -359,7 +375,7 @@ test("metadata-only Drive version changes keep syncing through the matching head
         json: async () => ({ id: "revision-8", modifiedTime: "2026-10-20T01:00:00.000Z", keepForever: true }),
       };
     }
-    if (call.url.includes("/upload/") && call.method === "PATCH") {
+    if (call.url.includes("/upload/") && call.method === "PUT") {
       return {
         ok: true,
         status: 200,
@@ -373,8 +389,8 @@ test("metadata-only Drive version changes keep syncing through the matching head
     return {
       ok: true,
       status: 200,
-      headers: { get: (name) => name === "etag" ? `"v${currentVersion}"` : "" },
-      json: async () => ({ id: "drive-1", name: "Board.moodboard", version: currentVersion, headRevisionId: currentRevision }),
+      headers: { get: () => null },
+      json: async () => ({ id: "drive-1", title: "Board.moodboard", name: "Board.moodboard", etag: `"v${currentVersion}"`, version: currentVersion, headRevisionId: currentRevision }),
     };
   };
   try {
@@ -387,13 +403,91 @@ test("metadata-only Drive version changes keep syncing through the matching head
       expectedHeadRevisionId: "revision-8",
     });
     assert.equal(saved.version, "10");
-    assert.deepEqual(calls.map((call) => call.method), ["GET", "GET", "PATCH", "GET", "PATCH", "GET"]);
+    assert.deepEqual(calls.map((call) => call.method), ["GET", "GET", "PATCH", "GET", "PUT", "GET"]);
     assert.equal(calls[4].headers["If-Match"], '"v9"');
     assert.match(calls[2].url, /revisions\/revision-8/);
     assert.doesNotMatch(calls[4].url, /keepRevisionForever=true/);
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("a stale conditional PUT returns conflict without retrying", async () => {
+  const originalFetch = globalThis.fetch;
+  let writes = 0;
+  globalThis.fetch = async (url, options = {}) => {
+    const endpoint = String(url);
+    if (endpoint.includes("/revisions")) return new Response(JSON.stringify(endpoint.includes("?") ? { revisions: [] } : { id: "head-1", keepForever: true }));
+    if (endpoint.includes("/upload/")) {
+      writes++;
+      assert.match(endpoint, /\/upload\/drive\/v2\/files\/drive-1/);
+      assert.equal(options.method, "PUT");
+      assert.equal(options.headers["If-Match"], '"before-colleague-edit"');
+      // Another client commits after our final GET, before our PUT arrives.
+      return new Response(JSON.stringify({ error: { message: "Precondition Failed" } }), { status: 412 });
+    }
+    assert.match(endpoint, /\/drive\/v2\/files\//);
+    return new Response(JSON.stringify({ id: "drive-1", etag: '"before-colleague-edit"', version: "1", headRevisionId: "head-1" }));
+  };
+  try {
+    await assert.rejects(uploadGoogleDriveMoodboard("token", {
+      board: { id: "board-1" }, content: "my edit", filename: "Board.moodboard",
+      existingFile: { id: "drive-1" }, expectedVersion: "1",
+    }), DriveConflictError);
+    assert.equal(writes, 1);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("new files use multipart/related with v3 metadata and intact UTF-8 content", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options = {}) => {
+    assert.match(String(url), /\/upload\/drive\/v3\/files\?/);
+    assert.equal(options.method, "POST");
+    assert.equal(options.headers["If-Match"], undefined);
+    const boundary = options.headers["Content-Type"].match(/^multipart\/related; boundary=(.+)$/)?.[1];
+    assert.ok(boundary);
+    const body = await options.body.text();
+    const parts = body.split(`--${boundary}`);
+    assert.equal(parts.length, 4);
+    assert.deepEqual(JSON.parse(parts[1].split("\r\n\r\n")[1].trim()), {
+      name: "台灣.moodboard", mimeType: "application/json",
+      appProperties: { infiniteMoodboard: "true", boardId: "board-1", schemaVersion: "10" }, parents: ["folder-1"],
+    });
+    assert.equal(parts[2].split("\r\n\r\n")[1], '{"name":"台灣靈感"}\r\n');
+    return new Response(JSON.stringify({ id: "drive-1", name: "台灣.moodboard", version: "1" }));
+  };
+  try {
+    await uploadGoogleDriveMoodboard("token", { board: { id: "board-1", schemaVersion: 10 }, content: '{"name":"台灣靈感"}', filename: "台灣.moodboard", folderId: "folder-1" });
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("conditional updates retain shared-file resource keys and v2 metadata without a visible HTTP ETag", async () => {
+  const originalFetch = globalThis.fetch;
+  let writes = 0;
+  globalThis.fetch = async (url, options = {}) => {
+    const endpoint = String(url);
+    assert.equal(options.headers["X-Goog-Drive-Resource-Keys"], "drive-1/key-1");
+    if (endpoint.includes("/revisions")) return new Response(JSON.stringify(endpoint.includes("?") ? { revisions: [] } : { id: "head-1", keepForever: true }));
+    if (endpoint.includes("/upload/")) {
+      writes++;
+      assert.equal(options.method, "PUT");
+      assert.equal(options.headers["If-Match"], '"json-only"');
+      assert.match(options.headers["Content-Type"], /^multipart\/related;/);
+      const body = await options.body.text();
+      assert.match(body, /"title":"Renamed.moodboard"/);
+      assert.doesNotMatch(body, /"appProperties"|"name"/);
+      return new Response(JSON.stringify({ id: "drive-1", title: "Renamed.moodboard", version: "2", headRevisionId: "head-2" }));
+    }
+    return new Response(JSON.stringify(endpoint.includes("/v2/")
+      ? { id: "drive-1", title: "Old.moodboard", etag: '"json-only"', version: "1", headRevisionId: "head-1" }
+      : { id: "drive-1", name: "Renamed.moodboard", version: "2", headRevisionId: "head-2", appProperties: { boardId: "board-1" } }));
+  };
+  try {
+    const saved = await uploadGoogleDriveMoodboard("token", { board: { id: "board-1" }, content: "{}", filename: "Renamed.moodboard", existingFile: { id: "drive-1", resourceKey: "key-1" }, expectedVersion: "1" });
+    assert.equal(saved.name, "Renamed.moodboard");
+    assert.equal(saved.boardId, "board-1");
+    assert.equal(writes, 1);
+  } finally { globalThis.fetch = originalFetch; }
 });
 
 test("confirmed overwrite accepts the reviewed remote version and still uses a fresh ETag", async () => {
@@ -409,7 +503,7 @@ test("confirmed overwrite accepts the reviewed remote version and still uses a f
     if (call.url.includes("/revisions/revision-9") && call.method === "PATCH") {
       return { ok: true, status: 200, json: async () => ({ id: "revision-9", keepForever: true }) };
     }
-    if (call.url.includes("/upload/") && call.method === "PATCH") {
+    if (call.url.includes("/upload/") && call.method === "PUT") {
       return {
         ok: true,
         status: 200,
@@ -425,8 +519,8 @@ test("confirmed overwrite accepts the reviewed remote version and still uses a f
     return {
       ok: true,
       status: 200,
-      headers: { get: (name) => name === "etag" ? `"v${file.version}"` : "" },
-      json: async () => ({ id: "drive-1", name: "Board.moodboard", ...file }),
+      headers: { get: () => null },
+      json: async () => ({ id: "drive-1", title: "Board.moodboard", name: "Board.moodboard", etag: `"v${file.version}"`, ...file }),
     };
   };
   try {
@@ -446,7 +540,7 @@ test("confirmed overwrite accepts the reviewed remote version and still uses a f
   }
 });
 
-for (const outcome of ["mismatch", "network-error"]) test(`successful PATCH followed by ${outcome} readback reports an unverified write`, async () => {
+for (const outcome of ["mismatch", "network-error"]) test(`successful PUT followed by ${outcome} readback reports an unverified write`, async () => {
   const originalFetch = globalThis.fetch;
   let reads = 0;
   let writes = 0;
@@ -459,7 +553,7 @@ for (const outcome of ["mismatch", "network-error"]) test(`successful PATCH foll
     }
     reads++;
     if (reads === 3 && outcome === "network-error") throw new TypeError("network error");
-    return new Response(JSON.stringify({ id: "drive-1", version: reads === 3 ? "4" : String(reads), headRevisionId: reads === 3 ? "h4" : "h1" }), { headers: { etag: '"safe"' } });
+    return new Response(JSON.stringify({ id: "drive-1", etag: '"safe"', version: reads === 3 ? "4" : String(reads), headRevisionId: reads === 3 ? "h4" : "h1" }));
   };
   try {
     await assert.rejects(uploadGoogleDriveMoodboard("token", {
@@ -545,8 +639,8 @@ test("an update arriving while the old revision is retained stops before upload"
     return {
       ok: true,
       status: 200,
-      headers: { get: () => `"v${file.version}"` },
-      json: async () => ({ id: "drive-1", name: "Board.moodboard", ...file }),
+      headers: { get: () => null },
+      json: async () => ({ id: "drive-1", title: "Board.moodboard", etag: `"v${file.version}"`, ...file }),
     };
   };
   try {

@@ -10297,7 +10297,7 @@ function App() {
           content,
           filename,
           folderId,
-          existingFile: linkedFile ? { id: linkedFile.fileId } : null,
+          existingFile: linkedFile ? { id: linkedFile.fileId, resourceKey: linkedFile.resourceKey || "" } : null,
           expectedVersion: linkedFile?.version || "",
           expectedHeadRevisionId: linkedFile?.headRevisionId || "",
           forceOverwrite,

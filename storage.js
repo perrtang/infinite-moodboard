@@ -82,7 +82,8 @@ function boardRecordCoversSnapshot(record, snapshot) {
 export function describeLocalPersistenceError(error) {
   const name = String(error?.name || error?.details?.name || "");
   const message = String(error?.message || error?.details?.message || "");
-  if (name === "QuotaExceededError" || /quota|space|storage/i.test(message)) {
+  const quotaExceededMessage = /\b(?:quotaexceedederror|(?:storage\s+)?quota\s+(?:has\s+been\s+|was\s+)?(?:exceeded|reached)|(?:exceeded|reached)\s+(?:the\s+)?(?:storage\s+)?quota|no\s+space\s+left(?:\s+on\s+device)?|not\s+enough\s+(?:remaining\s+)?(?:storage|disk)\s+space|insufficient\s+(?:storage|disk)\s+space|out\s+of\s+(?:storage|disk)\s+space)\b/i;
+  if (name === "QuotaExceededError" || quotaExceededMessage.test(message)) {
     return "這個瀏覽器的本機儲存空間不足。";
   }
   if (name === "DataCloneError" || /clone/i.test(message)) {

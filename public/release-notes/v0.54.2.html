@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-Hant">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Infinite Moodboard v0.54.2 更新說明</title>
+<style>
+  :root { color-scheme:light dark; font-family:system-ui,-apple-system,sans-serif }
+  * { box-sizing:border-box } body { margin:0; background:#f4f4f2; color:#171717 }
+  main { max-width:760px; margin:auto; padding:64px 24px 96px }
+  header,section { border-bottom:1px solid #cfcfca; padding-bottom:28px } section { padding-top:28px }
+  h1 { font-size:clamp(32px,7vw,56px); line-height:1.1; letter-spacing:-.04em; margin:0 }
+  h2 { font-size:18px } p,li { font-size:16px; line-height:1.7 } li+li { margin-top:8px }
+  .meta { font-size:14px; color:#666 } footer { padding-top:28px } a { color:inherit }
+  @media(prefers-color-scheme:dark) { body { background:#0d0d0d; color:#f2f2ef } header,section { border-color:#363636 } .meta { color:#aaa } }
+</style>
+<main>
+  <header><h1>v0.54.2 更新說明</h1><p class="meta">Infinite Moodboard · 發布日期：2026-10-24</p></header>
+  <section><h2>更新內容</h2><ul>
+    <li>修正瀏覽器讀不到 Google Drive 版本驗證標頭，導致既有檔案一直無法更新的問題。改用能直接取得版本驗證碼的更新路徑。</li>
+    <li>保留同一份檔案與分享連結；成功後仍會讀回確認、關閉確認視窗並提示已更新。</li>
+  </ul></section>
+  <section><h2>修正</h2><ul>
+    <li>上傳改用 Google 規定的 multipart/related 格式，適用新增與更新檔案。</li>
+    <li>更新前保留舊版，並以條件式寫入拒絕過期版本；同事重新命名檔案時也會檢查衝突。</li>
+    <li>共享檔案的資源金鑰會隨版本檢查與更新傳遞。</li>
+    <li>一般本機儲存存取錯誤不再一律顯示為「空間不足」。</li>
+  </ul></section>
+  <section><h2>注意事項</h2>
+    <p>雲端更新只會上傳目前畫布。若另一位編輯者已儲存新內容，仍會先要求確認，不會自動覆蓋。</p>
+    <p>實機驗收頁使用獨立測試檔，不操作既有作品。單一帳號的兩個請求可驗證過期版本拒絕；跨帳號分享權限仍是另一項驗收。</p>
+  </section>
+  <section><h2>回復與備份</h2>
+    <p>重要作品可下載 .moodboard 備份。程式版本保留原始碼與 Git 備份標籤；程式回退不會自動還原文件內容。雲端舊版可在保留的 Drive 版本中復原。</p>
+  </section>
+  <footer><a href="../">回到 Infinite Moodboard</a></footer>
+</main>
+</html>

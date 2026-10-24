@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-Hant">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Infinite Moodboard · Drive 實機驗收</title>
+<style>
+  :root { color-scheme: dark; font-family: system-ui,sans-serif; background:#101010; color:#f4f4f4 }
+  * { box-sizing:border-box } body { margin:0 } main { max-width:760px; margin:auto; padding:48px 24px }
+  h1 { font-size:26px; margin:0 0 16px } p,li { font-size:16px; line-height:1.65 }
+  p { color:#c6c6c6 } button { min-height:44px; padding:10px 18px; font:600 16px system-ui; border:1px solid #aaa; border-radius:6px; background:#f4f4f4; color:#111; cursor:pointer }
+  button:disabled { opacity:.5; cursor:default } section { border-top:1px solid #444; margin-top:28px; padding-top:24px }
+  li { margin-bottom:12px; overflow-wrap:anywhere } a { color:inherit } #status { white-space:pre-wrap; overflow-wrap:anywhere }
+</style>
+<main>
+  <h1>Google Drive 實機驗收</h1>
+  <p>開發用頁面，使用與 Infinite Moodboard 相同的 drive.file 授權。驗收只會建立一份具名測試檔，寫入產生的測試內容；不讀取或更新既有作品，也不變更分享權限。</p>
+  <button id="connect">連結 Google Drive</button>
+  <section>
+    <button id="run" disabled>建立測試檔並開始驗收</button>
+    <p id="status" role="status" aria-live="polite">請先連結 Drive。授權只保留在此頁記憶體，重新整理即失效。</p>
+    <ol id="results"></ol>
+    <p id="file"></p>
+  </section>
+</main>
+<script type="module">
+  import { requestGoogleDriveToken, uploadGoogleDriveMoodboard, downloadGoogleDriveMoodboard, listGoogleDriveRevisions } from '../drive-storage.js';
+  const connect = document.querySelector('#connect');
+  const run = document.querySelector('#run');
+  const status = document.querySelector('#status');
+  let token;
+  let started = false;
+  const check = (condition, message) => { if (!condition) throw new Error(message); const item = document.createElement('li'); item.textContent = `通過：${message}`; document.querySelector('#results').append(item); };
+  const request = async (url, options = {}) => {
+    const response = await fetch(url, { ...options, headers:{ Authorization:`Bearer ${token.accessToken}`, ...options.headers }, signal:AbortSignal.timeout(30000) });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(`${response.status}: ${payload.error?.message || 'Drive request failed'}`);
+    return payload;
+  };
+  connect.addEventListener('click', async () => {
+    connect.disabled = true; status.textContent = '正在連結 Google Drive…';
+    try { token = await requestGoogleDriveToken({ timeoutMs:120000 }); run.disabled = false; status.textContent = '已連結。按下開始後才會建立測試檔。'; }
+    catch (error) { status.textContent = `連結失敗：${error.message}`; connect.disabled = false; }
+  });
+  run.addEventListener('click', async () => {
+    if (started) return; started = true; run.disabled = true; connect.disabled = true;
+    try {
+      const id = crypto.randomUUID();
+      const filename = `Infinite Moodboard 雲端驗收 ${new Date().toISOString()}.moodboard`;
+      const board = { id:`acceptance-${id}`, schemaVersion:10, name:filename, revision:1, objects:[], view:{x:0,y:0,zoom:1}, acceptance:'initial' };
+      status.textContent = '正在建立專用測試檔…';
+      const created = await uploadGoogleDriveMoodboard(token.accessToken, { board, content:JSON.stringify(board), filename });
+      check(Boolean(created.id), '新增測試檔成功，使用 multipart/related 上傳');
+      const fileLink = document.createElement('a'); fileLink.href = `https://drive.google.com/file/d/${encodeURIComponent(created.id)}/view`; fileLink.textContent = filename; fileLink.target = '_blank'; fileLink.rel = 'noopener'; document.querySelector('#file').append('測試檔保留於你的 Drive：', fileLink);
+      const state = await request(`https://www.googleapis.com/drive/v2/files/${encodeURIComponent(created.id)}?fields=id,etag,version,headRevisionId`);
+      check(/^".+"$/.test(state.etag), '瀏覽器可讀取 JSON 中的版本驗證碼');
+      status.textContent = '正在驗證正常更新與舊版本衝突…';
+      const updatedBoard = {...board, revision:2, acceptance:'new-client-content'};
+      const content = JSON.stringify(updatedBoard);
+      const saved = await uploadGoogleDriveMoodboard(token.accessToken, { board:updatedBoard, content, filename, existingFile:created, expectedVersion:state.version, expectedHeadRevisionId:state.headRevisionId });
+      check(saved.id === created.id && saved.version !== created.version, '原檔條件式更新成功，檔案連結不變');
+      // A second client still holds the validator read before the successful update.
+      const boundary = `acceptance_${crypto.randomUUID()}`;
+      const staleBody = new Blob([
+        `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n`,
+        JSON.stringify({title:filename,mimeType:'application/json'}),
+        `\r\n--${boundary}\r\nContent-Type: application/json\r\n\r\n`,
+        JSON.stringify({...board, acceptance:'stale-client-must-not-win'}),
+        `\r\n--${boundary}--\r\n`,
+      ]);
+      const stale = await fetch(`https://www.googleapis.com/upload/drive/v2/files/${encodeURIComponent(created.id)}?uploadType=multipart&supportsAllDrives=true&newRevision=true`, { method:'PUT', headers:{ Authorization:`Bearer ${token.accessToken}`, 'If-Match':state.etag, 'Content-Type':`multipart/related; boundary=${boundary}` }, body:staleBody, signal:AbortSignal.timeout(30000) });
+      check(stale.status === 412, `舊版本更新被拒絕（HTTP ${stale.status}，預期 412）`);
+      const downloaded = await downloadGoogleDriveMoodboard(token.accessToken, created.id);
+      check(downloaded === content, '重新下載確認：舊版本沒有覆蓋剛才的新內容');
+      const revisions = await listGoogleDriveRevisions(token.accessToken, created.id);
+      check(revisions.some(item => item.id === state.headRevisionId && item.keepForever), '更新前的 Drive 版本已保留，可供復原');
+      const thirdBoard = {...updatedBoard, revision:3, acceptance:'repeated-save'};
+      const third = await uploadGoogleDriveMoodboard(token.accessToken, { board:thirdBoard, content:JSON.stringify(thirdBoard), filename, existingFile:saved, expectedVersion:saved.version, expectedHeadRevisionId:saved.headRevisionId });
+      check(third.id === created.id && JSON.parse(await downloadGoogleDriveMoodboard(token.accessToken, created.id)).acceptance === 'repeated-save', '連續再次儲存與讀回成功');
+      status.textContent = '實機驗收完成：正常雲端儲存、衝突拒絕、內容讀回與舊版本保留均通過。';
+      document.documentElement.dataset.result = 'passed';
+    } catch (error) { status.textContent = `驗收未通過：${error.message}\n請保留上方結果；排除原因後重新整理此頁再驗收。已建立的測試檔不會自動刪除。`; document.documentElement.dataset.result = 'failed'; }
+  });
+</script>
+</html>

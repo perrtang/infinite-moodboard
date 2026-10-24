@@ -1067,6 +1067,7 @@ const EN_EXACT = Object.freeze({
   "更新已送出，但未能確認目前內容仍是雲端最新版本。請先檢查雲端狀態，再決定是否重新更新。": "The update was sent, but could not be confirmed as the current cloud version. Check cloud status before deciding whether to update again.",
   "未收到 Google Drive 的完成確認，更新可能已送出。請檢查連線與雲端狀態後再試；目前畫布沒有被取代。": "No completion confirmation was received from Google Drive; the update may have been sent. Check the connection and cloud status before retrying. Your canvas was not replaced.",
   "Google Drive 未提供安全更新所需的版本識別資訊，已停止覆寫。請稍後重試；持續失敗時請下載本機副本。": "Google Drive did not provide the version identifier required for a safe update. Replacement stopped. Retry later, or download a local copy if this persists.",
+  "無法確認 Google Drive 檔案版本，更新已停止。請重試或先下載 .moodboard 備份。": "The Google Drive file version could not be verified, so the update stopped. Retry or download a .moodboard backup first.",
   "已送出更新，但未能確認雲端結果。請先檢查雲端狀態。": "The update was sent, but its result could not be verified. Check cloud status first.",
   "更新至雲端只會上傳目前畫布；下載本機副本不會切換主要位置。": "Update to cloud uploads only the current canvas. Downloading a local copy does not change the primary location.",
   "儲存會更新選定的 .moodboard 檔案；瀏覽器暫存只用於復原。": "Save updates the selected .moodboard file; the browser cache is only for recovery.",

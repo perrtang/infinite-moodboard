@@ -11,6 +11,11 @@ export const DRIVE_FILE_MIME_TYPE = "application/json";
 
 const DRIVE_API_ROOT = "https://www.googleapis.com/drive/v3";
 const DRIVE_UPLOAD_ROOT = "https://www.googleapis.com/upload/drive/v3";
+// v2 exposes a strong ETag in JSON. Keep its GET and conditional update on
+// the same API version; v3 does not guarantee a browser-readable ETag header.
+const DRIVE_CONDITIONAL_API_ROOT = "https://www.googleapis.com/drive/v2";
+const DRIVE_CONDITIONAL_UPLOAD_ROOT = "https://www.googleapis.com/upload/drive/v2";
+const DRIVE_CONDITIONAL_FILE_FIELDS = "id,etag,title,mimeType,modifiedDate,fileSize,version,headRevisionId,alternateLink,resourceKey,ownedByMe,capabilities(canEdit,canShare,canDownload,canReadRevisions)";
 const GOOGLE_IDENTITY_SCRIPT = "https://accounts.google.com/gsi/client";
 const DEFAULT_QUOTA_SAFETY_BYTES = 64 * 1024;
 const DRIVE_REQUEST_TIMEOUT_MS = 20_000;
@@ -711,19 +716,51 @@ export async function enforceGoogleDriveRevisionRetention(accessToken, fileId, {
   return { revisions, released };
 }
 
-async function getGoogleDriveFileState(accessToken, fileId, { signal } = {}) {
+function normalizeConditionalDriveFile(file = {}) {
+  return normalizeDriveFile({
+    ...file,
+    name: file.title,
+    modifiedTime: file.modifiedDate,
+    size: file.fileSize,
+    webViewLink: file.alternateLink,
+  });
+}
+
+function requireStrongDriveEtag(etag) {
+  // Empty, weak and wildcard validators must never turn into an unconditional
+  // write. ETags are opaque; preserve the exact quoted value from Drive.
+  if (!/^"[^"\r\n]+"$/.test(etag)) {
+    throw new DriveApiError("無法確認 Google Drive 檔案版本，更新已停止。請重試或先下載 .moodboard 備份。", { code: "drive/safety-check" });
+  }
+}
+
+function driveMultipartBody(metadata, content) {
+  const boundary = `moodboard_${globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(36).slice(2)}`}`;
+  return {
+    contentType: `multipart/related; boundary=${boundary}`,
+    body: new Blob([
+      `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n`,
+      JSON.stringify(metadata),
+      `\r\n--${boundary}\r\nContent-Type: ${DRIVE_FILE_MIME_TYPE}\r\n\r\n`,
+      content,
+      `\r\n--${boundary}--\r\n`,
+    ]),
+  };
+}
+
+async function getGoogleDriveFileState(accessToken, fileId, { resourceKey = "", signal } = {}) {
   const params = new URLSearchParams({
-    fields: DRIVE_FILE_FIELDS,
+    fields: DRIVE_CONDITIONAL_FILE_FIELDS,
     supportsAllDrives: "true",
   });
-  const { payload, response } = await driveRequest(
+  const payload = await driveRequest(
     accessToken,
-    `${DRIVE_API_ROOT}/files/${encodeURIComponent(fileId)}?${params}`,
-    { signal, includeResponse: true },
+    `${DRIVE_CONDITIONAL_API_ROOT}/files/${encodeURIComponent(fileId)}?${params}`,
+    { signal, headers: driveResourceKeyHeaders(fileId, resourceKey) },
   );
   return {
-    file: normalizeDriveFile(payload),
-    etag: String(response.headers?.get?.("etag") || ""),
+    file: normalizeConditionalDriveFile(payload),
+    etag: String(payload?.etag || ""),
   };
 }
 
@@ -764,41 +801,44 @@ export async function uploadGoogleDriveMoodboard(accessToken, {
     });
   }
   let remoteState = null;
+  const resourceKey = existingFile?.resourceKey || "";
   if (existingFile?.id) {
-    remoteState = await getGoogleDriveFileState(accessToken, existingFile.id, { signal });
+    remoteState = await getGoogleDriveFileState(accessToken, existingFile.id, { resourceKey, signal });
     const matchesExpectedVersion = Boolean(expectedVersion && remoteState.file.version
       && String(remoteState.file.version) === String(expectedVersion));
     const matchesExpectedHead = Boolean(expectedHeadRevisionId && remoteState.file.headRevisionId
-      && String(remoteState.file.headRevisionId) === String(expectedHeadRevisionId));
+      && String(remoteState.file.headRevisionId) === String(expectedHeadRevisionId)
+      && remoteState.file.name === filename);
     const matchesConfirmedOverwrite = Boolean(forceOverwrite && confirmedRemoteVersion && remoteState.file.version
       && String(remoteState.file.version) === String(confirmedRemoteVersion));
     if (forceOverwrite ? !matchesConfirmedOverwrite : !matchesExpectedVersion && !matchesExpectedHead) {
       throw new DriveConflictError(remoteState.file);
     }
-    // Drive v3 does not expose a JSON etag field. Requiring the HTTP ETag keeps
-    // updates fail-closed instead of risking a cross-device lost update.
-    if (!remoteState.etag) throw new DriveApiError("Google Drive 未提供安全更新所需的版本識別資訊，已停止覆寫。請稍後重試；持續失敗時請下載本機副本。", { code: "drive/safety-check" });
+    requireStrongDriveEtag(remoteState.etag);
     if (!remoteState.file.headRevisionId) {
       throw new DriveApiError("無法先保留目前 Drive 版本，因此已停止覆寫。", { code: "drive/revision", details: remoteState.file });
     }
     const protectedHeadRevisionId = remoteState.file.headRevisionId;
+    const protectedName = remoteState.file.name;
     await enforceGoogleDriveRevisionRetention(accessToken, existingFile.id, {
       maxRetained: MAX_RETAINED_DRIVE_REVISIONS - 1,
+      resourceKey,
       signal,
     });
-    await updateGoogleDriveRevisionRetention(accessToken, existingFile.id, protectedHeadRevisionId, true, { signal });
-    remoteState = await getGoogleDriveFileState(accessToken, existingFile.id, { signal });
+    await updateGoogleDriveRevisionRetention(accessToken, existingFile.id, protectedHeadRevisionId, true, { resourceKey, signal });
+    remoteState = await getGoogleDriveFileState(accessToken, existingFile.id, { resourceKey, signal });
     // Retaining a revision changes Drive's file version even when the file
     // contents did not change. Compare the head revision instead, then use the
     // freshly returned ETag so our own metadata update is never misread as a
     // cross-device edit.
-    if (!remoteState.etag) throw new DriveApiError("Google Drive 未提供安全更新所需的版本識別資訊，已停止覆寫。請稍後重試；持續失敗時請下載本機副本。", { code: "drive/safety-check" });
-    if (!remoteState.file.headRevisionId || remoteState.file.headRevisionId !== protectedHeadRevisionId) {
+    requireStrongDriveEtag(remoteState.etag);
+    if (!remoteState.file.headRevisionId || remoteState.file.headRevisionId !== protectedHeadRevisionId
+      || remoteState.file.name !== protectedName) {
       throw new DriveConflictError(remoteState.file);
     }
   }
 
-  const metadata = {
+  const metadata = existingFile?.id ? { title: filename, mimeType: DRIVE_FILE_MIME_TYPE } : {
     name: filename,
     mimeType: DRIVE_FILE_MIME_TYPE,
     appProperties: {
@@ -808,18 +848,20 @@ export async function uploadGoogleDriveMoodboard(accessToken, {
     },
   };
   if (!existingFile?.id && folderId) metadata.parents = [folderId];
-  const form = new FormData();
-  form.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));
-  form.append("file", new Blob([content], { type: DRIVE_FILE_MIME_TYPE }));
+  const multipart = driveMultipartBody(metadata, content);
   const endpoint = existingFile?.id
-    ? `${DRIVE_UPLOAD_ROOT}/files/${encodeURIComponent(existingFile.id)}?uploadType=multipart&fields=${encodeURIComponent(DRIVE_FILE_FIELDS)}`
-    : `${DRIVE_UPLOAD_ROOT}/files?uploadType=multipart&fields=${encodeURIComponent(DRIVE_FILE_FIELDS)}`;
+    ? `${DRIVE_CONDITIONAL_UPLOAD_ROOT}/files/${encodeURIComponent(existingFile.id)}?uploadType=multipart&supportsAllDrives=true&newRevision=true&fields=${encodeURIComponent(DRIVE_CONDITIONAL_FILE_FIELDS)}`
+    : `${DRIVE_UPLOAD_ROOT}/files?uploadType=multipart&supportsAllDrives=true&fields=${encodeURIComponent(DRIVE_FILE_FIELDS)}`;
   let result;
   try {
     result = await driveRequest(accessToken, endpoint, {
-      method: existingFile?.id ? "PATCH" : "POST",
-      headers: remoteState?.etag ? { "If-Match": remoteState.etag } : undefined,
-      body: form,
+      method: existingFile?.id ? "PUT" : "POST",
+      headers: {
+        "Content-Type": multipart.contentType,
+        ...driveResourceKeyHeaders(existingFile?.id, resourceKey),
+        ...(remoteState ? { "If-Match": remoteState.etag } : {}),
+      },
+      body: multipart.body,
       signal,
       timeoutMs: DRIVE_TRANSFER_TIMEOUT_MS,
     });
@@ -827,11 +869,12 @@ export async function uploadGoogleDriveMoodboard(accessToken, {
     if (error?.code === "drive/conflict" || error?.status === 412) throw new DriveConflictError(remoteState?.file || existingFile);
     throw error;
   }
-  const saved = normalizeDriveFile(result);
+  const saved = existingFile?.id ? normalizeConditionalDriveFile(result) : normalizeDriveFile(result);
   if (existingFile?.id) {
     try {
-      const verified = await getGoogleDriveFile(accessToken, existingFile.id, { signal });
+      const verified = await getGoogleDriveFile(accessToken, existingFile.id, { resourceKey, signal });
       if (!saved.version || verified.version !== saved.version) throw new DriveConflictError(verified);
+      return verified;
     } catch (error) {
       // The write returned successfully; a failed readback must not imply no
       // write occurred, nor silently renew consent for an unverified version.
