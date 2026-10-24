@@ -26,6 +26,16 @@ Infinite Moodboard runs the canvas, imported media, transforms, exports, and ver
 - Optional Google Drive file storage and Drive-native sharing with viewer/editor permissions on the same file.
 - 3D, Drive sharing, and export runtimes are loaded only when used, keeping the opening bundle smaller.
 
+## v0.54.1 — clear cloud-update outcomes
+
+[Read the complete v0.54.1 release notes.](./public/release-notes/v0.54.1.html)
+
+- Updating current work shows preparation and upload/verification progress. Confirmed success closes the dialog and announces completion.
+- Repeated version conflicts and failed uploads keep an actionable inline explanation instead of silently resetting the button. Expired authorization has one reconnect path without overlapping dialogs.
+- Missing safety metadata stops the update with a specific reason. Failed post-write verification is reported as an uncertain result, not as proof that nothing was uploaded.
+- A local recovery failure remains visible alongside any cloud error, with a backup route. Failure cleanup is time-bounded and cannot enable another action before it settles; narrow-screen actions stack without squeezing labels.
+- Existing canvas, file identity, conditional-write checks and revision recovery remain intact. The browser test script covers success, retries and failure states with mock Drive; real account acceptance remains separate.
+
 ## v0.54.0 — explicit saving and recoverable cloud loading
 
 [Read the complete v0.54.0 release notes.](./public/release-notes/v0.54.0.html)

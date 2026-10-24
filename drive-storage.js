@@ -777,7 +777,7 @@ export async function uploadGoogleDriveMoodboard(accessToken, {
     }
     // Drive v3 does not expose a JSON etag field. Requiring the HTTP ETag keeps
     // updates fail-closed instead of risking a cross-device lost update.
-    if (!remoteState.etag) throw new DriveConflictError(remoteState.file);
+    if (!remoteState.etag) throw new DriveApiError("Google Drive 未提供安全更新所需的版本識別資訊，已停止覆寫。請稍後重試；持續失敗時請下載本機副本。", { code: "drive/safety-check" });
     if (!remoteState.file.headRevisionId) {
       throw new DriveApiError("無法先保留目前 Drive 版本，因此已停止覆寫。", { code: "drive/revision", details: remoteState.file });
     }
@@ -792,7 +792,8 @@ export async function uploadGoogleDriveMoodboard(accessToken, {
     // contents did not change. Compare the head revision instead, then use the
     // freshly returned ETag so our own metadata update is never misread as a
     // cross-device edit.
-    if (!remoteState.etag || !remoteState.file.headRevisionId || remoteState.file.headRevisionId !== protectedHeadRevisionId) {
+    if (!remoteState.etag) throw new DriveApiError("Google Drive 未提供安全更新所需的版本識別資訊，已停止覆寫。請稍後重試；持續失敗時請下載本機副本。", { code: "drive/safety-check" });
+    if (!remoteState.file.headRevisionId || remoteState.file.headRevisionId !== protectedHeadRevisionId) {
       throw new DriveConflictError(remoteState.file);
     }
   }
@@ -828,8 +829,14 @@ export async function uploadGoogleDriveMoodboard(accessToken, {
   }
   const saved = normalizeDriveFile(result);
   if (existingFile?.id) {
-    const verified = await getGoogleDriveFile(accessToken, existingFile.id, { signal });
-    if (!saved.version || verified.version !== saved.version) throw new DriveConflictError(verified);
+    try {
+      const verified = await getGoogleDriveFile(accessToken, existingFile.id, { signal });
+      if (!saved.version || verified.version !== saved.version) throw new DriveConflictError(verified);
+    } catch (error) {
+      // The write returned successfully; a failed readback must not imply no
+      // write occurred, nor silently renew consent for an unverified version.
+      throw new DriveApiError("已送出更新，但未能確認雲端結果。請先檢查雲端狀態。", { code: "drive/verification", details: error });
+    }
   }
   return saved;
 }

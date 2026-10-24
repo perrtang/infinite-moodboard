@@ -122,6 +122,10 @@ test("source workspace controls and isolation feedback are localized", () => {
 });
 
 test("Google Drive storage and recovery copy is localized", () => {
+  assert.equal(translateInterfaceText("正在整理更新結果…", "en"), "Finalizing the update result…");
+  assert.equal(translateInterfaceText("前往下載本機備份", "en"), "Go to download a local backup");
+  assert.match(translateInterfaceText("本機復原副本也未完成，請先下載 .moodboard 備份；不要關閉目前分頁。", "en"), /keep this tab open/);
+  assert.equal(translateInterfaceText("尚未確認更新完成", "en"), "Update not yet confirmed");
   assert.equal(translateInterfaceText("儲存與同步", "en"), "Storage & sync");
   assert.equal(translateInterfaceText("選擇主要儲存位置", "en"), "Choose the primary storage location");
   assert.equal(translateInterfaceText("這台裝置", "en"), "This device");

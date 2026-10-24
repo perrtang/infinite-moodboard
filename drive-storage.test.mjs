@@ -330,7 +330,7 @@ test("an existing file requires an HTTP ETag before conditional update", async (
         existingFile: { id: "drive-1" },
         expectedVersion: "8",
       }),
-      DriveConflictError,
+      (error) => error?.code === "drive/safety-check" && /停止覆寫/.test(error.message),
     );
     assert.deepEqual(calls.map((call) => call.method), ["GET"]);
   } finally {
@@ -444,6 +444,30 @@ test("confirmed overwrite accepts the reviewed remote version and still uses a f
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+for (const outcome of ["mismatch", "network-error"]) test(`successful PATCH followed by ${outcome} readback reports an unverified write`, async () => {
+  const originalFetch = globalThis.fetch;
+  let reads = 0;
+  let writes = 0;
+  globalThis.fetch = async (url, options = {}) => {
+    const endpoint = String(url);
+    if (endpoint.includes("/revisions")) return new Response(JSON.stringify(endpoint.includes("?") ? { revisions: [] } : { id: "h1", keepForever: true }));
+    if (endpoint.includes("/upload/")) {
+      writes++;
+      return new Response(JSON.stringify({ id: "drive-1", version: "3", headRevisionId: "h3" }));
+    }
+    reads++;
+    if (reads === 3 && outcome === "network-error") throw new TypeError("network error");
+    return new Response(JSON.stringify({ id: "drive-1", version: reads === 3 ? "4" : String(reads), headRevisionId: reads === 3 ? "h4" : "h1" }), { headers: { etag: '"safe"' } });
+  };
+  try {
+    await assert.rejects(uploadGoogleDriveMoodboard("token", {
+      board: { id: "board-1" }, content: "{}", filename: "Board.moodboard",
+      existingFile: { id: "drive-1" }, expectedVersion: "1", forceOverwrite: true, confirmedRemoteVersion: "1",
+    }), (error) => error.code === "drive/verification" && /已送出更新/.test(error.message));
+    assert.equal(writes, 1);
+  } finally { globalThis.fetch = originalFetch; }
 });
 
 test("confirmed overwrite stops when Drive changed after the user reviewed it", async () => {

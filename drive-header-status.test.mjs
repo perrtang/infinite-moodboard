@@ -33,13 +33,17 @@ test("autosync waits while Drive is busy and retries recoverable errors on the q
   assert.match(main, /if \(driveSession\.busy \|\| \["checking", "connecting", "syncing", "quota"\]\.includes\(driveSession\.status\)\) return undefined;/);
 });
 
-test("Drive failures always settle the spinner before queue recovery work", () => {
+test("Drive failure recovery is time-bounded and keeps retry disabled until bookkeeping settles", () => {
   const saveStart = main.indexOf("const saveBoardToGoogleDrive = useCallback");
   const failureStart = main.indexOf("const isConflict = error?.code === \"drive/conflict\"", saveStart);
   const queueStart = main.indexOf("if (linkedFile && driveSettings.autoSync)", failureStart);
   const failureBlock = main.slice(failureStart, queueStart);
   assert.ok(saveStart > -1 && failureStart > saveStart && queueStart > failureStart);
-  assert.match(failureBlock, /setDriveSession\(\(current\) => \{[\s\S]*busy: false/);
+  assert.match(failureBlock, /setDriveSession\(\(current\) => \{[\s\S]*busy: true/);
+  const completionBlock = main.slice(queueStart, main.indexOf("const openGoogleDriveFile", queueStart));
+  assert.match(completionBlock, /await withOperationTimeout\([\s\S]*DRIVE_QUEUE_TIMEOUT_MS/);
+  assert.match(completionBlock, /finally[\s\S]*driveSavePromiseRef\.current = null;[\s\S]*busy: false/);
+  assert.match(main, /DRIVE_QUEUE_TIMEOUT_MS = 10_000/);
   assert.match(main.slice(failureStart, main.indexOf("return false;", queueStart)), /isGoogleDriveRetryableError\(error\)[\s\S]*nextAttemptAt: retryable/);
   assert.match(main, /DRIVE_LOCAL_RECOVERY_TIMEOUT_MS = 30_000/);
   assert.match(main, /retainSnapshot: Boolean\(localRecoveryWarning\)/);
@@ -61,10 +65,12 @@ test("sync-queue bookkeeping failures never masquerade as local recovery-copy fa
   const saveStart = main.indexOf("const saveBoardToGoogleDrive = useCallback");
   const queueReadStart = main.indexOf("const queuedJob = await getSyncJob(snapshot.id);", saveStart);
   const driveAboutStart = main.indexOf("const about = await getGoogleDriveAbout(accessToken);", queueReadStart);
-  const queueRemovalStart = main.indexOf("await removeSyncJob(snapshot.id);", driveAboutStart);
+  const queueRemovalStart = main.indexOf("await withOperationTimeout(removeSyncJob(snapshot.id)", driveAboutStart);
   const syncedStateStart = main.indexOf("const syncedAt = new Date().toISOString();", queueRemovalStart);
 
   assert.match(main.slice(queueReadStart, driveAboutStart), /catch \(error\) \{\s*noteQueueStateFailure\(error\);/);
+  assert.match(main.slice(queueReadStart, driveAboutStart), /queuePreparationActive[\s\S]*DRIVE_QUEUE_TIMEOUT_MS/);
+  assert.match(main.slice(queueRemovalStart, syncedStateStart), /DRIVE_QUEUE_TIMEOUT_MS/);
   assert.doesNotMatch(main.slice(queueReadStart, driveAboutStart), /noteLocalRecoveryFailure\(error\)/);
   assert.match(main.slice(queueRemovalStart, syncedStateStart), /noteQueueStateFailure\(error\)[\s\S]*setSyncJobs[\s\S]*setTimeout[\s\S]*removeSyncJob/);
   assert.match(main.slice(syncedStateStart, main.indexOf("return true;", syncedStateStart)), /queueStateWarning[\s\S]*已儲存至 Google Drive；本機同步佇列待整理/);

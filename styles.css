@@ -8184,11 +8184,15 @@ html[lang="en"] .sidebar-tabs button svg {
 .drive-save-confirmation { display: grid; gap: 16px; }
 .drive-save-confirmation > strong { overflow-wrap: anywhere; font-size: calc(14px + var(--ui-font-offset, 0px)); }
 .drive-save-confirmation p { margin: 0; color: var(--text-muted); font-size: calc(13px + var(--ui-font-offset, 0px)); line-height: 1.65; }
+.drive-save-feedback { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 12px; padding: 14px; background: var(--surface-strong); border-radius: 6px; }
+.drive-save-feedback > svg { margin-top: 2px; }
+.drive-save-feedback strong { display: block; font-size: calc(13px + var(--ui-font-offset, 0px)); line-height: 1.65; }
+.drive-save-feedback p { overflow-wrap: anywhere; margin-top: 4px; }
 .drive-save-confirmation-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
 .drive-save-confirmation-actions button { min-height: 44px; font-size: calc(13px + var(--ui-font-offset, 0px)); }
 
 @media (max-width: 620px) {
-  .drive-save-confirmation-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .drive-save-confirmation-actions { display: flex; flex-direction: column; }
   .drive-save-confirmation-actions button { padding: 10px; }
 }
 

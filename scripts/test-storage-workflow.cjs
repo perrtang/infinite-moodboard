@@ -5,7 +5,7 @@ const { chromium } = require('playwright');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const base = process.env.MOODBOARD_TEST_URL || 'http://127.0.0.1:5184';
-const out = process.env.MOODBOARD_TEST_OUTPUT || '/tmp/moodboard-v054-qa';
+const out = process.env.MOODBOARD_TEST_OUTPUT || '/tmp/moodboard-v0541-qa';
 
 const hook = `
 window.__storageQA = {
@@ -31,11 +31,14 @@ window.__storageQA = {
   },
   edit: (name) => applyBoard((s) => ({ ...s, name })),
   save: saveBoardToGoogleDrive,
+  expireToken: () => { driveTokenRef.current = null; },
   open: () => openGoogleDriveFile(window.__driveMock.metadata),
   refresh: refreshGoogleDrive,
   restore: restoreBeforeDriveLoad,
   close: closeDriveLibrary,
   library: () => setShowDriveLibrary(true),
+  enableSyncQueue: () => updateDriveSettings((s) => ({ ...s, autoSync: true })),
+  queueCurrent: () => enqueueSync(boardRef.current),
   chooseLocal: () => choosePrimaryStorageTarget('local'),
   enableAutoUpload: () => {
     driveTokenRef.current = { accessToken: 'isolated-test-token', expiresAt: Date.now() + 3600000 };
@@ -67,6 +70,7 @@ export const uploadGoogleDriveMoodboard = async (token, options) => {
   await gate('upload');
   if (options.signal.aborted) throw Object.assign(new Error('cancelled'), { name: 'AbortError' });
   const s = state();
+  if (s.failure) throw Object.assign(new Error(s.failure.message || 'Mock failure'), s.failure);
   if (options.existingFile && (options.forceOverwrite ? options.confirmedRemoteVersion : options.expectedVersion) !== s.metadata.version) {
     throw Object.assign(new Error('Remote changed'), { code: 'drive/conflict', remoteFile: copy(s.metadata) });
   }
@@ -74,6 +78,8 @@ export const uploadGoogleDriveMoodboard = async (token, options) => {
   s.board = copy(options.board);
   const version = String(Number(s.metadata.version) + 1);
   s.metadata = { ...s.metadata, version, headRevisionId: 'h' + version, modifiedTime: new Date().toISOString() };
+  await gate('verify');
+  if (s.verificationFailure) throw Object.assign(new Error('Update sent; verification failed'), { code: 'drive/verification' });
   return copy(s.metadata);
 };
 `;
@@ -87,10 +93,31 @@ export const uploadGoogleDriveMoodboard = async (token, options) => {
     const url = new URL(route.request().url());
     if (url.origin !== new URL(base).origin) return route.abort();
     if (url.pathname === '/drive-storage.js') return route.fulfill({ contentType: 'application/javascript', body: mock });
+    if (url.pathname === '/storage.js') {
+      const response = await route.fetch();
+      let body = await response.text();
+      for (const [fn, args, name] of [
+        ['getSyncJob', 'boardId', 'queueRead'],
+        ['updateSyncJob', 'boardId, patch = {}', 'queueWrite'],
+        ['removeSyncJob', 'boardId', 'queueRemove'],
+      ]) {
+        const anchor = 'export async function ' + fn + '(' + args + ') {';
+        assert(body.includes(anchor), 'queue fault injection anchor must exist: ' + fn);
+        body = body.replace(anchor, anchor + '\nif (window.__driveMock?.gates.' + name + ') await new Promise((resolve) => { window.__driveMock.gates.' + name + ' = resolve; });');
+      }
+      return route.fulfill({ response, body });
+    }
     if (url.pathname === '/main.jsx') {
       const response = await route.fetch();
-      const body = await response.text();
+      let body = await response.text();
       assert(body.includes('const hasBlockingDialog = Boolean('), 'test injection anchor must exist');
+      for (const [anchor, injected] of [
+        ['const persistBoardLocally = useCallback((snapshot) => {', 'if (window.__driveMock?.localFailure) return Promise.reject(new Error("Simulated local recovery failure"));'],
+        ['const refreshLocalLibrarySummary = useCallback(async () => {', 'if (window.__driveMock?.gates.localSummary) await new Promise((resolve) => { window.__driveMock.gates.localSummary = resolve; });'],
+      ]) {
+        assert(body.includes(anchor), 'fault injection anchor must exist: ' + anchor);
+        body = body.replace(anchor, anchor + '\n' + injected);
+      }
       return route.fulfill({ response, body: body.replace('const hasBlockingDialog = Boolean(', hook + '\nconst hasBlockingDialog = Boolean(') });
     }
     return route.continue();
@@ -121,10 +148,170 @@ export const uploadGoogleDriveMoodboard = async (token, options) => {
     await page.getByRole('button', { name: '取消', exact: true }).click();
     assert.equal(await page.evaluate(() => window.__driveMock.uploads.length), 0);
     await page.locator('.topbar-save-button').click();
+    await gate('upload'); await gate('verify');
     await page.getByRole('button', { name: '以目前內容更新', exact: true }).click();
+    await waitGate('upload');
+    assert.match(await page.locator('.drive-save-feedback[role="status"]').innerText(), /正在上傳並確認/);
+    assert.equal(await page.getByRole('button', { name: '更新中…', exact: true }).isDisabled(), true);
+    await page.screenshot({ path: out + '/desktop-uploading.png' });
+    await release('upload'); await waitGate('verify');
+    assert.equal(await page.locator('.drive-save-confirmation').isVisible(), true, 'do not close before readback');
+    await release('verify');
     await page.waitForFunction(() => window.__driveMock.uploads.length === 1 && !window.__storageQA.read().drive.busy);
     assert.equal((await state()).board.name, '編輯中的 Moodboard');
+    assert.equal((await state()).confirmation, null);
+    assert.equal((await state()).drive.status, 'synced');
+    await page.locator('.drive-save-confirmation').waitFor({ state: 'detached' });
+    await page.getByText('已以目前內容更新 Drive；先前 Drive 版本可從版本紀錄復原。', { exact: true }).waitFor();
     record('Save conflict is upload-only, cancel is non-mutating, confirmation uploads current canvas');
+    record('Progress stays visible through readback, then success closes the dialog and announces completion');
+
+    const openConflict = async () => {
+      await seed();
+      await page.evaluate(() => { window.__driveMock.metadata.version = '2'; window.__driveMock.metadata.headRevisionId = 'h2'; });
+      await page.locator('.topbar-save-button').click();
+      await page.getByRole('button', { name: '以目前內容更新', exact: true }).waitFor();
+    };
+    await openConflict();
+    await page.evaluate(() => { window.__driveMock.metadata.version = '3'; window.__driveMock.metadata.headRevisionId = 'h3'; });
+    await page.getByRole('button', { name: '以目前內容更新', exact: true }).click();
+    await page.locator('.drive-save-feedback[role="alert"]').waitFor();
+    assert.match(await page.locator('.drive-save-feedback').innerText(), /版本檢查未通過/);
+    assert.equal((await state()).confirmation.version, '3');
+    assert.equal(await page.evaluate(() => window.__driveMock.uploads.length), 0);
+    await page.screenshot({ path: out + '/desktop-repeated-conflict.png' });
+    await page.getByRole('button', { name: '再次以目前內容更新', exact: true }).click();
+    await page.locator('.drive-save-confirmation').waitFor({ state: 'detached' });
+    assert.equal(await page.evaluate(() => window.__driveMock.uploads.length), 1);
+    record('A second conflict displays a reason and renewed confirmation succeeds without silent loops');
+
+    for (const failure of [
+      { code: 'drive/quota', expected: '空間不足' },
+      { code: 'drive/timeout', expected: '可能已送出' },
+      { code: 'drive/network', expected: '可能已送出' },
+      { code: 'drive/safety-check', message: '缺少安全更新版本資訊，已停止覆寫。', expected: '停止覆寫' },
+      { code: 'drive/revision', message: '無法先保留目前 Drive 版本，因此已停止覆寫。', expected: '停止覆寫' },
+      { status: 401, expected: '授權已失效' },
+    ]) {
+      await openConflict();
+      await page.evaluate((failure) => { window.__driveMock.failure = failure; }, failure);
+      await page.getByRole('button', { name: '以目前內容更新', exact: true }).click();
+      await page.locator('.drive-save-feedback[role="alert"]').waitFor();
+      assert((await page.locator('.drive-save-feedback').innerText()).includes(failure.expected));
+      assert.equal((await state()).drive.busy, false);
+      assert.equal((await state()).board.name, '編輯中的 Moodboard');
+      assert.equal(await page.getByRole('dialog').count(), 1);
+      assert.equal(await page.evaluate(() => window.__driveMock.uploads.length), 0);
+      if (failure.code === 'drive/quota') {
+        for (const width of [1440, 390, 320]) {
+          await page.setViewportSize({ width, height: 844 });
+          await page.screenshot({ path: out + '/failure-' + width + '.png' });
+          const dialog = await page.getByRole('dialog').boundingBox();
+          assert(dialog.x >= 0 && dialog.x + dialog.width <= width);
+        }
+        await page.setViewportSize({ width: 1440, height: 1000 });
+        await page.evaluate(() => { delete window.__driveMock.failure; });
+        await page.getByRole('button', { name: '再次以目前內容更新', exact: true }).click();
+        await page.locator('.drive-save-confirmation').waitFor({ state: 'detached' });
+      }
+    }
+    record('Quota, timeout, network, safety, revision and 401 failures show actionable inline feedback; retry and responsive layout work');
+
+    await openConflict();
+    await page.evaluate(() => window.__storageQA.expireToken());
+    await page.getByRole('button', { name: '以目前內容更新', exact: true }).click();
+    await page.getByRole('button', { name: '前往重新連結', exact: true }).waitFor();
+    assert.equal(await page.getByRole('dialog').count(), 1);
+    await page.getByRole('button', { name: '前往重新連結', exact: true }).click();
+    await page.locator('.drive-save-confirmation').waitFor({ state: 'detached' });
+    assert.equal(await page.getByRole('dialog').count(), 1);
+    assert.equal(await page.evaluate(() => window.__driveMock.uploads.length), 0);
+    record('Expired token before submission exposes one reconnect path without overlapping dialogs or writes');
+
+    await openConflict();
+    await page.evaluate(() => { window.__driveMock.verificationFailure = true; });
+    await page.getByRole('button', { name: '以目前內容更新', exact: true }).click();
+    await page.locator('.drive-save-feedback[role="alert"]').waitFor();
+    assert.match(await page.locator('.drive-save-feedback').innerText(), /已送出更新，尚未確認結果/);
+    assert.equal(await page.evaluate(() => window.__driveMock.uploads.length), 1);
+    await page.getByRole('button', { name: '檢查雲端狀態', exact: true }).click();
+    await page.locator('.drive-save-confirmation').waitFor({ state: 'detached' });
+    assert.equal((await state()).board.name, '編輯中的 Moodboard');
+    record('An accepted write with failed readback stays unconfirmed and opens inspection without replacing the canvas');
+
+    // A slow queue cleanup cannot re-enable actions before the save promise settles.
+    await openConflict();
+    await page.evaluate(() => {
+      window.__storageQA.enableSyncQueue();
+      window.__driveMock.failure = { code: 'drive/timeout' };
+    });
+    await gate('localSummary');
+    await page.getByRole('button', { name: '以目前內容更新', exact: true }).click();
+    await waitGate('localSummary');
+    assert.equal((await state()).drive.busy, true);
+    assert.equal(await page.getByRole('button', { name: '取消', exact: true }).isDisabled(), true);
+    assert.equal(await page.getByRole('button', { name: '更新中…', exact: true }).isDisabled(), true);
+    assert.match(await page.locator('.drive-save-feedback').innerText(), /整理更新結果/);
+    const beforeInspection = await page.evaluate(() => window.__driveMock.calls.list || 0);
+    await release('localSummary');
+    await page.getByRole('button', { name: '檢查雲端狀態', exact: true }).click();
+    await page.waitForFunction((count) => window.__driveMock.calls.list > count, beforeInspection);
+    assert.equal((await state()).board.name, '編輯中的 Moodboard');
+    record('Auto-sync failure cleanup keeps actions disabled; inspecting afterwards really refreshes cloud metadata');
+
+    await openConflict();
+    await page.evaluate(() => {
+      window.__storageQA.enableSyncQueue();
+      window.__driveMock.failure = { code: 'drive/timeout' };
+    });
+    await gate('localSummary');
+    await page.getByRole('button', { name: '以目前內容更新', exact: true }).click();
+    await waitGate('localSummary');
+    await page.getByRole('button', { name: '檢查雲端狀態', exact: true }).waitFor({ timeout: 15000 });
+    assert.equal((await state()).drive.busy, false);
+    await release('localSummary');
+    record('A stuck local failure-summary read times out and exposes recovery actions instead of spinning indefinitely');
+
+    for (const queueGate of ['queueRead', 'queueWrite', 'queueRemove']) {
+      await openConflict();
+      await page.evaluate(() => window.__storageQA.queueCurrent());
+      await gate(queueGate);
+      await page.getByRole('button', { name: '以目前內容更新', exact: true }).click();
+      await waitGate(queueGate);
+      await page.locator('.drive-save-confirmation').waitFor({ state: 'detached', timeout: 15000 });
+      assert.equal((await state()).drive.status, 'synced');
+      assert.match((await state()).drive.message, /本機同步佇列狀態暫時無法更新/);
+      assert.equal(await page.evaluate(() => window.__driveMock.uploads.length), 1);
+      assert.equal((await state()).board.name, '編輯中的 Moodboard');
+      await release(queueGate);
+      await page.evaluate(() => new Promise(requestAnimationFrame));
+    }
+    record('Stuck queue reads, writes and removal warn and continue; a verified cloud update still closes the dialog');
+
+    for (const failure of ['drive/conflict', 'drive/timeout', 'drive/verification', 'drive/quota', 'drive/offline']) {
+      await openConflict();
+      await page.evaluate((code) => {
+        window.__driveMock.localFailure = true;
+        if (code === 'drive/conflict') window.__driveMock.metadata.version = '3';
+        else if (code === 'drive/verification') window.__driveMock.verificationFailure = true;
+        else window.__driveMock.failure = { code };
+      }, failure);
+      await page.getByRole('button', { name: '以目前內容更新', exact: true }).click();
+      await page.getByRole('button', { name: '前往下載本機備份', exact: true }).waitFor();
+      assert.match(await page.locator('.drive-save-feedback').innerText(), /本機復原副本也未完成/);
+      assert.match(await page.locator('.drive-save-feedback').innerText(), /不要關閉目前分頁/);
+      assert.doesNotMatch(await page.locator('.drive-save-feedback').innerText(), /已保存|已保留|安全保存/);
+      if (failure === 'drive/verification') {
+        await page.setViewportSize({ width: 320, height: 844 });
+        await page.screenshot({ path: out + '/mobile-local-recovery-warning.png' });
+      }
+      await page.getByRole('button', { name: '前往下載本機備份', exact: true }).click();
+      await page.getByRole('button', { name: '下載 `.moodboard` 備份', exact: true }).waitFor();
+      assert.equal(await page.getByRole('dialog').count(), 1);
+      assert.equal((await state()).board.name, '編輯中的 Moodboard');
+      await page.setViewportSize({ width: 1440, height: 1000 });
+    }
+    record('Combined local recovery and cloud failures preserve both warnings and expose a local backup path');
 
     await seed(); await gate('download');
     await page.evaluate(() => { window.__open = window.__storageQA.open(); }); await waitGate('download');
