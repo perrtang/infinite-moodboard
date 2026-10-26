@@ -222,10 +222,14 @@ export async function openGoogleDriveMoodboardPicker({
 
   return new Promise((resolve, reject) => {
     let settled = false;
+    let picker;
     const finish = (callback, value) => {
       if (settled) return;
       settled = true;
       globalThis.clearTimeout(timeoutId);
+      if (callback === reject) {
+        try { picker?.dispose(); } catch { /* Keep the original actionable error. */ }
+      }
       callback(value);
     };
     const timeoutId = globalThis.setTimeout(() => finish(reject, new DriveApiError(
@@ -243,7 +247,7 @@ export async function openGoogleDriveMoodboardPicker({
       if (typeof view.setFileIds === "function") view.setFileIds(expected);
       else if (typeof view.setQuery === "function") view.setQuery(".moodboard");
 
-      const picker = new pickerNamespace.PickerBuilder()
+      picker = new pickerNamespace.PickerBuilder()
         .addView(view)
         .setOAuthToken(accessToken)
         .setDeveloperKey(configuration.apiKey)

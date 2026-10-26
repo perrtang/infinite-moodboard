@@ -26,6 +26,13 @@ Infinite Moodboard runs the canvas, imported media, transforms, exports, and ver
 - Optional Google Drive file storage and Drive-native sharing with viewer/editor permissions on the same file.
 - 3D, Drive sharing, and export runtimes are loaded only when used, keeping the opening bundle smaller.
 
+## v0.54.4 — recover from a stalled shared-file Picker
+
+[Read the complete v0.54.4 release notes.](./public/release-notes/v0.54.4.html)
+
+- A failed or timed-out Picker is disposed so its blank overlay cannot hide the error and retry action.
+- The development acceptance page checks Google's actual response to the current key and OAuth before opening Picker. `?keyCheck=1` checks only the key; it does not count as shared-file acceptance.
+
 ## v0.54.3 — shared-file Picker website verification
 
 [Read the complete v0.54.3 release notes.](./public/release-notes/v0.54.3.html)

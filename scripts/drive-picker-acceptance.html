@@ -23,7 +23,7 @@
 </main>
 <script type="module">
 import {requestGoogleDriveToken,getGoogleDriveFile,downloadGoogleDriveMoodboard} from '../drive-storage.js';
-import {openGoogleDriveMoodboardPicker} from '../drive-picker.js';
+import {openGoogleDriveMoodboardPicker,GOOGLE_DRIVE_PICKER_API_KEY} from '../drive-picker.js';
 const params = new URLSearchParams(location.search);
 const policy = params.get('policy') === 'baseline' ? 'same-origin' : 'strict-origin-when-cross-origin';
 document.querySelector('meta[name="referrer"]').content = policy;
@@ -37,6 +37,15 @@ button.addEventListener('click',async()=>{
     const expectedFileId=document.querySelector('#file-id').value.trim();
     if(!expectedFileId)throw new Error('請輸入分享檔案 ID。');
     const token=await requestGoogleDriveToken({timeoutMs:120000});report('Google Drive 授權完成。');
+    const probe=new URL('https://www.googleapis.com/drive/v3/about');
+    probe.searchParams.set('fields','kind');probe.searchParams.set('key',GOOGLE_DRIVE_PICKER_API_KEY);
+    const probeResponse=await fetch(probe,{headers:{Authorization:`Bearer ${token.accessToken}`}});
+    const probeBody=await probeResponse.json();
+    report(`金鑰與授權檢查：HTTP ${probeResponse.status} ${probeBody.error?.message||'通過'}`);
+    if(!probeResponse.ok)throw new Error('Google 拒絕此網站的金鑰或授權；請先修正上方原因。');
+    if(params.get('keyCheck')==='1'){
+      status.textContent='網站金鑰檢查通過；尚未驗證 Picker 與分享檔案開啟。';return;
+    }
     status.textContent='請在 Google 視窗選取指定的分享檔案。';
     const result=await openGoogleDriveMoodboardPicker({accessToken:token.accessToken,expectedFileId,timeoutMs:120000});
     if(result.status!=='picked'){status.textContent='已取消，沒有開啟任何內容。';return;}

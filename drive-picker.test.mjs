@@ -104,6 +104,7 @@ function installPickerMock(t, responseFactory) {
     setCallback(value) { builderState.callback = value; return this; }
     build() {
       return {
+        dispose() { builderState.disposed = true; builderState.visible = false; },
         setVisible(value) {
           builderState.visible = value;
           queueMicrotask(() => builderState.callback(responseFactory()));
@@ -137,6 +138,23 @@ test("Picker cancellation never returns a file", async (t) => {
     timeoutMs: 1_000,
   });
   assert.deepEqual(result, { status: "cancelled" });
+});
+
+test("a stalled Picker is disposed so its blank overlay cannot hide the retry error", async (t) => {
+  const state = installPickerMock(t, () => ({ action: "loaded" }));
+  await assert.rejects(openGoogleDriveMoodboardPicker({
+    accessToken: "token",
+    expectedFileId: "drive-file-123",
+    clientId: "client",
+    apiKey: "AIza12345678901234567890123456789012345",
+    projectNumber: "1068479226042",
+    origin: "https://moodboard.petfashion.tw",
+    timeoutMs: 1_000,
+  }), error => error.code === "drive/picker-timeout");
+  assert.equal(state.disposed, true);
+  assert.equal(state.visible, false);
+  state.callback({ action: "picked", docs: [{ id: "drive-file-123" }] });
+  assert.equal(state.visible, false);
 });
 
 test("Picker returns only the exact shared file and configures least-privilege selection", async (t) => {

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-Hant">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Infinite Moodboard v0.54.4 更新說明</title>
+<style>
+  :root { color-scheme:light dark; font-family:system-ui,-apple-system,sans-serif }
+  * { box-sizing:border-box } body { margin:0; background:#f4f4f2; color:#171717 }
+  main { max-width:760px; margin:auto; padding:64px 24px 96px }
+  header,section { border-bottom:1px solid #cfcfca; padding-bottom:28px } section { padding-top:28px }
+  h1 { font-size:clamp(32px,7vw,56px); line-height:1.1; letter-spacing:-.04em; margin:0 }
+  h2 { font-size:18px } p,li { font-size:16px; line-height:1.7 } li+li { margin-top:8px }
+  .meta { font-size:14px; color:#666 } footer { padding-top:28px } a { color:inherit }
+  @media(prefers-color-scheme:dark) { body { background:#0d0d0d; color:#f2f2ef } header,section { border-color:#363636 } .meta { color:#aaa } }
+</style>
+<main>
+  <header><h1>v0.54.4 更新說明</h1><p class="meta">Infinite Moodboard · 發布日期：2026-10-26</p></header>
+  <section><h2>更新內容</h2><ul>
+    <li>保留 v0.54.3 的網站來源政策修正，讓 Google 驗證網站網域，同時保護分享連結的路徑與參數。</li>
+    <li>選檔視窗逾時或發生錯誤時會移除遮罩，回到分享對話框，顯示原因與重試按鈕。</li>
+  </ul></section>
+  <section><h2>修正</h2><ul>
+    <li>避免空白 Google 選檔視窗擋住底下的錯誤提示，讓用戶無法繼續操作。</li>
+    <li>驗收頁會先檢查 Google 對金鑰與授權的實際回覆，再驗證選檔及作品內容；金鑰檢查不等同分享開啟驗收。</li>
+  </ul></section>
+  <section><h2>注意事項</h2>
+    <p>第一次以另一個帳號開啟分享檔案，仍須在 Google 選檔視窗選取該檔案。請使用已獲得檔案權限的帳號。</p>
+    <p>本次未擴大 Drive 的 OAuth 範圍，也沒有改動既有作品或成員權限。跨帳號驗收需確認收件者實際看到正確作品內容。</p>
+  </section>
+  <section><h2>回復與備份</h2>
+    <p>開啟失敗不會覆蓋原始作品。重要內容可先下載 .moodboard 備份；程式版本保留 Git 標籤與原始碼快照。</p>
+  </section>
+  <footer><a href="../">回到 Infinite Moodboard</a></footer>
+</main>
+</html>

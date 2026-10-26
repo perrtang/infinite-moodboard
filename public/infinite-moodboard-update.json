@@ -1,9 +1,9 @@
 {
   "product": "Infinite Moodboard",
   "channel": "stable",
-  "version": "0.54.3",
+  "version": "0.54.4",
   "releasedAt": "2026-10-26",
-  "summary": "調整 Google Picker 的網站來源政策，讓受網域限制的金鑰可驗證來源，同時保護分享連結參數；加入部署檢查與第二帳號開啟驗收頁。",
-  "notesUrl": "release-notes/v0.54.3.html",
+  "summary": "修正 Google Picker 網域驗證的來源政策，並在選檔逾時後關閉空白遮罩、顯示可重試的錯誤。",
+  "notesUrl": "release-notes/v0.54.4.html",
   "url": "https://moodboard.petfashion.tw/"
 }
