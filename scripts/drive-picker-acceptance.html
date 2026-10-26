@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-Hant">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>Infinite Moodboard · 分享開啟驗收</title>
+<style>
+  :root { color-scheme:dark; font-family:system-ui,sans-serif; background:#101010; color:#f4f4f4 }
+  * { box-sizing:border-box } body { margin:0 } main { max-width:760px; margin:auto; padding:40px 24px }
+  h1 { font-size:26px } p,li,label { font-size:16px; line-height:1.6 } p { color:#c6c6c6 }
+  input { display:block; width:100%; min-height:44px; margin:8px 0 20px; padding:10px; font:inherit; background:#191919; border:1px solid #777; color:inherit; border-radius:6px }
+  button { min-height:44px; padding:10px 18px; font:600 16px system-ui; border:1px solid #aaa; border-radius:6px; background:#f4f4f4; color:#111; cursor:pointer } button:disabled { opacity:.5 }
+  #status { white-space:pre-wrap; overflow-wrap:anywhere } li { margin:12px 0; overflow-wrap:anywhere }
+</style>
+<main>
+  <h1>分享檔案開啟驗收</h1>
+  <p>驗證目前帳號可透過 Google Picker 選取指定的分享檔案，再讀回內容。此頁只讀取所選檔案，不儲存作品或改動權限。</p>
+  <p id="policy"></p>
+  <label>分享檔案 ID<input id="file-id" autocomplete="off"></label>
+  <button id="open">連結 Google Drive 並選取檔案</button>
+  <p id="status" role="status" aria-live="polite">等待驗收。</p>
+  <ol id="results"></ol>
+</main>
+<script type="module">
+import {requestGoogleDriveToken,getGoogleDriveFile,downloadGoogleDriveMoodboard} from '../drive-storage.js';
+import {openGoogleDriveMoodboardPicker} from '../drive-picker.js';
+const params = new URLSearchParams(location.search);
+const policy = params.get('policy') === 'baseline' ? 'same-origin' : 'strict-origin-when-cross-origin';
+document.querySelector('meta[name="referrer"]').content = policy;
+document.querySelector('#policy').textContent = `測試網站來源政策：${policy}`;
+document.querySelector('#file-id').value = params.get('file') || '';
+const button=document.querySelector('#open'), status=document.querySelector('#status');
+const report=(text)=>{const item=document.createElement('li');item.textContent=text;document.querySelector('#results').append(item);};
+button.addEventListener('click',async()=>{
+  button.disabled=true;status.textContent='正在連結 Google Drive…';
+  try{
+    const expectedFileId=document.querySelector('#file-id').value.trim();
+    if(!expectedFileId)throw new Error('請輸入分享檔案 ID。');
+    const token=await requestGoogleDriveToken({timeoutMs:120000});report('Google Drive 授權完成。');
+    status.textContent='請在 Google 視窗選取指定的分享檔案。';
+    const result=await openGoogleDriveMoodboardPicker({accessToken:token.accessToken,expectedFileId,timeoutMs:120000});
+    if(result.status!=='picked'){status.textContent='已取消，沒有開啟任何內容。';return;}
+    report('Google Picker 已開啟並回傳正確的檔案 ID。');
+    const file=await getGoogleDriveFile(token.accessToken,expectedFileId,{resourceKey:result.file.resourceKey});
+    const board=JSON.parse(await downloadGoogleDriveMoodboard(token.accessToken,expectedFileId,{resourceKey:result.file.resourceKey}));
+    if(!board.id||!Array.isArray(board.objects))throw new Error('檔案不是可辨識的 Moodboard。');
+    report(`內容讀回成功：${board.name}，${board.objects.length} 個物件，內容 r${board.revision}。`);
+    report(`目前帳號：${file.ownedByMe?'檔案擁有者':'非擁有者'}；權限：${file.capabilities.canEdit?'可編輯':'僅檢視'}；Drive 版本：${file.version}。`);
+    status.textContent='分享檔案選取與內容讀回驗收完成。';document.documentElement.dataset.result='passed';
+  }catch(error){status.textContent=`驗收失敗：${error.message}`;document.documentElement.dataset.result='failed';}
+  finally{button.disabled=false;}
+});
+</script>
+</html>

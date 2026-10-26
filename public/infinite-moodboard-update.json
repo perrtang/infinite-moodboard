@@ -1,9 +1,9 @@
 {
   "product": "Infinite Moodboard",
   "channel": "stable",
-  "version": "0.54.2",
-  "releasedAt": "2026-10-24",
-  "summary": "修正既有 Google Drive 檔案因版本驗證資料無法讀取而不能更新的問題，保留條件式更新、衝突保護與舊版本復原。",
-  "notesUrl": "release-notes/v0.54.2.html",
+  "version": "0.54.3",
+  "releasedAt": "2026-10-26",
+  "summary": "調整 Google Picker 的網站來源政策，讓受網域限制的金鑰可驗證來源，同時保護分享連結參數；加入部署檢查與第二帳號開啟驗收頁。",
+  "notesUrl": "release-notes/v0.54.3.html",
   "url": "https://moodboard.petfashion.tw/"
 }

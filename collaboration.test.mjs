@@ -84,8 +84,8 @@ test("collaboration ids and invitation links are URL safe", () => {
   assert.equal(normalizeCollaborationInvite("not a valid invite"), "");
 });
 
-test("collaboration invite URLs are not exposed as cross-origin referrers", () => {
-  assert.match(documentSource, /<meta name="referrer" content="same-origin" \/>/);
+test("cross-origin requests identify the website for Picker without exposing invitation paths or queries", () => {
+  assert.match(documentSource, /<meta name="referrer" content="strict-origin-when-cross-origin" \/>/);
 });
 
 test("collaboration updates split and combine without changing bytes", () => {

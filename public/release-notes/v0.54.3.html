@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-Hant">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Infinite Moodboard v0.54.3 更新說明</title>
+<style>
+  :root { color-scheme:light dark; font-family:system-ui,-apple-system,sans-serif }
+  * { box-sizing:border-box } body { margin:0; background:#f4f4f2; color:#171717 }
+  main { max-width:760px; margin:auto; padding:64px 24px 96px }
+  header,section { border-bottom:1px solid #cfcfca; padding-bottom:28px } section { padding-top:28px }
+  h1 { font-size:clamp(32px,7vw,56px); line-height:1.1; letter-spacing:-.04em; margin:0 }
+  h2 { font-size:18px } p,li { font-size:16px; line-height:1.7 } li+li { margin-top:8px }
+  .meta { font-size:14px; color:#666 } footer { padding-top:28px } a { color:inherit }
+  @media(prefers-color-scheme:dark) { body { background:#0d0d0d; color:#f2f2ef } header,section { border-color:#363636 } .meta { color:#aaa } }
+</style>
+<main>
+  <header><h1>v0.54.3 更新說明</h1><p class="meta">Infinite Moodboard · 發布日期：2026-10-26</p></header>
+  <section><h2>更新內容</h2><ul>
+    <li>調整跨站來源政策，讓 Google Picker 可以驗證網站網域，分享連結的路徑、檔案 ID 與查詢參數不會隨來源標頭送出。</li>
+    <li>加入第二帳號開啟指定分享檔案的開發驗收頁，讀回物件與檢視／編輯權限，不修改作品或分享權限。</li>
+  </ul></section>
+  <section><h2>修正</h2><ul>
+    <li>移除與 Google Picker 網域驗證衝突的 same-origin 來源政策，改用 strict-origin-when-cross-origin。</li>
+    <li>部署檢查會阻止不相容的來源政策再次上線；金鑰格式正確不再被視為完成真實分享驗收。</li>
+  </ul></section>
+  <section><h2>注意事項</h2>
+    <p>收件者仍須以獲得檔案權限的 Google 帳號連結 Drive。第一次開啟時，請在 Google 選檔視窗選取分享連結指定的同一份檔案。</p>
+    <p>此版本保留 drive.file 最小範圍與網域限制。未變更作品的儲存位置、既有分享權限或雲端更新的衝突保護。</p>
+  </section>
+  <section><h2>回復與備份</h2>
+    <p>更新前可下載 .moodboard 備份。程式版本保留 Git 備份標籤與原始碼；開啟失敗時不會以空白內容取代作品，也不會自動覆蓋雲端檔案。</p>
+  </section>
+  <footer><a href="../">回到 Infinite Moodboard</a></footer>
+</main>
+</html>

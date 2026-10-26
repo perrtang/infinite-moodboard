@@ -26,6 +26,14 @@ Infinite Moodboard runs the canvas, imported media, transforms, exports, and ver
 - Optional Google Drive file storage and Drive-native sharing with viewer/editor permissions on the same file.
 - 3D, Drive sharing, and export runtimes are loaded only when used, keeping the opening bundle smaller.
 
+## v0.54.3 — shared-file Picker website verification
+
+[Read the complete v0.54.3 release notes.](./public/release-notes/v0.54.3.html)
+
+- Cross-origin requests send only the website origin, allowing Google Picker's website-restricted API key to verify the caller without disclosing share paths or query parameters.
+- The deployment configuration check now rejects an incompatible document referrer policy. Key-format checks alone do not establish live Google acceptance.
+- `scripts/drive-picker-acceptance.html` opens the exact shared file with real OAuth and reads its contents and current-account access without writing a board or changing permissions. Use the approved local origin `http://localhost:5000`; `?policy=baseline` reproduces the earlier policy for comparison.
+
 ## v0.54.2 — browser-compatible conditional Drive updates
 
 [Read the complete v0.54.2 release notes.](./public/release-notes/v0.54.2.html)
