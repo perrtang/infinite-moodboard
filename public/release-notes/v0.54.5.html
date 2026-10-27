@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-Hant">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Infinite Moodboard v0.54.5 更新說明</title>
+<style>
+  :root { color-scheme:light dark; font-family:system-ui,-apple-system,sans-serif }
+  * { box-sizing:border-box } body { margin:0; background:#f4f4f2; color:#171717 }
+  main { max-width:760px; margin:auto; padding:64px 24px 96px }
+  header,section { border-bottom:1px solid #cfcfca; padding-bottom:28px } section { padding-top:28px }
+  h1 { font-size:clamp(32px,7vw,56px); line-height:1.1; letter-spacing:-.04em; margin:0 }
+  h2 { font-size:18px } p,li { font-size:16px; line-height:1.7 } li+li { margin-top:8px }
+  .meta { font-size:14px; color:#666 } footer { padding-top:28px } a { color:inherit }
+  @media(prefers-color-scheme:dark) { body { background:#0d0d0d; color:#f2f2ef } header,section { border-color:#363636 } .meta { color:#aaa } }
+</style>
+<main>
+  <header><h1>v0.54.5 更新說明</h1><p class="meta">Infinite Moodboard · 發布日期：2026-10-27</p></header>
+  <section><h2>更新內容</h2><ul>
+    <li>受限的分享連結與複製按鈕會明確標示限制，並說明如何開啟連結檢視或邀請指定帳號。</li>
+    <li>收件者可前往同一份 Google Drive 檔案檢查或申請存取權；僅檢視的使用者可前往申請編輯權。</li>
+    <li>所有帳號使用相同流程；複製連結不會變更權限，權限仍由檔案擁有者決定。</li>
+  </ul></section>
+  <section><h2>修正</h2><ul>
+    <li>修正 Drive metadata 未回傳資源金鑰時，重新開啟檔案可能遺失原分享金鑰的問題。</li>
+    <li>檔案不存在、App 尚未獲授權或其他讀取失敗，不再一律判定為帳號沒有存取權。</li>
+    <li>手機版的檢查、申請與重試操作保留至少 44px 的觸控高度。</li>
+  </ul></section>
+  <section><h2>注意事項</h2>
+    <p>這次沒有替任何真實帳號補權限，也沒有公開既有作品。申請入口會開啟 Google Drive，仍須由用戶自行送出申請，再由擁有者核准。</p>
+    <p>本機模擬介面、單元測試與部署成功不等於真實跨帳號分享驗收。Google 選檔 API、首次開啟與權限更新仍需透過相同的正常產品流程驗證。</p>
+  </section>
+  <section><h2>回復與備份</h2>
+    <p>無法開啟時不會用空白畫布覆蓋作品。重要內容可下載 .moodboard 備份；程式版本保留 Git 標籤與原始碼快照。</p>
+  </section>
+  <footer><a href="../">回到 Infinite Moodboard</a></footer>
+</main>
+</html>

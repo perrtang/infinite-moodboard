@@ -226,8 +226,10 @@ import {
   driveFileRole,
   drivePermissionRoleLabel,
   googleDriveGeneralAccess,
+  googleDriveFileAccessUrl,
   googleDriveMembers,
   parseGoogleDriveMoodboardLink,
+  preserveGoogleDriveResourceKey,
 } from "./drive-share.js";
 import {
   completeMoodboardEmailSignInLink,
@@ -6125,6 +6127,8 @@ function DriveSharingModal({
   const ready = sharing.status === "ready" && Boolean(sharing.fileId);
   const busy = ["loading", "saving", "authorizing", "picker-authorizing", "opening-shared-file"].includes(sharing.status);
   const preparationIsError = ["error", "picker-unconfigured", "shared-file-denied"].includes(sharing.status);
+  const accessUrl = googleDriveFileAccessUrl(sharing);
+  const restrictedLink = sharing.permissionsVisible && !sharing.generalAccess.enabled;
   const preparationTitle = {
     legacy: "舊版分享連結已停用",
     "authorization-required": "連結 Google Drive",
@@ -6132,7 +6136,7 @@ function DriveSharingModal({
     "picker-authorizing": "正在開啟 Google 檔案選擇器…",
     "opening-shared-file": "正在讀取共享 Moodboard…",
     "picker-unconfigured": "網站尚未完成共享檔案設定",
-    "shared-file-denied": "此帳號無法開啟共享檔案",
+    "shared-file-denied": "共享檔案尚未開啟",
     "needs-drive": "先儲存到 Google Drive",
     error: "無法讀取 Drive 分享權限",
   }[sharing.status] || "正在讀取 Google Drive…";
@@ -6176,7 +6180,7 @@ function DriveSharingModal({
               <div className="collaboration-share-summary">
                 <span className="collaboration-permission-icon" aria-hidden="true"><Share2 size={18} /></span>
                 <div>
-                  <strong id="drive-share-link-title">Moodboard 分享連結</strong>
+                  <strong id="drive-share-link-title">{restrictedLink ? "受限的分享連結" : "Moodboard 分享連結"}</strong>
                   <small>{!sharing.permissionsVisible ? "存取權由 Google Drive 管理；目前帳號只能確認自己的權限。" : sharing.generalAccess.enabled ? "知道連結的人可檢視；編輯仍需個別授權。" : "目前是受限連結；只有已獲 Drive 授權的帳號能開啟。"}</small>
                 </div>
               </div>
@@ -6191,11 +6195,11 @@ function DriveSharingModal({
                     onFocus={(event) => event.currentTarget.select()}
                   />
                   <button className="primary-button" type="button" onClick={onCopyLink} disabled={!sharing.shareUrl}>
-                    <Copy size={16} />複製連結
+                    <Copy size={16} />{restrictedLink ? "複製受限連結" : sharing.permissionsVisible && sharing.generalAccess.enabled ? "複製檢視連結" : "複製連結"}
                   </button>
                 </div>
               </label>
-              <p className="collaboration-share-note"><ShieldCheck size={14} />App 連結只辨識 Drive 檔案；實際存取權仍以 Google Drive 為準。</p>
+              <p className="collaboration-share-note"><ShieldCheck size={14} />{restrictedLink && sharing.canShare ? "要讓其他帳號透過連結檢視，請在下方開啟「連結檢視」，或邀請指定帳號。" : "實際存取權仍以 Google Drive 為準；複製連結不會變更權限。"}</p>
             </section>
 
             {sharing.permissionsVisible ? <section className="collaboration-permission-section collaboration-general-access" aria-labelledby="drive-general-access-title">
@@ -6313,9 +6317,10 @@ function DriveSharingModal({
                   <span className="collaboration-permission-icon"><Eye size={17} /></span>
                   <div>
                     <strong id="drive-viewer-access-title">目前只能檢視</strong>
-                    <small>如需編輯，請把你的 Google 帳號 Email 提供給擁有者；也可在 Google Drive 查看是否提供申請選項。</small>
+                    <small>如需編輯，請到 Google Drive 的「共用」申請權限；由檔案擁有者決定是否核准。</small>
                   </div>
                 </div>
+                {accessUrl ? <a className="secondary-button" href={accessUrl} target="_blank" rel="noreferrer"><ExternalLink size={15} />到 Google Drive 申請編輯權</a> : null}
               </section>
             ) : null}
 
@@ -6337,7 +6342,9 @@ function DriveSharingModal({
               <small>{sharing.message || "作品、版本與分享權限都會留在你自己的 Google Drive。"}</small>
               <div className="collaboration-preparation-actions">
                 {sharing.status === "authorization-required" ? <button className="primary-button" type="button" onClick={onConnectDrive} disabled={busy}><Cloud size={15} />連結 Google Drive</button> : null}
-                {["needs-picker-access", "shared-file-denied"].includes(sharing.status) ? <button className="primary-button" type="button" onClick={onAuthorizeIncomingDriveFile} disabled={busy}><FolderOpen size={15} />選取這份共享檔案</button> : null}
+                {sharing.status === "shared-file-denied" && accessUrl ? <a className="primary-button" href={accessUrl} target="_blank" rel="noreferrer"><ExternalLink size={15} />在 Google Drive 檢查或申請權限</a> : null}
+                {["needs-picker-access", "shared-file-denied"].includes(sharing.status) ? <button className={sharing.status === "shared-file-denied" ? "secondary-button" : "primary-button"} type="button" onClick={onAuthorizeIncomingDriveFile} disabled={busy}><FolderOpen size={15} />選取這份共享檔案</button> : null}
+                {!busy && sharing.status !== "shared-file-denied" && accessUrl ? <a className="secondary-button" href={accessUrl} target="_blank" rel="noreferrer"><ExternalLink size={15} />在 Google Drive 檢查存取權</a> : null}
                 {sharing.status === "needs-drive" ? <button className="primary-button" type="button" onClick={onSaveToDrive} disabled={busy}><CloudUpload size={15} />儲存並準備分享</button> : null}
                 {sharing.status === "error" ? <button className="primary-button" type="button" onClick={onRefresh} disabled={busy}><RefreshCw size={15} />重新嘗試</button> : null}
               </div>
@@ -6347,7 +6354,7 @@ function DriveSharingModal({
       </section>
       <div className="architecture-note">
         <strong>同一份檔案，沒有第二個分享空間</strong>
-        <p>Infinite Moodboard 不會把作品或協作者清單另存到 Firestore。內容、版本與權限都跟著這份 `.moodboard` Google Drive 檔案；本機仍保留可復原副本。</p>
+        <p>分享的是同一份 Google Drive 檔案。擁有者決定誰能檢視或編輯；需要更多權限時，請透過 Google Drive 申請。</p>
       </div>
     </Modal>
   );
@@ -10508,13 +10515,13 @@ function App() {
     try {
       const { downloadGoogleDriveMoodboard, getGoogleDriveFile } = await loadDriveRuntime();
       const resourceKey = String(file.resourceKey || "");
-      let metadata = await getGoogleDriveFile(accessToken, file.id, { resourceKey });
+      let metadata = preserveGoogleDriveResourceKey(await getGoogleDriveFile(accessToken, file.id, { resourceKey }), resourceKey);
       assertReadIsCurrent();
-      const content = await downloadGoogleDriveMoodboard(accessToken, file.id, { revisionId: metadata.headRevisionId, resourceKey });
+      const content = await downloadGoogleDriveMoodboard(accessToken, file.id, { revisionId: metadata.headRevisionId, resourceKey: metadata.resourceKey });
       if (!metadata.headRevisionId) {
-        const verified = await getGoogleDriveFile(accessToken, file.id, { resourceKey });
+        const verified = await getGoogleDriveFile(accessToken, file.id, { resourceKey: metadata.resourceKey });
         if (verified.version !== metadata.version) throw new DriveConflictError(verified);
-        metadata = verified;
+        metadata = preserveGoogleDriveResourceKey(verified, metadata.resourceKey);
       }
       assertReadIsCurrent();
       // Preserve the outgoing document immediately before the replacement.
@@ -10579,7 +10586,7 @@ function App() {
       }
       const isConflict = error?.code === "drive/conflict";
       if (sharedLink && isSharedDriveFileAccessError(error)) {
-        const message = "目前帳號或 Infinite Moodboard 尚未獲得這份檔案的存取權。請確認擁有者已分享給這個 Google 帳號，再重新選取。";
+        const message = "無法讀取這份檔案。請先到 Google Drive 確認檔案與登入帳號；需要時向擁有者申請存取權，再回來選取同一份檔案授權 App。";
         setDriveSharing((current) => ({
           ...current,
           status: "shared-file-denied",
@@ -14673,7 +14680,66 @@ function App() {
   );
 }
 
+function DriveSharingPreview({ initialMode }) {
+  const [mode, setMode] = useState(initialMode);
+  const [linkEnabled, setLinkEnabled] = useState(false);
+  const [closed, setClosed] = useState(false);
+  const [feedback, setFeedback] = useState("");
+  const fileId = "preview_shared_file_123456";
+  const owner = mode.startsWith("owner");
+  const denied = mode === "denied";
+  const pickerError = mode === "picker-error";
+  const sharing = {
+    ...EMPTY_DRIVE_SHARING,
+    status: denied ? "shared-file-denied" : pickerError ? "needs-picker-access" : "ready",
+    fileId,
+    fileName: "團隊研究 Moodboard（模擬資料）",
+    shareUrl: createGoogleDriveMoodboardUrl({ fileId }),
+    webViewLink: googleDriveFileAccessUrl({ fileId }),
+    role: owner ? "owner" : "viewer",
+    canEdit: owner,
+    canShare: owner,
+    permissionsVisible: owner,
+    generalAccess: { enabled: mode === "owner-link" || linkEnabled },
+    members: owner ? [{ id: "preview_owner", name: "檔案擁有者", emailAddress: "owner@example.com", appRole: "owner" }] : [],
+    message: denied ? "無法讀取這份檔案。請先到 Google Drive 確認檔案與登入帳號；需要時向擁有者申請存取權。"
+      : pickerError ? "Google 檔案選擇器等待逾時；沒有開啟任何內容。" : "介面預覽：未讀取或修改任何真實檔案。",
+  };
+  const previewAction = () => { setFeedback("這是介面預覽，沒有連結 Google Drive、寄出邀請或修改權限。"); return false; };
+  return (
+    <div className="sharing-preview">
+      <style>{`.sharing-preview .modal-backdrop{bottom:76px}.sharing-preview .modal{max-height:calc(100dvh - 116px)}.sharing-preview-controls{position:fixed;inset:auto 0 0;z-index:101;min-height:76px;padding:8px 16px;background:var(--surface-strong);display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:12px}.sharing-preview-controls label{display:flex;gap:8px;align-items:center}.sharing-preview-controls select{min-height:44px;max-width:100%;font:inherit;color:var(--text);background:var(--control-bg)}.sharing-preview-controls p{margin:0;flex:1;min-width:160px}@media(max-width:600px){.sharing-preview .modal-backdrop{bottom:116px}.sharing-preview .modal{max-height:calc(100dvh - 156px)}.sharing-preview-controls{min-height:116px}}`}</style>
+      {!closed ? <DriveSharingModal
+        boardName={sharing.fileName}
+        sharing={sharing}
+        onConnectDrive={previewAction}
+        onAuthorizeIncomingDriveFile={previewAction}
+        onSaveToDrive={previewAction}
+        onRefresh={previewAction}
+        onCopyLink={previewAction}
+        onInviteMember={previewAction}
+        onSetMemberRole={previewAction}
+        onRemoveMember={previewAction}
+        onSetGeneralAccess={async enabled => { setLinkEnabled(enabled); setMode(enabled ? "owner-link" : "owner-restricted"); setFeedback("預覽已切換；未修改 Google Drive 權限。"); return true; }}
+        onClose={() => setClosed(true)}
+      /> : null}
+      <div className="sharing-preview-controls">
+        <label>預覽狀態<select aria-label="分享預覽狀態" value={mode} onChange={event => { setMode(event.target.value); setLinkEnabled(false); setClosed(false); setFeedback(""); }}>
+          <option value="owner-restricted">擁有者：受限連結</option>
+          <option value="owner-link">擁有者：連結可檢視</option>
+          <option value="viewer">其他帳號：僅檢視</option>
+          <option value="denied">其他帳號：無存取權</option>
+          <option value="picker-error">Google 選檔錯誤</option>
+        </select></label>
+        <p role="status">{feedback || "僅本機介面預覽：使用模擬資料，不連結 Drive，也不變更任何帳號權限。"}</p>
+        {closed ? <button className="secondary-button" onClick={() => setClosed(false)}>重新開啟預覽</button> : null}
+      </div>
+    </div>
+  );
+}
+
 const rootElement = document.getElementById("root");
 const moodboardRoot = rootElement.__moodboardRoot || createRoot(rootElement);
 rootElement.__moodboardRoot = moodboardRoot;
-moodboardRoot.render(<App />);
+const sharingPreviewMode = import.meta.env.DEV ? new URLSearchParams(window.location.search).get("sharingPreview") : null;
+moodboardRoot.render(sharingPreviewMode ? <DriveSharingPreview initialMode={sharingPreviewMode} /> : <App />);

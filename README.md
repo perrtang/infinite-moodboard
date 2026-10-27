@@ -26,6 +26,15 @@ Infinite Moodboard runs the canvas, imported media, transforms, exports, and ver
 - Optional Google Drive file storage and Drive-native sharing with viewer/editor permissions on the same file.
 - 3D, Drive sharing, and export runtimes are loaded only when used, keeping the opening bundle smaller.
 
+## v0.54.5 — the same sharing flow for every recipient
+
+[Read the complete v0.54.5 release notes.](./public/release-notes/v0.54.5.html)
+
+- Restricted links are labeled explicitly. Copying a link never grants access; owners use the same link-view or invitation controls for every account.
+- Recipients can open the exact file in Google Drive to check/request access, and viewers have a clear path to request editing. Read failures do not assume the account lacks permission.
+- Resource keys survive initial metadata reads, version verification, downloads, and persisted links used when reopening a shared file.
+- The development-only `?sharingPreview=denied` route shows five synthetic interface states without Google authorization or permission changes. It does not count as real cross-account acceptance.
+
 ## v0.54.4 — recover from a stalled shared-file Picker
 
 [Read the complete v0.54.4 release notes.](./public/release-notes/v0.54.4.html)

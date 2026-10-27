@@ -6,15 +6,41 @@ import {
   drivePermissionRole,
   drivePermissionRoleLabel,
   googleDriveGeneralAccess,
+  googleDriveFileAccessUrl,
   googleDriveMembers,
   parseGoogleDriveMoodboardLink,
+  preserveGoogleDriveResourceKey,
 } from "./drive-share.js";
+import { linkDriveFile } from "./drive-state.js";
 import {
   createGoogleDrivePermission,
   deleteGoogleDrivePermission,
   listGoogleDrivePermissions,
   updateGoogleDrivePermission,
 } from "./drive-storage.js";
+
+test("every recipient gets a native recovery link for the exact file without account-specific access", () => {
+  for (const fileId of ["file_alpha-1234567890", "file_beta_0987654321"]) {
+    const url = new URL(googleDriveFileAccessUrl({ fileId, resourceKey: "resource_123" }));
+    assert.equal(url.origin, "https://drive.google.com");
+    assert.equal(url.pathname, `/file/d/${fileId}/view`);
+    assert.deepEqual([...url.searchParams], [["resourcekey", "resource_123"]]);
+  }
+  assert.equal(googleDriveFileAccessUrl({ fileId: "https://malicious.example/" }), "");
+  assert.equal(googleDriveFileAccessUrl(), "");
+  assert.equal(new URL(googleDriveFileAccessUrl({ fileId: "file_alpha-1234567890" })).search, "");
+});
+
+test("a shared file's resource key survives repeated metadata reads and persistence for reopening", () => {
+  const first = preserveGoogleDriveResourceKey({ id: "shared_file_123456", resourceKey: "" }, "link_resource_123");
+  const verified = preserveGoogleDriveResourceKey({ ...first, resourceKey: "", version: "3" }, first.resourceKey);
+  const state = linkDriveFile({ links: {} }, { id: "board-123", revision: 7 }, verified);
+  const reopenedState = JSON.parse(JSON.stringify(state));
+  assert.equal(reopenedState.links["board-123"].resourceKey, "link_resource_123");
+  const refreshed = preserveGoogleDriveResourceKey({ ...verified, resourceKey: "fresh_resource_456" }, "older_resource");
+  assert.equal(refreshed.resourceKey, "fresh_resource_456");
+  assert.equal(verified.resourceKey, "link_resource_123");
+});
 
 test("Drive Moodboard links identify one exact file and discard unrelated page state", () => {
   const url = createGoogleDriveMoodboardUrl(

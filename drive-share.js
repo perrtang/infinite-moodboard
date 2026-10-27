@@ -42,6 +42,19 @@ export function createGoogleDriveMoodboardUrl(
   return url.href;
 }
 
+export function googleDriveFileAccessUrl({ fileId, resourceKey = "" } = {}) {
+  const id = normalizeDriveFileId(fileId);
+  if (!id) return "";
+  const url = new URL(`https://drive.google.com/file/d/${id}/view`);
+  const key = normalizeDriveResourceKey(resourceKey);
+  if (key) url.searchParams.set("resourcekey", key);
+  return url.href;
+}
+
+export function preserveGoogleDriveResourceKey(file = {}, fallbackResourceKey = "") {
+  return { ...file, resourceKey: String(file.resourceKey || fallbackResourceKey || "") };
+}
+
 export function normalizeGoogleDrivePermission(permission = {}) {
   const type = ["user", "group", "domain", "anyone"].includes(permission.type) ? permission.type : "user";
   const role = ["owner", "organizer", "fileOrganizer", "writer", "commenter", "reader"].includes(permission.role)

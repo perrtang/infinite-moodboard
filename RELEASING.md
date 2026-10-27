@@ -10,6 +10,15 @@
 
 ## Drive sharing acceptance gate
 
-Before calling Drive-native sharing accepted, verify one exact Drive file with two Google accounts: the owner invites the second account as viewer, the second account opens the app deep link read-only, the owner changes that account to editor, and both accounts read back the same file/version after one edit. Also test restricted access and link-view access separately.
+Before calling Drive-native sharing accepted, verify one exact disposable test file with two ordinary Google accounts, using only the app's normal sharing flow. Do not special-case an email address or manually grant access outside the app to turn a failed product test into a pass. Never change an existing user document's ACL merely to complete acceptance.
+
+Verify these gates separately:
+
+- A restricted link leaves an uninvited account blocked, with an exact-file native Drive path to request access; an API/Picker failure must not be classified as proof that the account lacks file permission.
+- The owner enables link viewing in the app. Another account opens the same deep link and reads the correct nonempty board in view-only mode without an individual exception.
+- A viewer can find the native Drive path to request editing. Only an explicit owner decision changes editing rights; verify the app's normal permission update and refresh path.
+- An explicitly invited editor opens the exact file, makes one edit, and both accounts read back the same file/version. Preserve resource keys and retain conflict/recovery protections.
+
+Use `http://localhost:5000/?sharingPreview=denied` to inspect the generic interface states without Google authorization or mutations. This development-only preview uses synthetic data and is not real Drive acceptance.
 
 Legacy `firestore.rules` and collaboration sources remain only for migration review. Never deploy that rule fragment or reconnect production `?collab=` links to Firestore.
