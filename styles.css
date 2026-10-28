@@ -7653,6 +7653,11 @@ html[lang="en"] .sidebar-tabs button svg {
 }
 .version-list article > .version-actions { display: flex; flex-wrap: wrap; gap: 4px; }
 
+.version-protected { color: var(--text-muted); font-size: calc(10px + var(--ui-font-offset, 0px)); align-self: center; }
+.version-list article > .version-delete-confirmation { grid-column: 1 / -1; gap: 10px; padding: 12px; background: var(--quiet-bg); border-radius: 8px; }
+.version-delete-confirmation p { margin: 0; line-height: 1.5; font-size: calc(11px + var(--ui-font-offset, 0px)); }
+.version-delete-confirmation > div { display: flex; flex-wrap: wrap; gap: 8px; }
+
 .version-list article strong {
   font-size: calc(12px + var(--ui-font-offset, 0px));
   overflow: hidden;

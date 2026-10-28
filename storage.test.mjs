@@ -5,6 +5,7 @@ import {
   LOCAL_DATABASE_NAME,
   compactLocalRecoveryStorage,
   deleteLocalBoard,
+  deleteVersion,
   describeLocalPersistenceError,
   enqueueSync,
   getActiveBoardId,
@@ -236,6 +237,69 @@ test("the same recovery slot is isolated between board IDs", async () => {
   assert.notEqual(first.id, second.id);
   assert.equal((await listVersions("slot-board-a"))[0].board.revision, 8);
   assert.equal((await listVersions("slot-board-b"))[0].board.revision, 9);
+});
+
+test("repeated identical automatic versions reuse a checkpoint without changing manual or pinned versions", async () => {
+  await deleteDatabase();
+  const snapshot = board("dedupe", { objects: [{ id: "img", src: `data:image/png;base64,${"a".repeat(20000)}` }] });
+  const first = await saveVersion(snapshot, "儲存 Drive 前", "automatic");
+  const repeat = await saveVersion(structuredClone(snapshot), "儲存 Drive 前", "automatic");
+  assert.equal(repeat.id, first.id);
+  const changed = await saveVersion({ ...snapshot, view: { x: 2, y: 0, zoom: 1 } }, "儲存 Drive 前", "automatic");
+  const manual = await saveVersion(snapshot, "儲存 Drive 前", "manual");
+  const pinned = await saveVersion(snapshot, "儲存 Drive 前", "automatic", { pinned: true });
+  assert.notEqual(changed.id, first.id);
+  assert.notEqual(manual.id, first.id);
+  assert.notEqual(pinned.id, first.id);
+  assert.equal((await listVersions(snapshot.id)).length, 4);
+});
+
+test("deleting a version requires its board and never deletes a pinned recovery", async () => {
+  await deleteDatabase();
+  const current = board("delete-version");
+  await saveCurrentBoard(current);
+  const normal = await saveVersion(current, "可整理", "manual");
+  const pinned = await saveVersion(current, "受保護", "automatic", { pinned: true });
+  const slot = await saveVersion(current, "跨分頁復原", "automatic", { slot: "tab-a" });
+  assert.equal(await deleteVersion(normal.id, { boardId: "another-board" }), false);
+  assert.equal(await deleteVersion(pinned.id, { boardId: current.id }), false);
+  assert.equal(await deleteVersion(slot.id, { boardId: current.id }), false);
+  assert.equal(await deleteVersion(normal.id, { boardId: current.id }), true);
+  assert.equal(await deleteVersion(normal.id, { boardId: current.id }), false);
+  assert.deepEqual(new Set((await listVersions(current.id)).map((item) => item.id)), new Set([pinned.id, slot.id]));
+  assert.equal((await loadCurrentBoard()).id, current.id);
+});
+
+test("simultaneous identical automatic checkpoints retain one record", async () => {
+  await deleteDatabase();
+  const snapshot = board("concurrent-dedupe", { objects: [{ id: "img", src: `data:image/png;base64,${"a".repeat(20000)}` }] });
+  const saved = await Promise.all(Array.from({ length: 4 }, () => saveVersion(structuredClone(snapshot), "同一備份", "automatic")));
+  assert.equal(new Set(saved.map((item) => item.id)).size, 1);
+  assert.equal((await listVersions(snapshot.id)).length, 1);
+});
+
+test("a recovery slot survives ordinary version retention", async () => {
+  await deleteDatabase();
+  const snapshot = board("slot-retention");
+  const protectedVersion = await saveVersion(snapshot, "跨分頁復原", "automatic", { slot: "tab-a" });
+  for (let revision = 1; revision <= 25; revision += 1) await saveVersion(board(snapshot.id, { revision }), `版本 ${revision}`);
+  assert.ok((await listVersions(snapshot.id)).some((item) => item.id === protectedVersion.id));
+});
+
+test("quota errors retain previous checkpoints and the current board", async (t) => {
+  await deleteDatabase();
+  const current = board("quota-check");
+  await saveCurrentBoard(current);
+  const existing = await saveVersion(current, "原版本", "manual");
+  const originalPut = IDBObjectStore.prototype.put;
+  t.after(() => { IDBObjectStore.prototype.put = originalPut; });
+  IDBObjectStore.prototype.put = function (...args) {
+    if (this.name === "versions") throw new DOMException("quota", "QuotaExceededError");
+    return originalPut.apply(this, args);
+  };
+  await assert.rejects(saveVersion(board(current.id, { revision: 2 }), "新版本", "automatic"), (error) => error.name === "QuotaExceededError");
+  assert.equal((await listVersions(current.id))[0].id, existing.id);
+  assert.equal((await loadCurrentBoard()).revision, current.revision);
 });
 
 test("a pinned oldest recovery survives retention and becomes evictable after unpinning", async () => {

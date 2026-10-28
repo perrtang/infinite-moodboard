@@ -1,9 +1,9 @@
 {
   "product": "Infinite Moodboard",
   "channel": "stable",
-  "version": "0.54.5",
-  "releasedAt": "2026-10-27",
-  "summary": "補齊所有帳號共用的權限檢查與申請入口，明確標示受限連結，並修正共享檔案重新開啟時可能遺失資源金鑰的問題。",
-  "notesUrl": "release-notes/v0.54.5.html",
+  "version": "0.54.6",
+  "releasedAt": "2026-10-28",
+  "summary": "改善本機備份空間管理與儲存提示，並保護載入雲端及跨分頁復原點。",
+  "notesUrl": "release-notes/v0.54.6.html",
   "url": "https://moodboard.petfashion.tw/"
 }

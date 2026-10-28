@@ -498,14 +498,21 @@ export async function listVersions(boardId) {
 
 async function pruneVersions(boardId) {
   const versions = await listVersions(boardId);
-  const pinnedCount = versions.filter((item) => item.pinned).length;
-  const unpinnedLimit = Math.max(0, MAX_VERSIONS_PER_BOARD - pinnedCount);
-  const overflow = versions.filter((item) => !item.pinned).slice(unpinnedLimit);
+  const protectedCount = versions.filter((item) => item.pinned || item.slot).length;
+  const unpinnedLimit = Math.max(0, MAX_VERSIONS_PER_BOARD - protectedCount);
+  const overflow = versions.filter((item) => !item.pinned && !item.slot).slice(unpinnedLimit);
   if (!overflow.length) return;
 
   await withDatabase(async (database) => {
     const transaction = database.transaction(VERSION_STORE, "readwrite");
-    overflow.forEach((item) => transaction.objectStore(VERSION_STORE).delete(item.id));
+    const store = transaction.objectStore(VERSION_STORE);
+    overflow.forEach((item) => {
+      const request = store.get(item.id);
+      request.onsuccess = () => {
+        const current = request.result;
+        if (current && !current.pinned && !current.slot) store.delete(item.id);
+      };
+    });
     await transactionToPromise(transaction);
   });
 }
@@ -527,16 +534,44 @@ export async function saveVersion(board, label, kind = "manual", { slot = "", pi
     objectCount: board.objects.length,
     board,
   };
-
+  // Identical automatic checkpoints can share the existing record. Compare the
+  // entire snapshot, not just its revision; pinned and manual versions remain
+  // independent, and existing records are never deleted by this optimisation.
+  const mayReuse = kind === "automatic" && !pinned && !versionSlot;
+  const serializedBoard = mayReuse ? JSON.stringify(board) : "";
+  let savedVersion = version;
+  let inserted = true;
   await withDatabase(async (database) => {
     const transaction = database.transaction(VERSION_STORE, "readwrite");
-    transaction.objectStore(VERSION_STORE).put(version);
-    await transactionToPromise(transaction);
+    const store = transaction.objectStore(VERSION_STORE);
+    let cursorFailure = null;
+    if (!mayReuse) store.put(version);
+    else {
+      const request = store.index("boardId").openCursor(String(board.id));
+      request.onsuccess = () => {
+        try {
+          const cursor = request.result;
+          if (!cursor) { store.put(version); return; }
+          const existing = cursor.value;
+          if (existing.kind === "automatic" && !existing.pinned && !existing.slot
+            && existing.label === version.label && existing.board?.revision === board.revision
+            && existing.board?.updatedAt === board.updatedAt && JSON.stringify(existing.board) === serializedBoard) {
+            savedVersion = existing;
+            inserted = false;
+            return;
+          }
+          cursor.continue();
+        } catch (error) {
+          cursorFailure = error;
+          transaction.abort();
+        }
+      };
+    }
+    try { await transactionToPromise(transaction); }
+    catch (error) { throw cursorFailure || error; }
   });
-
-  await pruneVersions(board.id);
-
-  return version;
+  if (inserted) await pruneVersions(board.id);
+  return savedVersion;
 }
 
 export async function setVersionPinned(versionId, pinned) {
@@ -559,11 +594,24 @@ export async function setVersionPinned(versionId, pinned) {
   return updated;
 }
 
-export async function deleteVersion(versionId) {
+export async function deleteVersion(versionId, { boardId = "" } = {}) {
+  if (!versionId || !boardId) return false;
   return withDatabase(async (database) => {
     const transaction = database.transaction(VERSION_STORE, "readwrite");
-    transaction.objectStore(VERSION_STORE).delete(versionId);
-    await transactionToPromise(transaction);
+    const store = transaction.objectStore(VERSION_STORE);
+    let deleted = false;
+    let deleteFailure = null;
+    const request = store.get(String(versionId));
+    request.onsuccess = () => {
+      const version = request.result;
+      if (version && String(version.boardId) === String(boardId) && !version.pinned && !version.slot) {
+        try { store.delete(String(versionId)); deleted = true; }
+        catch (error) { deleteFailure = error; transaction.abort(); }
+      }
+    };
+    try { await transactionToPromise(transaction); }
+    catch (error) { throw deleteFailure || error; }
+    return deleted;
   });
 }
 

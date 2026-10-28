@@ -179,6 +179,7 @@ import {
 import {
   clearLocalMoodboardData,
   compactLocalRecoveryStorage,
+  deleteVersion,
   describeLocalPersistenceError,
   enqueueSync,
   getLocalLibrarySummary,
@@ -5672,6 +5673,8 @@ function VersionModal({
   onCreate,
   onRestore,
   onOpenLocalCopy,
+  onDeleteLocalVersion,
+  preview = false,
   readOnly,
   onRefreshDrive,
   onRecoverDrive,
@@ -5679,6 +5682,7 @@ function VersionModal({
   isBusy,
 }) {
   const search = useListSearch("versions");
+  const [deleteCandidate, setDeleteCandidate] = useState(null);
   const listedVersions = versions.filter((version) => matchesListQuery([
     version.label,
     version.kind === "manual" ? "手動" : "自動",
@@ -5697,6 +5701,7 @@ function VersionModal({
   const totalListedVersions = listedVersions.length + listedDriveVersions.length;
   return (
     <Modal title="版本紀錄" description="本機保留近期版本與固定的復原點；更新雲端前也會保留 Drive 版本。" onClose={onClose} wide>
+      {preview ? <p className="drive-inline-message" role="status">這是模擬資料，不會讀取或刪除實際版本。</p> : null}
       {loadRecovery ? <div className="version-cloud-state"><History size={19} /><span><strong>載入雲端前的畫面</strong><small>還原後暫停自動上傳，確認後再更新雲端。</small></span><button className="secondary-button" type="button" disabled={isBusy} onClick={onRestoreLoad}>復原載入前內容</button></div> : null}
       {pendingTabUpdate ? <div className="version-cloud-state"><Info size={19} /><span><strong>另一個分頁有更新</strong><small>目前畫布沒有被取代；可將另一分頁的內容開成獨立副本。</small></span><button className="secondary-button" type="button" onClick={onOpenTabUpdate} disabled={isBusy}>開成新副本</button></div> : null}
       <form className="version-create" onSubmit={(event) => { event.preventDefault(); onCreate(); }}>
@@ -5706,7 +5711,7 @@ function VersionModal({
       <div className="version-current"><span>目前</span><strong>r{board.revision}</strong><small>{`${board.objects.length} 個物件 · ${formatTime(board.updatedAt)}`}</small></div>
       {totalVersions ? <div className="modal-list-toolbar"><strong>版本清單</strong><ListSearchToggle search={search} resultCount={totalListedVersions} totalCount={totalVersions} label="搜尋版本紀錄" /></div> : null}
       <ListSearchField search={search} placeholder="搜尋版本備註或日期" />
-      <div className="version-section-heading"><strong>本機版本</strong><small>可直接還原到目前 Moodboard，還原前會先自動備份。</small></div>
+      <div className="version-section-heading"><strong>本機版本</strong><small>可檢視並逐一刪除不需要的版本；受保護的復原點不會被刪除。</small></div>
       {listedVersions.length ? (
         <div className="version-list">
           {listedVersions.map((version) => (
@@ -5716,7 +5721,12 @@ function VersionModal({
               <div className="version-actions">
                 <button className="quiet-button" type="button" onClick={() => onOpenLocalCopy(version)} disabled={isBusy}>開成新副本</button>
                 <button className="quiet-button" type="button" onClick={() => onRestore(version)} disabled={isBusy || readOnly}>還原</button>
+                {version.pinned || version.slot ? <span className="version-protected">受保護的復原點</span> : <button className="quiet-button" type="button" onClick={() => setDeleteCandidate(version)} disabled={isBusy} aria-label={`刪除本機版本 ${version.label}`}>刪除</button>}
               </div>
+              {deleteCandidate?.id === version.id ? <div className="version-delete-confirmation" role="alert">
+                <p>刪除「{version.label}」後無法復原此本機版本；目前畫布和 Drive 檔案不會被刪除。請先確認已有需要的備份。</p>
+                <div><button className="secondary-button" type="button" onClick={() => setDeleteCandidate(null)} disabled={isBusy}>取消</button><button className="danger-button" type="button" disabled={isBusy} onClick={async () => { if (await onDeleteLocalVersion(version)) setDeleteCandidate(null); }}>刪除此版本</button></div>
+              </div> : null}
             </article>
           ))}
         </div>
@@ -6465,6 +6475,7 @@ function SettingsModal({
   onSetRulerUnit,
   onOpenShortcuts,
   onOpenDriveLibrary,
+  onOpenVersions,
   onDownloadBackup,
   onSetStorageTarget,
   onSetAutoSave,
@@ -6640,6 +6651,8 @@ function SettingsModal({
                 </div>
                 <span>{localLibrarySummary.storage.usage !== null ? formatStorageSize(localLibrarySummary.storage.usage) : formatStorageSize(localLibrarySummary.estimatedBoardBytes)}</span>
               </div>
+              <p className="drive-inline-message">{localLibrarySummary.storage.quota !== null ? `瀏覽器估計上限：${formatStorageSize(localLibrarySummary.storage.quota)}；實際可用空間由瀏覽器決定。` : "瀏覽器未提供空間上限；實際可用空間由瀏覽器決定。"}</p>
+              <button className="secondary-button" type="button" onClick={onOpenVersions}><History size={15} />檢視與整理本機版本</button>
               {(() => {
                 const status = driveStatusPresentation(driveSession);
                 const StatusIcon = status.icon;
@@ -10343,7 +10356,7 @@ function App() {
           message: asCopy
             ? `已儲存新的 Drive 檔案；目前編輯內容與原 Drive 檔案仍分開保留。${postSyncWarning ? ` ${postSyncWarning}` : ""}`
             : localRecoveryWarning
-              ? `已儲存至 Google Drive；${localRecoveryWarning} 請整理本機版本或下載 .moodboard 備份。${queueStateWarning ? ` ${queueStateWarning}` : ""}`
+              ? `已儲存至 Google Drive；${localRecoveryWarning} 請下載 .moodboard 備份；需要釋放空間時，可至「設定」的「儲存與同步」檢視本機版本。${queueStateWarning ? ` ${queueStateWarning}` : ""}`
               : queueStateWarning
                 ? `已儲存至 Google Drive；${queueStateWarning}`
                 : `已儲存至 Google Drive · ${formatTime(savedFile.modifiedTime || new Date().toISOString())}`,
@@ -13493,6 +13506,31 @@ function App() {
     finally { setVersionBusy(false); }
   }, [announce, boardSnapshot, versionLabel]);
 
+  const removeLocalVersion = useCallback(async (version) => {
+    if (driveSavePromiseRef.current || versionActionRef.current || !version?.id || version.pinned || version.slot || version.boardId !== boardRef.current.id) return false;
+    const recoveryRecords = Object.values(loadStoragePreferences(localStorage).loadRecoveries || {});
+    if (recoveryRecords.some((record) => record.versionId === version.id)) {
+      announce("這是受保護的復原點，無法刪除。", "warning");
+      return false;
+    }
+    versionActionRef.current = true;
+    setVersionBusy(true);
+    try {
+      const deleted = await deleteVersion(version.id, { boardId: version.boardId });
+      if (!deleted) { announce("版本已不存在或受保護，沒有刪除任何內容。", "warning"); return false; }
+      if (boardRef.current.id === version.boardId) setVersions((current) => current.filter((item) => item.id !== version.id));
+      void refreshLocalLibrarySummary().catch(() => undefined);
+      announce("已刪除此本機版本；目前畫布與 Drive 檔案未變更。", "success");
+      return true;
+    } catch {
+      announce("無法刪除本機版本，請稍後再試。", "error");
+      return false;
+    } finally {
+      versionActionRef.current = false;
+      setVersionBusy(false);
+    }
+  }, [announce, refreshLocalLibrarySummary]);
+
   const restoreVersion = useCallback(async (version) => {
     if (driveSavePromiseRef.current || versionActionRef.current) return;
     versionActionRef.current = true;
@@ -14508,6 +14546,7 @@ function App() {
             setShowSettings(false);
             openGoogleDriveLibrary();
           }}
+          onOpenVersions={() => { setShowSettings(false); void openVersionModal(); }}
           onDownloadBackup={() => saveBoardFile(true)}
           onSetStorageTarget={choosePrimaryStorageTarget}
           onSetAutoSave={setAutoSavePreference}
@@ -14578,6 +14617,7 @@ function App() {
           onRestore={restoreVersion}
           readOnly={cloudReadOnly}
           onOpenLocalCopy={(version) => openVersionCopy(version.board, "本機復原")}
+          onDeleteLocalVersion={removeLocalVersion}
           onRefreshDrive={refreshDriveVersions}
           onRecoverDrive={(revision) => recoverGoogleDriveVersionAsCopy({ id: currentDriveLink?.fileId, name: currentDriveLink?.name }, revision)}
           onClose={() => setShowVersions(false)}

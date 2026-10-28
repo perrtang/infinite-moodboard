@@ -4,6 +4,8 @@ Every stable release from v0.51.0 onward must include a version-matched public r
 
 ## Releases
 
+- [v0.54.6](./public/release-notes/v0.54.6.html) — safer local version cleanup, protected recovery checkpoints, and reduced duplicate automatic snapshots.
+
 - [v0.54.5](./public/release-notes/v0.54.5.html) — generic recipient access recovery, explicit restricted links, preserved resource keys on reopening, and account-independent acceptance criteria.
 - [v0.54.4](./public/release-notes/v0.54.4.html) — dismiss stalled Picker overlays, preserve retry errors, and verify real key acceptance separately from shared-file content.
 - [v0.54.3](./public/release-notes/v0.54.3.html) — origin-only referrer policy for restricted Google Picker keys, deployment guard, and real recipient-file acceptance harness.

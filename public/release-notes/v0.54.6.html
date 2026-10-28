@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-Hant">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Infinite Moodboard v0.54.6 更新說明</title>
+<style>
+  :root { color-scheme:light dark; font-family:system-ui,-apple-system,sans-serif }
+  * { box-sizing:border-box } body { margin:0; background:#f4f4f2; color:#171717 }
+  main { max-width:760px; margin:auto; padding:64px 24px 96px }
+  header,section { border-bottom:1px solid #cfcfca; padding-bottom:28px } section { padding-top:28px }
+  h1 { font-size:clamp(32px,7vw,56px); line-height:1.1; letter-spacing:-.04em; margin:0 }
+  h2 { font-size:18px } p,li { font-size:16px; line-height:1.7 } li+li { margin-top:8px }
+  .meta { font-size:14px; color:#666 } footer { padding-top:28px } a { color:inherit }
+  @media(prefers-color-scheme:dark) { body { background:#0d0d0d; color:#f2f2ef } header,section { border-color:#363636 } .meta { color:#aaa } }
+</style>
+<main>
+  <header><h1>v0.54.6 更新說明</h1><p class="meta">Infinite Moodboard · 發布日期：2026-10-28</p></header>
+  <section><h2>更新內容</h2><ul>
+    <li>在「設定 → 儲存與同步」檢視目前 Moodboard 的本機版本，可選擇不需要的版本並確認刪除。</li>
+    <li>顯示瀏覽器提供的儲存空間估計，方便判斷本機備份狀態。</li>
+  </ul></section>
+  <section><h2>修正</h2><ul>
+    <li>完全相同的自動備份會重用版本，減少重複使用本機空間。</li>
+    <li>載入雲端前及跨分頁衝突的受保護復原點不會被版本整理功能刪除。</li>
+    <li>雲端儲存成功但本機備份未更新時，提示備份及本機版本整理的入口。</li>
+  </ul></section>
+  <section><h2>注意事項</h2><p>更新不會自動整理既有版本；整理版本前請先確認備份。瀏覽器顯示的空間上限是估計值，實際可用空間由瀏覽器決定。</p><p>本次改善不保證釋放足夠空間；若本機備份仍失敗，請保留目前畫布與 .moodboard 備份，再檢查可用空間。</p></section>
+  <section><h2>回復與備份</h2><p>刪除前可將版本開成新副本檢視，或下載 .moodboard 備份。現有的一般版本保留上限仍適用；受保護復原點不會被這項整理功能刪除。</p></section>
+  <footer><a href="../">回到 Infinite Moodboard</a></footer>
+</main>
+</html>
