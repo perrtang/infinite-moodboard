@@ -782,6 +782,17 @@ export async function downloadGoogleDriveMoodboard(accessToken, fileId, {
   });
 }
 
+export async function downloadCurrentGoogleDriveMoodboard(accessToken, fileId, { resourceKey = "", signal } = {}) {
+  const before = await getGoogleDriveFile(accessToken, fileId, { resourceKey, signal });
+  if (before.id !== String(fileId)) throw new DriveApiError("Google Drive 回傳的檔案與分享連結不符；目前畫布未變更。", { code: "drive/file-mismatch" });
+  if (!before.version) throw new DriveApiError("Google Drive 未提供檔案版本，無法安全開啟；目前畫布未變更。", { code: "drive/version-unavailable" });
+  const resolvedKey = before.resourceKey || resourceKey;
+  const content = await downloadGoogleDriveMoodboard(accessToken, fileId, { resourceKey: resolvedKey, signal });
+  const after = await getGoogleDriveFile(accessToken, fileId, { resourceKey: resolvedKey, signal });
+  if (!after.version || before.version !== after.version || after.id !== before.id) throw new DriveConflictError(after);
+  return { content, metadata: { ...after, resourceKey: after.resourceKey || resolvedKey } };
+}
+
 export async function uploadGoogleDriveMoodboard(accessToken, {
   board,
   content,

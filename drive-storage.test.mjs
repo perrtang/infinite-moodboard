@@ -4,6 +4,7 @@ import {
   contentByteLength,
   driveErrorMessage,
   DriveConflictError,
+  downloadCurrentGoogleDriveMoodboard,
   downloadGoogleDriveMoodboard,
   enforceGoogleDriveRevisionRetention,
   ensureGoogleDriveFolder,
@@ -732,6 +733,44 @@ test("downloads the exact head revision when a revision id is supplied", async (
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("opens the current Drive file for a viewer and verifies the same version", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const calls = [];
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url: String(url), headers: options.headers });
+    if (String(url).includes("alt=media")) return new Response('{"id":"board-1","objects":[{"id":"image"}]}');
+    return new Response(JSON.stringify({ id: "file-1", name: "Board.moodboard", version: "7", headRevisionId: "head-7", capabilities: { canReadRevisions: false, canEdit: false } }));
+  };
+  const result = await downloadCurrentGoogleDriveMoodboard("token", "file-1", { resourceKey: "shared-key" });
+  assert.equal(JSON.parse(result.content).objects.length, 1);
+  assert.equal(result.metadata.version, "7");
+  assert.equal(result.metadata.resourceKey, "shared-key");
+  assert.equal(calls.length, 3);
+  assert.match(calls[1].url, /files\/file-1\?alt=media/);
+  assert.doesNotMatch(calls[1].url, /revisions/);
+  assert.ok(calls.every((call) => new Headers(call.headers).get("X-Goog-Drive-Resource-Keys") === "file-1/shared-key"));
+});
+
+test("does not open a Drive file that changes during the download", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  let reads = 0;
+  globalThis.fetch = async (url) => String(url).includes("alt=media")
+    ? new Response('{"id":"board-1"}')
+    : new Response(JSON.stringify({ id: "file-1", version: String(++reads) }));
+  await assert.rejects(downloadCurrentGoogleDriveMoodboard("token", "file-1"), DriveConflictError);
+});
+
+test("does not download a Drive file whose version cannot be verified", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  let calls = 0;
+  globalThis.fetch = async () => { calls += 1; return new Response(JSON.stringify({ id: "file-1" })); };
+  await assert.rejects(downloadCurrentGoogleDriveMoodboard("token", "file-1"), (error) => error.code === "drive/version-unavailable");
+  assert.equal(calls, 1);
 });
 
 test("Drive downloads time out while waiting for the response", async (t) => {

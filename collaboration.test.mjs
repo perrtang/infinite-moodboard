@@ -114,7 +114,7 @@ test("shared Moodboard links open one exact Google Drive file after verified sig
   assert.match(appSource, /requestAdvancedFeature\("shared-moodboard"\)/);
   assert.match(appSource, /openGoogleDriveMoodboardPicker\(\{[\s\S]*?expectedFileId: incoming\.fileId/);
   assert.match(appSource, /openGoogleDriveFile\(selection\.file, \{ sharedLink: true \}\)/);
-  assert.doesNotMatch(appSource, /openGoogleDriveFile\(\{ id: incoming\.fileId, resourceKey: incoming\.resourceKey/);
+  assert.match(appSource, /openGoogleDriveFile\(\{ id: incoming\.fileId, resourceKey: incoming\.resourceKey/);
   assert.doesNotMatch(appSource, /loadCollaborationRuntime|collaboration-firestore/);
 });
 
@@ -136,7 +136,7 @@ test("shared links compare their Drive file id before replacing the active Moodb
 test("every opened Drive file applies its edit capability before canvas interaction", () => {
   assert.match(appSource, /const role = driveFileRole\(metadata\);[\s\S]*status: "linked"/);
   assert.match(appSource, /canEdit: role !== "viewer"/);
-  assert.match(appSource, /const cloudReadOnly = Boolean\(driveSharing\.fileId && !driveSharing\.canEdit\)/);
+  assert.match(appSource, /const cloudReadOnly = Boolean\(driveSharing\.fileId && driveSettings\.links\[board\.id\]\?\.fileId === driveSharing\.fileId && !driveSharing\.canEdit\)/);
 });
 
 test("sharing refresh ignores stale file responses and keeps viewer ACL details private", () => {

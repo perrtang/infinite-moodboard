@@ -4,7 +4,7 @@ import test from "node:test";
 
 const source = await readFile(new URL("./main.jsx", import.meta.url), "utf8");
 
-test("a shared Drive link requires explicit exact-file Picker authorization", () => {
+test("a shared Drive link retains an exact-file Picker fallback", () => {
   assert.match(source, /const loadDrivePickerRuntime = \(\) => import\("\.\/drive-picker\.js"\)/);
   assert.match(source, /status: "needs-picker-access"/);
   assert.match(source, /選取這份共享檔案/);
@@ -12,11 +12,12 @@ test("a shared Drive link requires explicit exact-file Picker authorization", ()
   assert.match(source, /openGoogleDriveFile\(selection\.file, \{ sharedLink: true \}\)/);
 });
 
-test("shared-link startup never directly imports an unapproved Drive file", () => {
+test("shared-link startup attempts direct access without automatically opening Picker", () => {
   const sharedLinkEffect = source.match(/useEffect\(\(\) => \{\n    const incoming = initialDriveShareRef\.current;[\s\S]*?\n  \}, \[authReady,[^;]+;/)?.[0] || "";
   assert.ok(sharedLinkEffect, "shared-link startup effect should remain discoverable");
-  assert.match(sharedLinkEffect, /status: "needs-picker-access"/);
-  assert.doesNotMatch(sharedLinkEffect, /openGoogleDriveFile\(/);
+  assert.match(sharedLinkEffect, /openIncomingDirectly\(\)/);
+  assert.doesNotMatch(sharedLinkEffect, /openGoogleDriveMoodboardPicker\(/);
+  assert.match(source, /openGoogleDriveFile\(\{ id: incoming\.fileId, resourceKey: incoming\.resourceKey/);
 });
 
 test("failed or cancelled shared-file opening never adopts a blank board", () => {
@@ -25,4 +26,10 @@ test("failed or cancelled shared-file opening never adopts a blank board", () =>
   assert.match(source, /目前畫布沒有被當成該檔案/);
   assert.match(source, /if \(!opened\) return false/);
   assert.match(source, /startsWith\("drive\/picker-"\)[\s\S]*?\? "needs-picker-access"/);
+});
+
+test("a viewer requesting editing is prompted even if that file is already open", () => {
+  assert.match(source, /currentLink\?\.fileId === incoming\.fileId\) \{\s*(?:return )?refreshDriveSharing\(incoming, \{ onRole: promptForPendingSharedEdit \}\)/);
+  assert.match(source, /pendingSharedEditRef\.current = false;\s*if \(role === "viewer"\)/);
+  assert.match(source, /requestEdit", "1"/);
 });

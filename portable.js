@@ -38,6 +38,7 @@ function serializeForHtml(value) {
 
 export function createPortableHtml(board, options = {}) {
   const locale = normalizeInterfaceLocale(options.locale || "zh-Hant");
+  const shared = options.shared === true;
   const translate = (value) => translateInterfaceText(value, locale);
   const sourceBoard = board && typeof board === "object" ? board : { name: "Mood board", objects: [] };
   const viewerBoard = {
@@ -104,7 +105,7 @@ export function createPortableHtml(board, options = {}) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; media-src data: blob:; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
-  <title>${title} — Infinite Moodboard ${escapeHtml(translate("離線瀏覽版"))}</title>
+  <title>${title} — Infinite Moodboard ${escapeHtml(shared ? "分享檢視" : translate("離線瀏覽版"))}</title>
   <style>
     :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
     * { box-sizing: border-box; }
@@ -115,6 +116,7 @@ export function createPortableHtml(board, options = {}) {
     .identity { min-width: 0; }
     .identity strong { display: block; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .identity small { color: #86a4b2; display: block; font-size: 10px; margin-top: 2px; }
+    ${shared ? "header { justify-content: flex-end; }" : ""}
     .controls { align-items: center; display: flex; flex: 0 0 auto; gap: 6px; }
     button { align-items: center; background: rgba(255, 255, 255, 0.035); border: 1px solid rgba(113, 177, 200, 0.24); border-radius: 6px; color: #c7dce5; cursor: pointer; display: inline-flex; font: inherit; font-size: 11px; font-weight: 700; justify-content: center; min-height: 36px; padding: 0 11px; }
     button:hover, button:focus-visible { background: rgba(88, 230, 255, 0.09); border-color: #58e6ff; color: #b9f6ff; outline: none; }
@@ -150,7 +152,7 @@ export function createPortableHtml(board, options = {}) {
 <body>
   <div class="app">
     <header>
-      <div class="identity"><strong>${title}</strong><small>Infinite Moodboard · ${escapeHtml(translate("單檔離線瀏覽版（唯讀）"))}</small></div>
+      ${shared ? "" : `<div class="identity"><strong>${title}</strong><small>Infinite Moodboard · ${escapeHtml(translate("單檔離線瀏覽版（唯讀）"))}</small></div>`}
       <div class="controls" aria-label="${escapeHtml(translate("畫面控制"))}">
         <button class="wide" id="saved-view" type="button">${escapeHtml(translate("儲存視角"))}</button>
         <button class="wide" id="fit" type="button">${escapeHtml(translate("全部顯示"))}</button>
@@ -348,6 +350,15 @@ export function createPortableHtml(board, options = {}) {
 
       render();
       requestAnimationFrame(fitAll);
+      if (typeof ResizeObserver === "function") {
+        const initialFitObserver = new ResizeObserver(() => {
+          const rect = viewport.getBoundingClientRect();
+          if (rect.width <= 72 || rect.height <= 72) return;
+          initialFitObserver.disconnect();
+          fitAll();
+        });
+        initialFitObserver.observe(viewport);
+      }
       document.getElementById("fit").addEventListener("click", fitAll);
       document.getElementById("saved-view").addEventListener("click", setSavedView);
       document.getElementById("zoom-in").addEventListener("click", () => {

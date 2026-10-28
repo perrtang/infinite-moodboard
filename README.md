@@ -321,7 +321,7 @@ VITE_GOOGLE_DRIVE_PICKER_API_KEY=your-restricted-browser-api-key
 VITE_GOOGLE_DRIVE_PROJECT_NUMBER=your-google-cloud-project-number
 ```
 
-The Picker key must be restricted to the deployed and local development origins plus `https://docs.google.com/*`, and to both the Google Picker API and Google Drive API. A recipient opening a shared Drive link for the first time explicitly selects that same file in Google Picker; the app validates the selected file ID before loading any Moodboard content.
+The Picker key must be restricted to the deployed and local development origins plus `https://docs.google.com/*`, and to both the Google Picker API and Google Drive API. A link-viewable file can be opened anonymously in a separate read-only viewer; the public key retrieves only the linked file and its resource key, and the viewer does not replace local workspace data. Restricted files require account authorization. For editing, the signed-in app attempts to open the exact file, but Google may still require file-specific authorization through Picker; the app validates the selection before loading it. Real two-account authorization and resource-key behavior must be verified independently before release.
 
 ### Legacy Firestore sources
 

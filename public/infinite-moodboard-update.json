@@ -1,9 +1,9 @@
 {
   "product": "Infinite Moodboard",
   "channel": "stable",
-  "version": "0.54.6",
+  "version": "0.54.7",
   "releasedAt": "2026-10-28",
-  "summary": "改善本機備份空間管理與儲存提示，並保護載入雲端及跨分頁復原點。",
-  "notesUrl": "release-notes/v0.54.6.html",
+  "summary": "分享連結支援免登入檢視，並改善編輯權限請求與分享設定。",
+  "notesUrl": "release-notes/v0.54.7.html",
   "url": "https://moodboard.petfashion.tw/"
 }

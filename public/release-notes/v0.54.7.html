@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-Hant">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Infinite Moodboard v0.54.7 更新說明</title>
+<style>
+  :root { color-scheme:light dark; font-family:system-ui,-apple-system,sans-serif }
+  * { box-sizing:border-box } body { margin:0; background:#f4f4f2; color:#171717 }
+  main { max-width:760px; margin:auto; padding:64px 24px 96px }
+  header,section { border-bottom:1px solid #cfcfca; padding-bottom:28px } section { padding-top:28px }
+  h1 { font-size:clamp(32px,7vw,56px); line-height:1.1; letter-spacing:-.04em; margin:0 }
+  h2 { font-size:18px } p,li { font-size:16px; line-height:1.7 } li+li { margin-top:8px }
+  .meta { font-size:14px; color:#666 } footer { padding-top:28px } a { color:inherit }
+  @media(prefers-color-scheme:dark) { body { background:#0d0d0d; color:#f2f2ef } header,section { border-color:#363636 } .meta { color:#aaa } }
+</style>
+<main>
+  <header><h1>v0.54.7 更新說明</h1><p class="meta">Infinite Moodboard · 發布日期：2026-10-28</p></header>
+  <section><h2>更新內容</h2><ul>
+    <li>已開放連結檢視的 Moodboard 可免登入直接開啟唯讀畫布。</li>
+    <li>分享時可選擇開啟連結檢視，或只複製維持受限權限的連結；擁有者可用電子郵件邀請檢視者或編輯者。</li>
+  </ul></section>
+  <section><h2>修正</h2><ul>
+    <li>檢視者需要編輯時，可登入並依 Google Drive 流程申請權限。</li>
+    <li>讀取分享檔案時檢查檔案及版本，避免將別份內容當作目前畫布。</li>
+  </ul></section>
+  <section><h2>注意事項</h2><p>免登入檢視需要擁有者明確開啟「知道連結的人可檢視」；連結可能被轉傳。既有受限檔案不會自動變更權限。</p><p>Google Drive 真實雙帳號分享及編輯權限流程仍需正式環境驗收。</p></section>
+  <section><h2>回復與備份</h2><p>唯讀分享畫面不會覆寫訪客既有工作；進入編輯時仍保留本機備份與雲端衝突保護。重要內容請另存 .moodboard 備份。</p></section>
+  <footer><a href="../">回到 Infinite Moodboard</a></footer>
+</main>
+</html>
