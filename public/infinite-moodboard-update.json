@@ -1,9 +1,9 @@
 {
   "product": "Infinite Moodboard",
   "channel": "stable",
-  "version": "0.54.7",
-  "releasedAt": "2026-10-28",
-  "summary": "分享連結支援免登入檢視，並改善編輯權限請求與分享設定。",
-  "notesUrl": "release-notes/v0.54.7.html",
+  "version": "0.54.8",
+  "releasedAt": "2026-10-29",
+  "summary": "介面語言可依裝置時區自動切換，並保留手動選擇。",
+  "notesUrl": "release-notes/v0.54.8.html",
   "url": "https://moodboard.petfashion.tw/"
 }

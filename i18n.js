@@ -19,24 +19,34 @@ export function normalizeInterfaceLocale(value) {
   return "en";
 }
 
-export function detectInterfaceLocale(languages = globalThis.navigator?.languages || [globalThis.navigator?.language]) {
-  const values = Array.isArray(languages) ? languages : [languages];
-  for (const value of values) {
-    const normalized = String(value || "").toLowerCase();
-    if (normalized.startsWith("zh")) return normalizeInterfaceLocale(value);
-    if (normalized.startsWith("en")) return "en";
+export function detectInterfaceLocale(languages = globalThis.navigator?.languages || [globalThis.navigator?.language], timeZone) {
+  let zone = timeZone;
+  if (zone === undefined) {
+    try { zone = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { zone = ""; }
   }
-  return "en";
+  if (zone) {
+    const normalized = String(zone).toLowerCase();
+    if (normalized === "asia/taipei") return "zh-Hant";
+    if (["asia/shanghai", "asia/chongqing", "asia/chungking", "asia/harbin", "asia/urumqi"].includes(normalized)) return "zh-Hans";
+    return "en";
+  }
+  const first = Array.isArray(languages) ? languages[0] : languages;
+  try {
+    const region = new Intl.Locale(String(first || "").replaceAll("_", "-")).region;
+    return region === "TW" ? "zh-Hant" : region === "CN" ? "zh-Hans" : "en";
+  } catch { return "en"; }
 }
 
-export function loadInterfaceLocale(storage = globalThis.localStorage, languages) {
+export function loadInterfaceLocalePreference(storage) {
   try {
-    const stored = storage?.getItem(INTERFACE_LOCALE_STORAGE_KEY);
-    if (stored && LOCALE_IDS.has(stored)) return stored;
-  } catch {
-    // Storage can be unavailable in private or embedded browser contexts.
-  }
-  return detectInterfaceLocale(languages);
+    const stored = (storage === undefined ? globalThis.localStorage : storage)?.getItem(INTERFACE_LOCALE_STORAGE_KEY);
+    return stored && LOCALE_IDS.has(stored) ? stored : "auto";
+  } catch { return "auto"; }
+}
+
+export function loadInterfaceLocale(storage, languages) {
+  const preference = loadInterfaceLocalePreference(storage);
+  return preference === "auto" ? detectInterfaceLocale(languages) : preference;
 }
 
 let activeInterfaceLocale = detectInterfaceLocale();
@@ -55,6 +65,24 @@ export function interfaceLocaleToIntl(locale = activeInterfaceLocale) {
 }
 
 const EN_EXACT = Object.freeze({
+  "自動（依裝置時區）": "Automatic (device time zone)",
+  "自動依裝置時區判斷語言，也可自行選擇；設定保存在這台裝置。": "Automatically choose a language using your device time zone, or select one yourself. Your choice is saved on this device.",
+  "分享的 Moodboard": "Shared Moodboard",
+  "僅檢視": "View only",
+  "· 模擬資料": "· Sample data",
+  "登入以開啟": "Sign in to open",
+  "登入後編輯": "Sign in to edit",
+  "Moodboard 檢視畫面": "Moodboard viewer",
+  "正在開啟分享內容…": "Opening shared content…",
+  "無法免登入開啟": "Unable to open without signing in",
+  "重新嘗試": "Try again",
+  "在 Google Drive 檢查或申請存取權": "Check or request access in Google Drive",
+  "目前無法開啟這份 Moodboard。": "Unable to open this Moodboard.",
+  "目前無法直接讀取這份分享檔案。": "Unable to read this shared file directly.",
+  "讀取已取消或逾時，請重新嘗試。": "The request was cancelled or timed out. Please try again.",
+  "這份檔案目前無法免登入開啟。請確認分享權限，或登入 Google Drive。": "This file cannot be opened without signing in. Check its sharing permissions or sign in to Google Drive.",
+  "無法確認分享檔案的身分或格式。": "Unable to verify the shared file or its format.",
+  "檔案在讀取期間已變更，請重新開啟連結。": "The file changed while loading. Please reopen the link.",
   "查看更新說明": "View release notes",
   "版本資訊與更新方式": "Version details and update options",
   "。": ".",

@@ -332,8 +332,9 @@ import {
   INTERFACE_LOCALES,
   INTERFACE_LOCALE_STORAGE_KEY,
   applyLocalizedDocumentMetadata,
+  detectInterfaceLocale,
   interfaceLocaleToIntl,
-  loadInterfaceLocale,
+  loadInterfaceLocalePreference,
   localizedDefaultBoardName,
   localizeInterfaceDom,
   normalizeInterfaceLocale,
@@ -6448,6 +6449,7 @@ function SettingsModal({
   enableProviderTesting = false,
   initialSection = "general",
   locale,
+  localePreference,
   mode,
   resolvedMode,
   typography,
@@ -6714,21 +6716,24 @@ function SettingsModal({
               </div>
               <div className="settings-subsection-heading">
                 <Languages size={17} />
-                <div><strong>介面語言</strong><small>語言會保存在這台裝置；登入同步啟用後可再跟隨帳號。</small></div>
+                <div><strong>介面語言</strong><small>自動依裝置時區判斷語言，也可自行選擇；設定保存在這台裝置。</small></div>
               </div>
               <div className="settings-language-options" role="radiogroup" aria-label="介面語言">
+                <button type="button" role="radio" aria-checked={localePreference === "auto"} className={localePreference === "auto" ? "is-active" : ""} onClick={() => onSetLocale("auto")}>
+                  <span>自動（依裝置時區）</span>{localePreference === "auto" ? <Check size={16} aria-hidden="true" /> : null}
+                </button>
                 {INTERFACE_LOCALES.map((option) => (
                   <button
                     type="button"
                     role="radio"
-                    aria-checked={locale === option.id}
-                    className={locale === option.id ? "is-active" : ""}
+                    aria-checked={localePreference === option.id}
+                    className={localePreference === option.id ? "is-active" : ""}
                     onClick={() => onSetLocale(option.id)}
                     data-l10n-ignore
                     key={option.id}
                   >
                     <span lang={option.id}>{option.label}</span>
-                    {locale === option.id ? <Check size={16} aria-hidden="true" /> : null}
+                    {localePreference === option.id ? <Check size={16} aria-hidden="true" /> : null}
                   </button>
                 ))}
               </div>
@@ -7226,8 +7231,26 @@ function StartupSequence({ onComplete }) {
   );
 }
 
+function useInterfaceLocale() {
+  const [preference, setPreference] = useState(loadInterfaceLocalePreference);
+  const [automaticLocale, setAutomaticLocale] = useState(detectInterfaceLocale);
+  useEffect(() => {
+    const update = () => setAutomaticLocale(detectInterfaceLocale());
+    window.addEventListener("languagechange", update);
+    window.addEventListener("focus", update);
+    return () => { window.removeEventListener("languagechange", update); window.removeEventListener("focus", update); };
+  }, []);
+  const chooseLocale = useCallback((next) => {
+    const value = next === "auto" ? "auto" : normalizeInterfaceLocale(next);
+    if (value === "auto") setAutomaticLocale(detectInterfaceLocale());
+    setPreference(value);
+    try { localStorage.setItem(INTERFACE_LOCALE_STORAGE_KEY, value); } catch { /* Preference remains active for this session. */ }
+  }, []);
+  return { locale: preference === "auto" ? automaticLocale : preference, preference, chooseLocale };
+}
+
 function App() {
-  const [interfaceLocale, setInterfaceLocale] = useState(loadInterfaceLocale);
+  const { locale: interfaceLocale, preference: interfaceLocalePreference, chooseLocale } = useInterfaceLocale();
   setActiveInterfaceLocale(interfaceLocale);
   const authPreviewUserRef = useRef(moodboardAuthPreviewUser());
   const initialDriveSettingsRef = useRef(loadDriveState());
@@ -7813,10 +7836,6 @@ function App() {
   useLayoutEffect(() => {
     applyLocalizedDocumentMetadata(interfaceLocale);
     return localizeInterfaceDom(appRootRef.current, interfaceLocale);
-  }, [interfaceLocale]);
-
-  useEffect(() => {
-    localStorage.setItem(INTERFACE_LOCALE_STORAGE_KEY, interfaceLocale);
   }, [interfaceLocale]);
 
   useEffect(() => {
@@ -14530,6 +14549,7 @@ function App() {
           enableProviderTesting={providerTestMode}
           initialSection={settingsInitialSection}
           locale={interfaceLocale}
+          localePreference={interfaceLocalePreference}
           mode={interfaceModePreference}
           resolvedMode={resolvedInterfaceMode}
           typography={interfaceTypography}
@@ -14545,7 +14565,7 @@ function App() {
           onSetCanvasBackground={setCanvasBackgroundMode}
           onUpdateCanvasBackground={updateCanvasBackgroundAppearance}
           onResetCanvasBackground={resetCanvasBackground}
-          onSetLocale={(nextLocale) => setInterfaceLocale(normalizeInterfaceLocale(nextLocale))}
+          onSetLocale={chooseLocale}
           onSetTypography={updateInterfaceTypography}
           onResetTypography={resetInterfaceTypography}
           onCheckForUpdates={checkForAppUpdates}
@@ -14601,7 +14621,7 @@ function App() {
           busy={authBusy}
           errorMessage={authMessage}
           emailLinkFlow={emailLinkFlow}
-          onSetLocale={(nextLocale) => setInterfaceLocale(normalizeInterfaceLocale(nextLocale))}
+          onSetLocale={chooseLocale}
           onGoogleSignIn={signInToMoodboard}
           onSendEmailLink={sendEmailLinkToMoodboard}
           onCompleteEmailLink={completeEmailLinkToMoodboard}
@@ -14757,6 +14777,12 @@ function App() {
 }
 
 function PublicSharedViewer({ incoming, preview = false }) {
+  const { locale } = useInterfaceLocale();
+  const viewerRef = useRef(null);
+  useLayoutEffect(() => {
+    applyLocalizedDocumentMetadata(locale);
+    return localizeInterfaceDom(viewerRef.current, locale);
+  }, [locale]);
   const [state, setState] = useState({ status: "loading", html: "", name: "" });
   const [retryCount, setRetryCount] = useState(0);
   useEffect(() => {
@@ -14774,13 +14800,13 @@ function PublicSharedViewer({ incoming, preview = false }) {
           data = JSON.parse(result.content);
         }
         const board = ensureBoard(data);
-        if (!controller.signal.aborted) setState({ status: "ready", html: createPortableHtml(board, { shared: true }), name: board.name });
+        if (!controller.signal.aborted) setState({ status: "ready", html: createPortableHtml(board, { shared: true, locale }), name: board.name });
       } catch (error) {
         if (!controller.signal.aborted) setState({ status: "error", message: error?.message || "目前無法開啟這份 Moodboard。" });
       }
     })();
     return () => controller.abort();
-  }, [incoming?.fileId, incoming?.resourceKey, preview, retryCount]);
+  }, [incoming?.fileId, incoming?.resourceKey, preview, retryCount, locale]);
   const openEditor = () => {
     if (preview) return;
     const url = new URL(window.location.href);
@@ -14788,8 +14814,8 @@ function PublicSharedViewer({ incoming, preview = false }) {
     if (state.status !== "error") url.searchParams.set("requestEdit", "1");
     window.location.assign(url.href);
   };
-  return <main className="public-share-viewer">
-    <header><strong>{state.name || "分享的 Moodboard"}</strong><span>僅檢視{preview ? " · 模擬資料" : ""}</span><button className="primary-button" type="button" onClick={openEditor}>{state.status === "error" ? "登入以開啟" : "登入後編輯"}</button></header>
+  return <main ref={viewerRef} className="public-share-viewer">
+    <header>{state.name ? <strong data-l10n-ignore>{state.name}</strong> : <strong>分享的 Moodboard</strong>}<span><span>僅檢視</span>{preview ? <span> · 模擬資料</span> : null}</span><button className="primary-button" type="button" onClick={openEditor}>{state.status === "error" ? "登入以開啟" : "登入後編輯"}</button></header>
     {state.status === "ready" ? <iframe title="Moodboard 檢視畫面" sandbox="allow-scripts" srcDoc={state.html} /> : <div className="public-share-message" role="status"><strong>{state.status === "loading" ? "正在開啟分享內容…" : "無法免登入開啟"}</strong>{state.status === "error" ? <><p>{state.message}</p><button className="secondary-button" type="button" onClick={() => setRetryCount((count) => count + 1)}>重新嘗試</button></> : null}{state.status === "error" && googleDriveFileAccessUrl(incoming || {}) ? <p><a href={googleDriveFileAccessUrl(incoming)} target="_blank" rel="noreferrer">在 Google Drive 檢查或申請存取權</a></p> : null}</div>}
   </main>;
 }

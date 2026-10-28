@@ -4,6 +4,8 @@ Every stable release from v0.51.0 onward must include a version-matched public r
 
 ## Releases
 
+- [v0.54.8](./public/release-notes/v0.54.8.html) — automatic device-time-zone language selection with a manual override.
+
 - [v0.54.7](./public/release-notes/v0.54.7.html) — anonymous viewing of link-enabled boards and clearer sharing and edit requests.
 
 - [v0.54.6](./public/release-notes/v0.54.6.html) — safer local version cleanup, protected recovery checkpoints, and reduced duplicate automatic snapshots.

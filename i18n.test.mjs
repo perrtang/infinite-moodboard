@@ -1,6 +1,38 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { translateInterfaceText } from "./i18n.js";
+import { detectInterfaceLocale, loadInterfaceLocalePreference, translateInterfaceText } from "./i18n.js";
+
+test("automatic locale follows the device time zone and falls back safely", () => {
+  assert.equal(detectInterfaceLocale(["en-US"], "Asia/Taipei"), "zh-Hant");
+  assert.equal(detectInterfaceLocale(["en-US"], "Asia/Shanghai"), "zh-Hans");
+  assert.equal(detectInterfaceLocale(["zh-TW"], "Asia/Urumqi"), "zh-Hans");
+  for (const zone of ["Asia/Hong_Kong", "Asia/Singapore", "Asia/Tokyo", "America/New_York", "UTC"]) {
+    assert.equal(detectInterfaceLocale(["zh-TW"], zone), "en", zone);
+  }
+  assert.equal(detectInterfaceLocale(["zh-TW"], ""), "zh-Hant");
+  assert.equal(detectInterfaceLocale(["zh-CN"], ""), "zh-Hans");
+  assert.equal(detectInterfaceLocale(["zh-HK", "zh-TW"], ""), "en");
+  assert.equal(detectInterfaceLocale(["zh-Hans"], ""), "en");
+  assert.equal(detectInterfaceLocale([], ""), "en");
+});
+
+test("a saved manual language wins; absent, auto and inaccessible storage use automatic mode", () => {
+  const storage = (value) => ({ getItem: () => value });
+  assert.equal(loadInterfaceLocalePreference(storage("zh-Hant")), "zh-Hant");
+  assert.equal(loadInterfaceLocalePreference(storage("zh-Hans")), "zh-Hans");
+  assert.equal(loadInterfaceLocalePreference(storage("en")), "en");
+  assert.equal(loadInterfaceLocalePreference(storage("auto")), "auto");
+  assert.equal(loadInterfaceLocalePreference(storage(null)), "auto");
+  assert.equal(loadInterfaceLocalePreference(storage("invalid")), "auto");
+  assert.equal(loadInterfaceLocalePreference({ getItem: () => { throw new Error("blocked"); } }), "auto");
+});
+
+test("automatic setting and public-view messages have translated interface copy", () => {
+  assert.equal(translateInterfaceText("自動（依裝置時區）", "en"), "Automatic (device time zone)");
+  assert.equal(translateInterfaceText("登入後編輯", "en"), "Sign in to edit");
+  assert.equal(translateInterfaceText(" · 模擬資料", "en"), " · Sample data");
+  assert.equal(translateInterfaceText("登入後編輯", "zh-Hans"), "登录后编辑");
+});
 
 test("account access copy is available in all built-in locales", () => {
   assert.equal(translateInterfaceText("查看更新說明", "en"), "View release notes");

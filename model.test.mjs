@@ -248,9 +248,9 @@ test("application update reload URL keeps the current route and adds a cache-bus
 test("interface locale detection and language packs cover Traditional Chinese, Simplified Chinese, and English", () => {
   assert.equal(normalizeInterfaceLocale("zh-TW"), "zh-Hant");
   assert.equal(normalizeInterfaceLocale("zh-CN"), "zh-Hans");
-  assert.equal(detectInterfaceLocale(["fr-FR", "en-US"]), "en");
-  assert.equal(detectInterfaceLocale(["en-US", "zh-TW"]), "en");
-  assert.equal(detectInterfaceLocale(["zh-CN", "en-US"]), "zh-Hans");
+  assert.equal(detectInterfaceLocale(["fr-FR", "en-US"], ""), "en");
+  assert.equal(detectInterfaceLocale(["en-US", "zh-TW"], ""), "en");
+  assert.equal(detectInterfaceLocale(["zh-CN", "en-US"], ""), "zh-Hans");
   assert.equal(translateInterfaceText("設定", "en"), "Settings");
   assert.equal(translateInterfaceText("一般圖層", "en"), "Object layers");
   assert.equal(translateInterfaceText("複製檢視連結", "en"), "Copy view link");
