@@ -1,9 +1,9 @@
 {
   "product": "Infinite Moodboard",
   "channel": "stable",
-  "version": "0.54.10",
+  "version": "0.54.11",
   "releasedAt": "2026-10-29",
-  "summary": "儲存移至右上方，並改用主選單圖示；改善窄螢幕排列。",
-  "notesUrl": "release-notes/v0.54.10.html",
+  "summary": "雲端更新時只顯示一個同步動畫。",
+  "notesUrl": "release-notes/v0.54.11.html",
   "url": "https://moodboard.petfashion.tw/"
 }

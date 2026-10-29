@@ -13915,7 +13915,7 @@ function App() {
         </label>
 
         <div className="topbar-secondary">
-          {showTopbarDriveStatus ? (
+          {showTopbarDriveStatus && !driveSession.busy ? (
             <button
               className={`topbar-cloud-status is-${drivePresentation.tone}`}
               type="button"

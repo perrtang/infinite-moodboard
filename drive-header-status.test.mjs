@@ -5,9 +5,10 @@ import test from "node:test";
 const main = await readFile(new URL("./main.jsx", import.meta.url), "utf8");
 const styles = await readFile(new URL("./styles.css", import.meta.url), "utf8");
 
-test("Drive autosync status appears immediately before undo and only for an active linked Drive target", () => {
+test("Drive status is hidden while the cloud button shows its busy animation", () => {
   assert.match(main, /const showTopbarDriveStatus = currentPrimaryStorageTarget === "drive";/);
-  assert.match(main, /<div className="topbar-secondary">\s*\{showTopbarDriveStatus \? \(/);
+  assert.match(main, /<div className="topbar-secondary">\s*\{showTopbarDriveStatus && !driveSession\.busy \? \(/);
+  assert.match(main, /driveSession\.busy && currentPrimaryStorageTarget === "drive" \? <RefreshCw size=\{16\} className="is-spinning"/);
   assert.match(main, /className=\{`topbar-cloud-status is-\$\{drivePresentation\.tone\}`\}/);
   assert.match(main, /aria-label=\{`\$\{drivePresentation\.label\}；開啟 Google Drive 檔案與同步狀態`\}/);
   assert.match(main, /onClick=\{openGoogleDriveLibrary\}/);
