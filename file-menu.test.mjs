@@ -20,10 +20,10 @@ test("file menu consolidates file, output, and management actions", () => {
 });
 
 test("file menu supports keyboard navigation, escape recovery, and disabled output items", () => {
-  assert.match(main, /className=\{`topbar-button file-menu-trigger[\s\S]{0,180}aria-label="檔案"/);
-  assert.match(main, /aria-label="檔案"\s*title="檔案"/);
+  assert.match(main, /className=\{`topbar-button file-menu-trigger[\s\S]{0,180}aria-label="主選單"/);
+  assert.match(main, /aria-label="主選單"\s*title="主選單"/);
   assert.match(main, /aria-haspopup="menu"/);
-  assert.match(main, /role="menu"[\s\S]*aria-label="檔案"/);
+  assert.match(main, /role="menu"[\s\S]*aria-label="主選單"/);
   assert.match(main, /querySelectorAll\('\[role="menuitem"\]:not\(:disabled\)'\)/);
   assert.match(main, /\['ArrowDown', 'ArrowUp', 'Home', 'End'\]/);
   assert.match(main, /event\.stopImmediatePropagation\(\)/);

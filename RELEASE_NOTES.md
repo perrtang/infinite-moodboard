@@ -4,6 +4,8 @@ Every stable release from v0.51.0 onward must include a version-matched public r
 
 ## Releases
 
+- [v0.54.10](./public/release-notes/v0.54.10.html) — move the save action beside undo and use a recognizable main menu icon.
+
 - [v0.54.9](./public/release-notes/v0.54.9.html) — grouped panel controls and a clearer File menu icon.
 
 - [v0.54.8](./public/release-notes/v0.54.8.html) — automatic device-time-zone language selection with a manual override.

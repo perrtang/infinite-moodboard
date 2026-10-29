@@ -36,7 +36,6 @@ import {
   ExternalLink,
   FileArchive,
   FileCode2,
-  FileText,
   FileUp,
   Flag,
   FolderOpen,
@@ -61,6 +60,7 @@ import {
   LogOut,
   Mail,
   Maximize2,
+  Menu,
   Minus,
   Minimize2,
   Monitor,
@@ -2005,22 +2005,22 @@ function FileMenu({
       <button
         className={`topbar-button file-menu-trigger ${open ? "is-active" : ""}`}
         type="button"
-        aria-label="檔案"
-        title="檔案"
+        aria-label="主選單"
+        title="主選單"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls="file-menu-popover"
         ref={triggerRef}
         onClick={() => setOpen((current) => !current)}
       >
-        <FileText size={18} />
+        <Menu size={18} />
       </button>
       {open ? (
         <div
           className="file-menu-popover"
           id="file-menu-popover"
           role="menu"
-          aria-label="檔案"
+          aria-label="主選單"
           ref={menuRef}
           onKeyDown={navigateMenu}
         >
@@ -13900,12 +13900,6 @@ function App() {
                 ? Math.max(1, driveSharing.members.length)
                 : authReady && peers.length ? peers.length + 1 : 0}
             />
-            <button className="topbar-save-button" type="button" onClick={cloudReadOnly ? () => setShowEditPermissionRequest(true) : savePreferredBoard}
-              disabled={sourceModeActive || driveSession.busy}
-              title={cloudReadOnly ? "申請編輯權限" : currentPrimaryStorageTarget === "drive" ? `上傳目前畫布至 Google Drive；不會載入雲端內容。 ${drivePresentation.label}` : topbarSaveState}>
-              {driveSession.busy && currentPrimaryStorageTarget === "drive" ? <RefreshCw size={16} className="is-spinning" /> : currentPrimaryStorageTarget === "drive" ? <CloudUpload size={16} /> : <Save size={16} />}
-              <span>{cloudReadOnly ? "申請編輯權" : currentPrimaryStorageTarget === "drive" ? "更新至雲端" : "儲存"}</span>
-            </button>
           </div>
         </div>
 
@@ -13934,6 +13928,12 @@ function App() {
               <span className="sr-only">{drivePresentation.label}</span>
             </button>
           ) : null}
+          <button className="topbar-save-button" type="button" onClick={cloudReadOnly ? () => setShowEditPermissionRequest(true) : savePreferredBoard}
+            disabled={sourceModeActive || driveSession.busy}
+            title={cloudReadOnly ? "申請編輯權限" : currentPrimaryStorageTarget === "drive" ? `上傳目前畫布至 Google Drive；不會載入雲端內容。 ${drivePresentation.label}` : topbarSaveState}>
+            {driveSession.busy && currentPrimaryStorageTarget === "drive" ? <RefreshCw size={16} className="is-spinning" /> : currentPrimaryStorageTarget === "drive" ? <CloudUpload size={16} /> : <Save size={16} />}
+            <span>{cloudReadOnly ? "申請編輯權" : currentPrimaryStorageTarget === "drive" ? "更新至雲端" : "儲存"}</span>
+          </button>
           <IconButton
             label={sourceModeActive ? "回到 Moodboard 後復原 ⌘Z" : "復原 ⌘Z"}
             onClick={undo}
@@ -14094,7 +14094,7 @@ function App() {
                 <button className="secondary-button" disabled={versionBusy || driveSession.busy} onClick={restoreBeforeDriveLoad}>復原載入前內容</button>
                 <button className="quiet-button" onClick={() => setDriveLoadRecovery(null)}>暫時隱藏提示</button>
               </> : <>
-                <span><strong>自動上傳已暫停</strong><small>已復原目前內容，確認後請按左上「更新至雲端」。</small></span>
+                <span><strong>自動上傳已暫停</strong><small>已復原目前內容，確認後請按上方「更新至雲端」。</small></span>
               </>}
             </div>
           ) : null}

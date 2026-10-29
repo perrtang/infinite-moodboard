@@ -65,6 +65,7 @@ export function interfaceLocaleToIntl(locale = activeInterfaceLocale) {
 }
 
 const EN_EXACT = Object.freeze({
+  "主選單": "Main menu",
   "自動（依裝置時區）": "Automatic (device time zone)",
   "自動依裝置時區判斷語言，也可自行選擇；設定保存在這台裝置。": "Automatically choose a language using your device time zone, or select one yourself. Your choice is saved on this device.",
   "分享的 Moodboard": "Shared Moodboard",
@@ -1118,7 +1119,7 @@ const EN_EXACT = Object.freeze({
   "本機保留近期版本與固定的復原點；更新雲端前也會保留 Drive 版本。": "Recent local versions and pinned recovery points are kept. Drive versions are also retained before updating the cloud.",
   "已儲存至 Google Drive。": "Saved to Google Drive.",
   "自動上傳已暫停": "Auto-upload is paused",
-  "已復原目前內容，確認後請按左上「更新至雲端」。": "Current work is restored. Confirm, then select Update to cloud at top left.",
+  "已復原目前內容，確認後請按上方「更新至雲端」。": "Current work is restored. Confirm, then select Update to cloud above.",
   "改用本機副本？": "Switch to a local copy?",
   "原雲端檔案與分享連結都會保留。": "The original cloud file and share link will both remain.",
   "將目前畫布另開為獨立的本機文件，之後的儲存不會更新原雲端檔案。若只想備份，請使用「下載本機副本」。": "Open the current canvas as an independent local document. Future saves will not update the original cloud file. To make only a backup, use Download local copy.",
