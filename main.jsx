@@ -36,6 +36,7 @@ import {
   ExternalLink,
   FileArchive,
   FileCode2,
+  FileText,
   FileUp,
   Flag,
   FolderOpen,
@@ -2012,7 +2013,7 @@ function FileMenu({
         ref={triggerRef}
         onClick={() => setOpen((current) => !current)}
       >
-        <FileArchive size={17} />
+        <FileText size={18} />
       </button>
       {open ? (
         <div
@@ -13871,24 +13872,6 @@ function App() {
           </div>
 
           <div className="file-actions">
-            <IconButton
-              className="desktop-panel-button"
-              label={leftPanelVisible ? "隱藏圖層、分群、素材與構圖側欄" : "顯示圖層、分群、素材與構圖側欄"}
-              active={leftPanelVisible}
-              aria-pressed={leftPanelVisible}
-              onClick={toggleLeftPanel}
-            >
-              <PanelLeft size={18} />
-            </IconButton>
-            <IconButton
-              className="mobile-panel-button"
-              label="開啟圖層、分群、素材與構圖側欄"
-              active={mobilePanel === "left"}
-              aria-pressed={mobilePanel === "left"}
-              onClick={() => setMobilePanel((current) => current === "left" ? null : "left")}
-            >
-              <PanelLeft size={18} />
-            </IconButton>
             <FileMenu
               onOpenLibrary={openGoogleDriveLibrary}
               onOpenFile={openBoardFile}
@@ -13978,6 +13961,24 @@ function App() {
             onClick={openSettings}
           >
             <SettingsIcon size={18} />
+          </IconButton>
+          <IconButton
+            className="desktop-panel-button"
+            label={leftPanelVisible ? "隱藏圖層、分群、素材與構圖側欄" : "顯示圖層、分群、素材與構圖側欄"}
+            active={leftPanelVisible}
+            aria-pressed={leftPanelVisible}
+            onClick={toggleLeftPanel}
+          >
+            <PanelLeft size={18} />
+          </IconButton>
+          <IconButton
+            className="mobile-panel-button"
+            label="開啟圖層、分群、素材與構圖側欄"
+            active={mobilePanel === "left"}
+            aria-pressed={mobilePanel === "left"}
+            onClick={() => setMobilePanel((current) => current === "left" ? null : "left")}
+          >
+            <PanelLeft size={18} />
           </IconButton>
           <IconButton
             className="desktop-panel-button"
