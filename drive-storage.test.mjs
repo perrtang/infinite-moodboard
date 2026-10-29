@@ -355,6 +355,28 @@ for (const etag of ["", 'W/"weak"', "*", '"bad\r\ntag"']) test(`an existing file
   }
 });
 
+test("latest-writer save preserves the current revision and updates despite an older local version", async () => {
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  let fileGetCount = 0;
+  globalThis.fetch = async (url, options = {}) => {
+    const method = options.method || "GET";
+    calls.push({ url: String(url), method, headers: options.headers || {} });
+    if (String(url).includes("/revisions?") && method === "GET") return new Response(JSON.stringify({ revisions: [] }));
+    if (String(url).includes("/revisions/revision-8") && method === "PATCH") return new Response(JSON.stringify({ id: "revision-8", keepForever: true }));
+    if (String(url).includes("/upload/") && method === "PUT") return new Response(JSON.stringify({ id: "drive-1", title: "New.moodboard", version: "10", headRevisionId: "revision-10" }));
+    fileGetCount++;
+    const version = fileGetCount === 1 ? "8" : fileGetCount === 2 ? "9" : "10";
+    return new Response(JSON.stringify({ id: "drive-1", title: fileGetCount < 3 ? "Old.moodboard" : "New.moodboard", name: fileGetCount < 3 ? "Old.moodboard" : "New.moodboard", etag: `"v${version}"`, version, headRevisionId: fileGetCount < 3 ? "revision-8" : "revision-10" }));
+  };
+  try {
+    const saved = await uploadGoogleDriveMoodboard("token", { board: { id: "board-1" }, content: "{}", filename: "New.moodboard", existingFile: { id: "drive-1" }, expectedVersion: "1", latestWins: true });
+    assert.equal(saved.version, "10");
+    assert.equal(calls.find((call) => call.method === "PUT").headers["If-Match"], '"v9"');
+    assert.ok(calls.some((call) => call.method === "PATCH" && call.url.includes("revision-8")));
+  } finally { globalThis.fetch = originalFetch; }
+});
+
 test("metadata-only Drive version changes keep syncing through the matching head revision", async () => {
   const originalFetch = globalThis.fetch;
   const calls = [];

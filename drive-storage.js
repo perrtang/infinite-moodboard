@@ -803,6 +803,8 @@ export async function uploadGoogleDriveMoodboard(accessToken, {
   expectedHeadRevisionId = "",
   forceOverwrite = false,
   confirmedRemoteVersion = "",
+  latestWins = false,
+  latestWinsRetries = 2,
   signal,
 }) {
   if (forceOverwrite && (!existingFile?.id || !confirmedRemoteVersion)) {
@@ -822,7 +824,7 @@ export async function uploadGoogleDriveMoodboard(accessToken, {
       && remoteState.file.name === filename);
     const matchesConfirmedOverwrite = Boolean(forceOverwrite && confirmedRemoteVersion && remoteState.file.version
       && String(remoteState.file.version) === String(confirmedRemoteVersion));
-    if (forceOverwrite ? !matchesConfirmedOverwrite : !matchesExpectedVersion && !matchesExpectedHead) {
+    if (forceOverwrite ? !matchesConfirmedOverwrite : !latestWins && !matchesExpectedVersion && !matchesExpectedHead) {
       throw new DriveConflictError(remoteState.file);
     }
     requireStrongDriveEtag(remoteState.etag);
@@ -845,6 +847,7 @@ export async function uploadGoogleDriveMoodboard(accessToken, {
     requireStrongDriveEtag(remoteState.etag);
     if (!remoteState.file.headRevisionId || remoteState.file.headRevisionId !== protectedHeadRevisionId
       || remoteState.file.name !== protectedName) {
+      if (latestWins && !forceOverwrite && latestWinsRetries > 0) return uploadGoogleDriveMoodboard(accessToken, { board, content, filename, folderId, existingFile, expectedVersion, expectedHeadRevisionId, latestWins, latestWinsRetries: latestWinsRetries - 1, signal });
       throw new DriveConflictError(remoteState.file);
     }
   }
@@ -877,7 +880,10 @@ export async function uploadGoogleDriveMoodboard(accessToken, {
       timeoutMs: DRIVE_TRANSFER_TIMEOUT_MS,
     });
   } catch (error) {
-    if (error?.code === "drive/conflict" || error?.status === 412) throw new DriveConflictError(remoteState?.file || existingFile);
+    if (error?.code === "drive/conflict" || error?.status === 412) {
+      if (latestWins && !forceOverwrite && latestWinsRetries > 0) return uploadGoogleDriveMoodboard(accessToken, { board, content, filename, folderId, existingFile, expectedVersion, expectedHeadRevisionId, latestWins, latestWinsRetries: latestWinsRetries - 1, signal });
+      throw new DriveConflictError(remoteState?.file || existingFile);
+    }
     throw error;
   }
   const saved = existingFile?.id ? normalizeConditionalDriveFile(result) : normalizeDriveFile(result);

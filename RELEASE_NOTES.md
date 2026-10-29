@@ -4,6 +4,8 @@ Every stable release from v0.51.0 onward must include a version-matched public r
 
 ## Releases
 
+- [v0.54.14](./public/release-notes/v0.54.14.html) — rename Moodboards from the library.
+
 - [v0.54.13](./public/release-notes/v0.54.13.html) — correct the shared-view logo size.
 
 - [v0.54.12](./public/release-notes/v0.54.12.html) — clearer long titles and consistent shared-view header.

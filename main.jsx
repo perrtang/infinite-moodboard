@@ -67,6 +67,7 @@ import {
   Moon,
   MousePointer2,
   Palette,
+  Pencil,
   PanelLeft,
   PanelRight,
   Pause,
@@ -197,6 +198,7 @@ import {
   saveVersion,
   setVersionPinned,
   updateSyncJob,
+  upsertLocalBoard,
 } from "./storage.js";
 import {
   isCurrentStorageTargetOperation,
@@ -5960,12 +5962,17 @@ function DriveLibraryModal({
   onOpenFile,
   onRecoverRemote,
   onRefresh,
+  onRename,
   onSave,
   onSaveCopy,
   onSetAutoSync,
   onClose,
 }) {
   const search = useListSearch("drive-files");
+  const [renameKey, setRenameKey] = useState("");
+  const [renameValue, setRenameValue] = useState("");
+  const [renameBusy, setRenameBusy] = useState(false);
+  const [renameError, setRenameError] = useState("");
   const status = driveStatusPresentation(driveSession);
   const StatusIcon = status.icon;
   const files = driveSession.files || [];
@@ -6099,8 +6106,9 @@ function DriveLibraryModal({
               return (
                 <article className={isCurrent ? "is-current" : ""} key={item.key}>
                   <span className="drive-file-icon" aria-hidden="true">{item.local ? <HardDrive size={19} /> : <FileArchive size={19} />}</span>
-                  <div><strong data-l10n-ignore>{item.name}</strong><small>{detail}</small></div>
+                  <div>{renameKey === item.key ? <form className="drive-rename-form" onSubmit={async (event) => { event.preventDefault(); const name = renameValue.trim(); if (!name) { setRenameError("請輸入名稱。"); return; } setRenameBusy(true); setRenameError(""); try { const result = await onRename(item, name); if (result) setRenameKey(""); else setRenameError("名稱尚未完成儲存；請查看同步狀態並重試。"); } catch (error) { setRenameError(error?.message || "無法更新名稱，請重試。"); } finally { setRenameBusy(false); } }}><input aria-label="Moodboard 名稱" value={renameValue} onChange={(event) => setRenameValue(event.target.value)} autoFocus disabled={renameBusy} /><button type="submit" className="quiet-button" disabled={renameBusy}>{renameBusy ? "儲存中…" : "儲存"}</button><button type="button" className="quiet-button" disabled={renameBusy} onClick={() => setRenameKey("")}>取消</button>{renameError ? <small role="alert">{renameError}</small> : null}</form> : <strong data-l10n-ignore title={item.name}>{item.name}</strong>}<small>{detail}</small></div>
                   <span className={`drive-file-badge is-${itemStatus.tone}`}>{itemStatus.tone === "success" ? <Check size={13} /> : itemStatus.tone === "error" ? <AlertTriangle size={13} /> : item.remote ? <Cloud size={13} /> : <HardDrive size={13} />}{isCurrent ? "目前檔案" : itemStatus.label}</span>
+                  <button className="icon-button" type="button" title="重新命名" aria-label={`重新命名 ${item.name}`} disabled={busy || renameBusy} onClick={() => { setRenameValue(item.name); setRenameError(""); setRenameKey(item.key); }}><Pencil size={15} /></button>
                   {!isCurrent ? <button className="quiet-button" type="button" onClick={() => item.local ? onOpenLocal(item.local) : onOpenFile(item.remote)} disabled={busy}>開啟</button> : null}
                   {item.remote?.webViewLink ? <a className="icon-button" href={item.remote.webViewLink} target="_blank" rel="noreferrer" aria-label="在 Google Drive 查看" title="在 Google Drive 查看"><ExternalLink size={15} /></a> : null}
                 </article>
@@ -10222,15 +10230,6 @@ function App() {
     // Saving is upload-only. An older download must not commit after this save.
     cancelDriveRead();
     driveRefreshEpochRef.current += 1;
-    if (!silent && !asCopy && !forceOverwrite && driveSession.conflict?.boardId === snapshot.id) {
-      setToast(null);
-      setDriveSession((current) => ({ ...current, busy: false, status: "conflict" }));
-      setDriveSaveConfirmation({ boardId: snapshot.id, fileId: driveSession.conflict.id, version: driveSession.conflict.version, name: snapshot.name });
-      setShowDriveLibrary(false);
-      setShowSettings(false);
-      setShowCollaboration(false);
-      return Promise.resolve(false);
-    }
     if (forceOverwrite) {
       const activeConflict = driveSession.conflict;
       const targetStillMatches = Boolean(
@@ -10357,6 +10356,7 @@ function App() {
           expectedHeadRevisionId: linkedFile?.headRevisionId || "",
           forceOverwrite,
           confirmedRemoteVersion: overwriteTarget?.version || "",
+          latestWins: !forceOverwrite,
           signal: controller.signal,
         });
         assertCurrentOperation();
@@ -13803,6 +13803,50 @@ function App() {
     }
   }, [announce]);
 
+  const renameLibraryItem = async (item, name) => {
+    if (item.boardId === boardRef.current.id) {
+      if (cloudReadOnly) throw new Error("此檔案為僅檢視，請先取得編輯權限。");
+      const renamed = applyBoard((current) => ({ ...current, name }));
+      await persistBoardLocally({ ...renamed, view: viewRef.current });
+      await refreshLocalLibrarySummary();
+      if (storageTargetForBoard(storagePreferences, renamed.id) === "drive") {
+        const saved = await saveBoardToGoogleDrive();
+        return Boolean(saved);
+      }
+      announce("名稱已更新；請儲存工作檔以更新本機檔案內容。", "success");
+      return true;
+    }
+    if (driveSavePromiseRef.current || driveSession.busy) throw new Error("目前正在儲存，請稍後再試。");
+    if (!item.remote && !item.linkedFileId) {
+      if (!item.local?.board) throw new Error("找不到本機檔案內容。");
+      await upsertLocalBoard(stampBoard({ ...item.local.board, name }, sessionIdRef.current));
+      await refreshLocalLibrarySummary();
+      announce("本機 Moodboard 名稱已更新。", "success");
+      return true;
+    }
+    const accessToken = currentDriveAccessToken();
+    if (!accessToken) throw new Error("請先連結 Google Drive，再更新雲端檔案名稱。");
+    const fileId = item.remote?.id || item.linkedFileId;
+    const resourceKey = item.remote?.resourceKey || item.link?.resourceKey || "";
+    const { downloadCurrentGoogleDriveMoodboard, uploadGoogleDriveMoodboard } = await loadDriveRuntime();
+    const { content, metadata } = await downloadCurrentGoogleDriveMoodboard(accessToken, fileId, { resourceKey });
+    if (driveFileRole(metadata) === "viewer") throw new Error("此檔案為僅檢視，請先取得編輯權限。");
+    const original = item.local?.board || ensureBoard(JSON.parse(content));
+    const renamed = stampBoard({ ...original, name }, sessionIdRef.current);
+    const saved = await uploadGoogleDriveMoodboard(accessToken, {
+      board: renamed, content: serializeMoodboardSnapshot(renamed), filename: `${safeFilename(name, "moodboard")}.moodboard`,
+      existingFile: { id: fileId, resourceKey }, expectedVersion: item.link?.version || metadata.version,
+      expectedHeadRevisionId: item.link?.headRevisionId || "",
+      latestWins: true,
+    });
+    if (item.local?.board) await upsertLocalBoard(renamed);
+    updateDriveSettings((current) => linkDriveFile(current, renamed, saved));
+    await refreshLocalLibrarySummary();
+    await refreshGoogleDrive();
+    announce("名稱已更新至 Google Drive。", "success");
+    return true;
+  };
+
   const resolvedKeyObjectId = selectedIds.includes(keyObjectId) ? keyObjectId : (selectedIds[0] || null);
   const effectiveLeftPanelVisible = !focusMode && leftPanelVisible;
   const effectiveRightPanelVisible = !focusMode && rightPanelVisible;
@@ -14700,6 +14744,7 @@ function App() {
           onOpenFile={openGoogleDriveFile}
           onRecoverRemote={(file) => recoverGoogleDriveVersionAsCopy(file)}
           onRefresh={() => refreshGoogleDrive()}
+          onRename={renameLibraryItem}
           onSave={() => saveBoardToGoogleDrive()}
           onSaveCopy={() => saveBoardToGoogleDrive({ asCopy: true })}
           onSetAutoSync={setDriveAutoSync}

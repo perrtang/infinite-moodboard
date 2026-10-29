@@ -16,7 +16,6 @@ test("Drive conflict keeps upload primary and uses one target-bound confirmation
   assert.doesNotMatch(source, /overwriteAcknowledged/);
   assert.match(source, /driveSession\.conflictActionError/);
   assert.match(source, /上次操作未完成：/);
-  assert.match(source, /fileId: driveSession\.conflict\.id/);
   assert.match(source, /forceOverwrite: true, overwriteTarget: driveSaveConfirmation/);
 });
 
@@ -30,8 +29,9 @@ test("saving a Drive copy creates an independent board and keeps the current Dri
   assert.match(source, /status: authorizationRequired \? "authorization-required" : preservesExistingConflict \? "conflict" : status/);
 });
 
-test("autosync stays paused until a Drive conflict is resolved", () => {
+test("autosync pauses after bounded retries and manual save uses the latest-writer policy", () => {
   assert.match(source, /currentDriveLink \|\| driveSession\.conflict\) return undefined/);
+  assert.match(source, /latestWins: !forceOverwrite/);
   assert.match(source, /status: current\.conflict \? "conflict" : "ready"/);
 });
 

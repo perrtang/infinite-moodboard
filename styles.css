@@ -8353,7 +8353,7 @@ html[lang="en"] .sidebar-tabs button svg {
   border-radius: 7px;
   display: grid;
   gap: 10px;
-  grid-template-columns: 32px minmax(0, 1fr) auto auto auto;
+  grid-template-columns: 32px minmax(0, 1fr) auto auto auto auto;
   min-height: 54px;
   padding: 7px 8px;
 }
@@ -8369,6 +8369,10 @@ html[lang="en"] .sidebar-tabs button svg {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.drive-rename-form { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.drive-rename-form input { min-width: 120px; width: 100%; flex: 1 1 160px; }
+.drive-rename-form small { flex-basis: 100%; color: var(--text); }
 
 .drive-file-icon {
   align-items: center;

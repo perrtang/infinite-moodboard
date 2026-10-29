@@ -1,9 +1,9 @@
 {
   "product": "Infinite Moodboard",
   "channel": "stable",
-  "version": "0.54.13",
-  "releasedAt": "2026-10-29",
-  "summary": "改善長檔名顯示，統一分享檢視與編輯頁面的頂部版面。",
-  "notesUrl": "release-notes/v0.54.13.html",
+  "version": "0.54.14",
+  "releasedAt": "2026-10-30",
+  "summary": "可在清單直接改名，雲端採最後成功更新的版本。",
+  "notesUrl": "release-notes/v0.54.14.html",
   "url": "https://moodboard.petfashion.tw/"
 }
