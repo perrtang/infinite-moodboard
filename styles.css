@@ -8852,7 +8852,7 @@ button.status-label:hover {
   .public-share-viewer > header .public-share-brand { grid-column: 1; grid-row: 2; }
   .public-share-viewer > header .public-share-actions { grid-column: 2; grid-row: 2; }
 }
-.public-share-viewer > header span { color: var(--text-muted, #aaa); font-size: 12px; }
+.public-share-actions span { color: var(--text-muted, #aaa); font-size: 12px; }
 .public-share-viewer > iframe { border: 0; flex: 1; min-height: 0; width: 100%; }
 .public-share-message { margin: auto; max-width: 32rem; padding: 24px; text-align: center; }
 .public-share-message p { line-height: 1.5; }
