@@ -4,6 +4,8 @@ Every stable release from v0.51.0 onward must include a version-matched public r
 
 ## Releases
 
+- [v0.54.12](./public/release-notes/v0.54.12.html) — clearer long titles and consistent shared-view header.
+
 - [v0.54.11](./public/release-notes/v0.54.11.html) — remove duplicate cloud update animations.
 
 - [v0.54.10](./public/release-notes/v0.54.10.html) — move the save action beside undo and use a recognizable main menu icon.

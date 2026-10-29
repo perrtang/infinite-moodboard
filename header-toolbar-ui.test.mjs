@@ -12,7 +12,7 @@ test("the header keeps only the centered board name as visible text", () => {
   assert.match(appHeader, /<small className="sr-only" aria-live="polite">/);
   assert.doesNotMatch(appHeader, /<strong>Infinite Moodboard<\/strong>/);
   assert.doesNotMatch(appHeader, /<span>檔案<\/span>/);
-  assert.match(styles, /\.app-topbar \{[\s\S]*grid-template-columns: minmax\(0, 1fr\) minmax\(180px, 360px\) minmax\(0, 1fr\);/);
+  assert.match(styles, /\.app-topbar \{[\s\S]*grid-template-columns: minmax\(0, 1fr\) minmax\(180px, min\(700px, calc\(100% - 800px\)\)\) minmax\(0, 1fr\);/);
   assert.match(styles, /\.account-menu-button \{[\s\S]*max-width: 36px;[\s\S]*width: 36px;/);
 });
 

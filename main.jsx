@@ -13909,7 +13909,7 @@ function App() {
             value={board.name}
             onChange={(event) => applyBoard((current) => ({ ...current, name: event.target.value }))}
             disabled={cloudReadOnly || sourceModeActive}
-            title={sourceModeActive ? "素材檢視中；回到 Moodboard 後才能修改名稱" : topbarSaveState}
+            title={`${board.name} · ${sourceModeActive ? "素材檢視中；回到 Moodboard 後才能修改名稱" : topbarSaveState}`}
           />
           <small className="sr-only" aria-live="polite">{sourceModeActive ? "素材檢視中 · Moodboard 名稱唯讀" : topbarSaveState}</small>
         </label>
@@ -14816,7 +14816,11 @@ function PublicSharedViewer({ incoming, preview = false }) {
     window.location.assign(url.href);
   };
   return <main ref={viewerRef} className="public-share-viewer">
-    <header>{state.name ? <strong data-l10n-ignore>{state.name}</strong> : <strong>分享的 Moodboard</strong>}<span><span>僅檢視</span>{preview ? <span> · 模擬資料</span> : null}</span><button className="primary-button" type="button" onClick={openEditor}>{state.status === "error" ? "登入以開啟" : "登入後編輯"}</button></header>
+    <header>
+      <div className="public-share-brand" aria-label="Infinite Moodboard"><span className="brand-mark" aria-hidden="true">∞</span></div>
+      <strong className="public-share-title" title={state.name || "分享的 Moodboard"} data-l10n-ignore={state.name ? true : undefined}>{state.name || "分享的 Moodboard"}</strong>
+      <div className="public-share-actions"><span><span>僅檢視</span>{preview ? <span> · 模擬資料</span> : null}</span><button className="primary-button" type="button" onClick={openEditor}>{state.status === "error" ? "登入以開啟" : "登入後編輯"}</button></div>
+    </header>
     {state.status === "ready" ? <iframe title="Moodboard 檢視畫面" sandbox="allow-scripts" srcDoc={state.html} /> : <div className="public-share-message" role="status"><strong>{state.status === "loading" ? "正在開啟分享內容…" : "無法免登入開啟"}</strong>{state.status === "error" ? <><p>{state.message}</p><button className="secondary-button" type="button" onClick={() => setRetryCount((count) => count + 1)}>重新嘗試</button></> : null}{state.status === "error" && googleDriveFileAccessUrl(incoming || {}) ? <p><a href={googleDriveFileAccessUrl(incoming)} target="_blank" rel="noreferrer">在 Google Drive 檢查或申請存取權</a></p> : null}</div>}
   </main>;
 }
