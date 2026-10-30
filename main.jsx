@@ -2103,7 +2103,6 @@ function MobileTopbarMoreMenu({
   open,
   onOpenChange,
   onOpenAccount,
-  onOpenSettings,
   onZoomWindow,
   showZoomWindow,
   zoomWindowActive,
@@ -2196,11 +2195,7 @@ function MobileTopbarMoreMenu({
           ) : null}
           <button type="button" role="menuitem" onClick={() => activate(onOpenAccount)}>
             <UserRound size={18} />
-            <span>帳號與隱私</span>
-          </button>
-          <button type="button" role="menuitem" onClick={() => activate(onOpenSettings)}>
-            <SettingsIcon size={18} />
-            <span>設定</span>
+            <span>帳號與設定</span>
           </button>
         </div>
       ) : null}
@@ -3535,13 +3530,33 @@ function SourcesPanel({ sourceAssets, board }) {
   );
 }
 
-function PanelEdge({ side, visible, mobile = false, onToggle, width, min, max, onResizeStart, onResizeKeyDown }) {
+function PanelEdge({ side, visible, mobile = false, onToggle, width, min, max, onResizeStart, onResizeKeyDown, onResetWidth }) {
   const isLeft = side === "left";
   const label = isLeft ? "左側欄" : "右側欄";
+  const clickTimer = useRef(null);
+  const dragState = useRef({ startX: 0, moved: false });
+  useEffect(() => () => window.clearTimeout(clickTimer.current), []);
+  const start = (event) => {
+    if (mobile || !visible || event.button !== 0) return;
+    dragState.current = { startX: event.clientX, moved: false };
+    const track = (moveEvent) => { if (Math.abs(moveEvent.clientX - dragState.current.startX) > 4) dragState.current.moved = true; };
+    const stop = () => { window.removeEventListener("pointermove", track); window.removeEventListener("pointerup", stop); window.removeEventListener("pointercancel", stop); };
+    window.addEventListener("pointermove", track);
+    window.addEventListener("pointerup", stop, { once: true });
+    window.addEventListener("pointercancel", stop, { once: true });
+    onResizeStart?.(event);
+  };
+  const click = (event) => {
+    if (dragState.current.moved) { dragState.current.moved = false; return; }
+    if (mobile || !visible || event.detail === 0) { onToggle(); return; }
+    if (event.detail > 1) { window.clearTimeout(clickTimer.current); return; }
+    window.clearTimeout(clickTimer.current);
+    clickTimer.current = window.setTimeout(onToggle, 280);
+  };
+  const reset = () => { window.clearTimeout(clickTimer.current); if (!mobile && visible) onResetWidth?.(); };
   return <div className={`panel-edge is-${side} ${visible ? "is-open" : "is-closed"} ${mobile ? "is-mobile" : "is-desktop"}`}>
-    {visible && !mobile ? <div className="panel-edge-resizer" role="separator" tabIndex={0} aria-label={`調整${label}寬度`} aria-orientation="vertical" aria-valuemin={min} aria-valuemax={max} aria-valuenow={width} title={`拖曳調整${label}寬度；方向鍵可微調`} onPointerDown={onResizeStart} onKeyDown={onResizeKeyDown} /> : null}
-    <button className="panel-edge-toggle" type="button" onClick={onToggle} aria-label={`${visible ? "收合" : "展開"}${label}`} aria-expanded={visible} title={`${visible ? "收合" : "展開"}${label}`}>
-      {isLeft ? (visible ? <ChevronLeft size={14} /> : <ChevronRight size={14} />) : (visible ? <ChevronRight size={14} /> : <ChevronLeft size={14} />)}
+    <button className="panel-edge-toggle" type="button" onClick={click} onDoubleClick={reset} onPointerDown={start} onKeyDown={visible ? onResizeKeyDown : undefined} aria-label={`${visible ? "收合" : "展開"}${label}`} aria-expanded={visible} title={visible ? (mobile ? `收合${label}` : `點擊收合${label}；拖曳調整寬度；雙擊恢復預設`) : `展開${label}`}>
+      <Ellipsis size={17} className="panel-edge-dots" aria-hidden="true" />
     </button>
   </div>;
 }
@@ -6527,6 +6542,7 @@ function SettingsModal({
   onClearLocalData,
   onToggleLeftPanel,
   onToggleRightPanel,
+  onResetPanelWidths,
   onToggleRulers,
   onToggleGuides,
   onSetRulerUnit,
@@ -6577,7 +6593,7 @@ function SettingsModal({
   })();
 
   return (
-    <Modal title="設定" description="常用偏好集中在這裡，後續設定可沿用相同分區擴充。" onClose={onClose} wide>
+    <Modal title="帳號與設定" description="管理帳號、儲存與介面偏好。" onClose={onClose} wide>
       <div className="settings-layout">
         <nav className="settings-nav" aria-label="設定分類">
           <button className={section === "account" ? "is-active" : ""} type="button" onClick={() => setSection("account")}>
@@ -6884,6 +6900,7 @@ function SettingsModal({
               <div className="settings-section-heading">
                 <div><h3 id="settings-workspace-title">工作區</h3><p>調整畫布輔助背景，以及桌面工作區預設顯示的面板。</p></div>
               </div>
+              <div className="settings-row"><div><strong>側欄寬度</strong><small>可拖曳側欄圓點把手調整；雙擊把手可恢復單側寬度。</small></div><button className="secondary-button" type="button" onClick={onResetPanelWidths}>恢復預設寬度</button></div>
               <div className="settings-subsection-heading settings-canvas-heading">
                 <LayoutGrid size={17} />
                 <div><strong>畫布背景</strong><small>只影響這台裝置的工作區，不會寫入 Moodboard 或輸出成品。</small></div>
@@ -8045,6 +8062,16 @@ function App({ initialProtectedShare = null }) {
     toastTimerRef.current = window.setTimeout(() => setToast(null), 3600);
   }, []);
 
+  const resetPanelWidths = useCallback(() => {
+    const left = normalizeLeftPanelWidth(LEFT_PANEL_MIN_WIDTH, 304);
+    const right = normalizeRightPanelWidth(304, left);
+    setLeftPanelWidth(left);
+    setRightPanelWidth(right);
+    localStorage.setItem("moodboard-left-panel-width", String(left));
+    localStorage.setItem("studio-right-panel-width", String(right));
+    announce("已恢復左右側欄的預設寬度。", "success");
+  }, [announce]);
+
   const resetCanvasToolbarPosition = useCallback(() => {
     setCanvasToolbarPosition(null);
     announce("畫布工具列已回到預設位置。", "success");
@@ -9187,13 +9214,6 @@ function App({ initialProtectedShare = null }) {
   const closeInterfaceThemes = useCallback(() => {
     setPreviewTheme(null);
     setShowInterfaceThemes(false);
-  }, []);
-
-  const openSettings = useCallback(() => {
-    setPreviewTheme(null);
-    setShowInterfaceThemes(false);
-    setSettingsInitialSection("general");
-    setShowSettings(true);
   }, []);
 
   const openAccountSettings = useCallback(() => {
@@ -14035,38 +14055,10 @@ function App({ initialProtectedShare = null }) {
         <div className="topbar-primary">
           <div className="brand-block" role="img" aria-label="Infinite Studio" title="Infinite Studio｜PETFASHION 創意工具">
             <span className="brand-mark" aria-hidden="true">∞</span>
+            <span className="brand-name" aria-hidden="true">Infinite Studio</span>
           </div>
 
-          <div className="file-actions">
-            <FileMenu
-              onOpenLibrary={openGoogleDriveLibrary}
-              onOpenFile={openBoardFile}
-              onSave={cloudReadOnly ? () => setShowEditPermissionRequest(true) : savePreferredBoard}
-              saveLabel={currentPrimaryStorageTarget === "drive" ? "更新至雲端" : "儲存"}
-              onSaveAs={() => saveBoardFile(true)}
-              onExportBrowser={exportBrowserHtml}
-              onExportObjects={() => exportObjects("selected")}
-              onOutputComposition={outputSelectionComposition}
-              canExportObjects={!sourceModeActive && selectedObjects.length > 0}
-              canOutputComposition={!sourceModeActive && selectedObjects.length > 0}
-              onOpenCollaboration={() => requestAdvancedFeature("collaboration")}
-              onToggleGuidesLocked={toggleGuidesLocked}
-              onOpenVersions={openVersionModal}
-              onOpenAbout={openAboutSettings}
-              guidesLocked={Boolean(board.guidesLocked)}
-              guideControlsDisabled={cloudReadOnly || sourceModeActive}
-              saveTitle={currentPrimaryStorageTarget === "drive"
-                ? "儲存到 Google Drive"
-                : currentPrimaryStorageTarget === "local"
-                  ? localFileBinding.status === "linked"
-                    ? `儲存到 ${localFileBinding.name || ".studio 檔案"}`
-                    : "選擇 .studio 儲存位置"
-                  : "選擇主要儲存位置"}
-              collaborationCount={authReady && driveSharing.fileId
-                ? Math.max(1, driveSharing.members.length)
-                : authReady && peers.length ? peers.length + 1 : 0}
-            />
-          </div>
+
         </div>
 
         <label className="board-title-field">
@@ -14113,26 +14105,46 @@ function App({ initialProtectedShare = null }) {
           <button
             className="account-menu-button"
             type="button"
-            aria-label={authReady ? `帳號：${accountDisplayName(authSession.user)}` : "登入以使用進階功能"}
-            title={authReady ? `帳號與隱私：${accountDisplayName(authSession.user)}` : "登入以使用進階功能"}
+            aria-label={authReady ? `帳號與設定：${accountDisplayName(authSession.user)}` : "帳號與設定"}
+            title={authReady ? `帳號與設定：${accountDisplayName(authSession.user)}` : "帳號與設定"}
             onClick={openAccountSettings}
           >
             {authReady ? <AccountAvatar user={authSession.user} size={26} /> : <UserRound size={17} />}
           </button>
-          <IconButton
-            className="settings-button"
-            label="設定"
-            active={showSettings || showInterfaceThemes}
-            aria-pressed={showSettings || showInterfaceThemes}
-            onClick={openSettings}
-          >
-            <SettingsIcon size={18} />
-          </IconButton>
+          <div className="file-actions">
+            <FileMenu
+              onOpenLibrary={openGoogleDriveLibrary}
+              onOpenFile={openBoardFile}
+              onSave={cloudReadOnly ? () => setShowEditPermissionRequest(true) : savePreferredBoard}
+              saveLabel={currentPrimaryStorageTarget === "drive" ? "更新至雲端" : "儲存"}
+              onSaveAs={() => saveBoardFile(true)}
+              onExportBrowser={exportBrowserHtml}
+              onExportObjects={() => exportObjects("selected")}
+              onOutputComposition={outputSelectionComposition}
+              canExportObjects={!sourceModeActive && selectedObjects.length > 0}
+              canOutputComposition={!sourceModeActive && selectedObjects.length > 0}
+              onOpenCollaboration={() => requestAdvancedFeature("collaboration")}
+              onToggleGuidesLocked={toggleGuidesLocked}
+              onOpenVersions={openVersionModal}
+              onOpenAbout={openAboutSettings}
+              guidesLocked={Boolean(board.guidesLocked)}
+              guideControlsDisabled={cloudReadOnly || sourceModeActive}
+              saveTitle={currentPrimaryStorageTarget === "drive"
+                ? "儲存到 Google Drive"
+                : currentPrimaryStorageTarget === "local"
+                  ? localFileBinding.status === "linked"
+                    ? `儲存到 ${localFileBinding.name || ".studio 檔案"}`
+                    : "選擇 .studio 儲存位置"
+                  : "選擇主要儲存位置"}
+              collaborationCount={authReady && driveSharing.fileId
+                ? Math.max(1, driveSharing.members.length)
+                : authReady && peers.length ? peers.length + 1 : 0}
+            />
+          </div>
           <MobileTopbarMoreMenu
             open={mobileTopbarMenuOpen}
             onOpenChange={setMobileTopbarMenuOpen}
             onOpenAccount={openAccountSettings}
-            onOpenSettings={openSettings}
             onZoomWindow={activateZoomWindowTool}
             showZoomWindow={!sourceModeActive}
             zoomWindowActive={tool === "zoom-window"}
@@ -14159,8 +14171,8 @@ function App({ initialProtectedShare = null }) {
         inert={isBooting ? true : undefined}
       >
         {!focusMode ? <>
-          <PanelEdge side="left" visible={effectiveLeftPanelVisible} onToggle={toggleLeftPanel} width={leftPanelWidth} min={LEFT_PANEL_MIN_WIDTH} max={getLeftPanelMaxWidth(rightPanelWidth)} onResizeStart={onLeftPanelResizeStart} onResizeKeyDown={onLeftPanelResizeKeyDown} />
-          <PanelEdge side="right" visible={effectiveRightPanelVisible} onToggle={toggleRightPanel} width={rightPanelWidth} min={RIGHT_PANEL_MIN_WIDTH} max={getRightPanelMaxWidth(leftPanelWidth)} onResizeStart={onRightPanelResizeStart} onResizeKeyDown={onRightPanelResizeKeyDown} />
+          <PanelEdge side="left" visible={effectiveLeftPanelVisible} onToggle={toggleLeftPanel} width={leftPanelWidth} min={LEFT_PANEL_MIN_WIDTH} max={getLeftPanelMaxWidth(rightPanelWidth)} onResizeStart={onLeftPanelResizeStart} onResizeKeyDown={onLeftPanelResizeKeyDown} onResetWidth={() => updateLeftPanelWidth(LEFT_PANEL_MIN_WIDTH)} />
+          <PanelEdge side="right" visible={effectiveRightPanelVisible} onToggle={toggleRightPanel} width={rightPanelWidth} min={RIGHT_PANEL_MIN_WIDTH} max={getRightPanelMaxWidth(leftPanelWidth)} onResizeStart={onRightPanelResizeStart} onResizeKeyDown={onRightPanelResizeKeyDown} onResetWidth={() => updateRightPanelWidth(304)} />
           <PanelEdge mobile side="left" visible={mobilePanel === "left"} onToggle={() => setMobilePanel((current) => current === "left" ? null : "left")} />
           <PanelEdge mobile side="right" visible={mobilePanel === "right"} onToggle={() => setMobilePanel((current) => current === "right" ? null : "right")} />
         </> : null}
@@ -14722,6 +14734,7 @@ function App({ initialProtectedShare = null }) {
             setShowSettings(false);
             setShowDeleteLocalData(true);
           }}
+          onResetPanelWidths={resetPanelWidths}
           onToggleLeftPanel={toggleLeftPanel}
           onToggleRightPanel={toggleRightPanel}
           onToggleRulers={toggleRulers}

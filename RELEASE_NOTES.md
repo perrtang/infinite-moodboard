@@ -4,6 +4,8 @@ Every stable release from v0.51.0 onward must include a version-matched public r
 
 ## Releases
 
+- [v0.56.1](./public/release-notes/v0.56.1.html) — consolidated header navigation and sidebar width reset.
+
 - [v0.56.0](./public/release-notes/v0.56.0.html) — optional password links, first-save destination, and .studio format identification.
 
 - [v0.55.1](./public/release-notes/v0.55.1.html) — edge controls for both side panels.

@@ -1,9 +1,9 @@
 {
   "product": "Infinite Studio",
   "channel": "stable",
-  "version": "0.56.0",
+  "version": "0.56.1",
   "releasedAt": "2026-10-30",
-  "summary": "新增可選密碼分享連結，空白作品在首次儲存時選擇位置，並改善 .studio 檔案辨識。",
-  "notesUrl": "release-notes/v0.56.0.html",
+  "summary": "整合主選單與帳號設定，並改善側欄把手和寬度重設。",
+  "notesUrl": "release-notes/v0.56.1.html",
   "url": "https://moodboard.petfashion.tw/"
 }
