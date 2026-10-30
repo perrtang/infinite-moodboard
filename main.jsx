@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { workspaceReadIsCurrent, remoteContentChanged } from "./workspace-read-guard.js";
+import { createProtectedShareLink, unlockProtectedShare } from "./protected-share.js";
 import { isCloudBoardReadOnly } from "./drive-access.js";
 import {
   AlignCenter,
@@ -131,6 +132,7 @@ import {
   createViewCapture,
   distributeObjectsByGap,
   ensureBoard,
+  parseBoardFile,
   findCompositionsAffectedByObjectDeletion,
   initialMediaDimensions,
   markerKey,
@@ -5413,7 +5415,7 @@ function AuthGate({
   useEffect(() => {
     setAccepted(isDriveOnboarding);
     setMarketingOptIn(false);
-    setRememberSession(false);
+    setRememberSession(true);
     setEmail("");
     setEmailNotice("");
   }, [isDriveOnboarding, session.status, session.user?.uid]);
@@ -6151,6 +6153,13 @@ function DriveSharingModal({
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("viewer");
   const [permissionAction, setPermissionAction] = useState("");
+  const [linkPassword, setLinkPassword] = useState("");
+  const [confirmLinkPassword, setConfirmLinkPassword] = useState("");
+  const [protectedLink, setProtectedLink] = useState("");
+  const [protectedLinkMessage, setProtectedLinkMessage] = useState("");
+  const [protectedLinkBusy, setProtectedLinkBusy] = useState(false);
+  const protectedLinkGeneration = useRef(0);
+  useEffect(() => { protectedLinkGeneration.current += 1; setLinkPassword(""); setConfirmLinkPassword(""); setProtectedLink(""); setProtectedLinkMessage(""); }, [sharing.fileId]);
   const ready = sharing.status === "ready" && Boolean(sharing.fileId);
   const busy = ["loading", "saving", "authorizing", "picker-authorizing", "opening-shared-file"].includes(sharing.status);
   const preparationIsError = ["error", "picker-unconfigured", "shared-file-denied"].includes(sharing.status);
@@ -6229,6 +6238,23 @@ function DriveSharingModal({
               </label>
               <p className="collaboration-share-note"><ShieldCheck size={14} />{restrictedLink && sharing.canShare ? "點擊上方按鈕會開放知道連結的人檢視；連結可轉傳，也可改為僅邀請指定帳號。" : "實際存取權仍以 Google Drive 為準；複製連結不會變更權限。"}</p>
               {restrictedLink && sharing.canShare ? <button className="quiet-button" type="button" onClick={() => onCopyLink("restricted")} disabled={Boolean(permissionAction)}>只複製受限連結</button> : null}
+              {sharing.canShare ? <div className="protected-link-controls">
+                <label className="collaboration-invite-field"><span>建立密碼連結</span><input type="password" autoComplete="new-password" value={linkPassword} onChange={(event) => { setLinkPassword(event.target.value); setProtectedLink(""); }} placeholder="至少 8 個字元" maxLength={128} disabled={protectedLinkBusy} /></label>
+                <label className="collaboration-invite-field"><span>再次輸入密碼</span><input type="password" autoComplete="new-password" value={confirmLinkPassword} onChange={(event) => setConfirmLinkPassword(event.target.value)} maxLength={128} disabled={protectedLinkBusy} /></label>
+                {confirmLinkPassword && confirmLinkPassword !== linkPassword ? <p role="status">兩次輸入的密碼不一致。</p> : null}
+                <p>密碼只保護這個連結；已取得原始 Drive 檔案或一般連結的人仍可依 Drive 權限開啟。請使用不易猜測的密碼並另行傳送。舊連結不會自動失效。</p>
+                <button className="secondary-button" type="button" disabled={protectedLinkBusy || linkPassword.length < 8 || linkPassword !== confirmLinkPassword} onClick={async () => {
+                  const generation = protectedLinkGeneration.current;
+                  setProtectedLinkBusy(true); setProtectedLinkMessage("");
+                  try {
+                    const link = await createProtectedShareLink(sharing, linkPassword, window.location.origin + window.location.pathname);
+                    if (generation === protectedLinkGeneration.current) { setProtectedLink(link); setLinkPassword(""); setConfirmLinkPassword(""); setProtectedLinkMessage("密碼連結已建立，請複製並另行傳送密碼。"); }
+                  } catch (error) { if (generation === protectedLinkGeneration.current) setProtectedLinkMessage(error.message || "無法建立密碼連結。"); }
+                  finally { setProtectedLinkBusy(false); }
+                }}>建立密碼連結</button>
+                {protectedLink ? <label className="collaboration-invite-field"><span>密碼連結</span><div><input readOnly value={protectedLink} data-l10n-ignore onFocus={(event) => event.currentTarget.select()} /><button className="secondary-button" type="button" onClick={async () => { try { await navigator.clipboard.writeText(protectedLink); setProtectedLinkMessage("已複製密碼連結。"); } catch { setProtectedLinkMessage("無法自動複製，請選取連結後複製。"); } }}>複製密碼連結</button></div></label> : null}
+                {protectedLinkMessage ? <p role="status">{protectedLinkMessage}</p> : null}
+              </div> : null}
             </section>
 
             {sharing.permissionsVisible ? <section className="collaboration-permission-section collaboration-general-access" aria-labelledby="drive-general-access-title">
@@ -7266,7 +7292,7 @@ function useInterfaceLocale() {
   return { locale: preference === "auto" ? automaticLocale : preference, preference, chooseLocale };
 }
 
-function App() {
+function App({ initialProtectedShare = null }) {
   const { locale: interfaceLocale, preference: interfaceLocalePreference, chooseLocale } = useInterfaceLocale();
   setActiveInterfaceLocale(interfaceLocale);
   const authPreviewUserRef = useRef(moodboardAuthPreviewUser());
@@ -7489,7 +7515,7 @@ function App() {
   const channelRef = useRef(null);
   const peersRef = useRef(new Map());
   const sessionIdRef = useRef(createId("session"));
-  const initialDriveShareRef = useRef(parseGoogleDriveMoodboardLink(window.location.href));
+  const initialDriveShareRef = useRef(initialProtectedShare || parseGoogleDriveMoodboardLink(window.location.href));
   const directShareAttemptRef = useRef(null);
   const pendingSharedEditRef = useRef(new URL(window.location.href).searchParams.get("requestEdit") === "1");
   const legacyCollaborationLinkRef = useRef(new URL(window.location.href).searchParams.has("collab"));
@@ -8890,7 +8916,7 @@ function App() {
       setSaveState("已建立空白本機 Moodboard");
       setLocalFileBinding({ status: canUseFileSystemPicker ? "unlinked" : "unsupported", name: "" });
       setShowLocalFileLocation(false);
-      setShowStorageLocation(true);
+      setBoardPrimaryStorage(freshBoard.id, "pending");
       await refreshLocalLibrarySummary();
       setShowDeleteLocalData(false);
       announce("這台裝置上的 Moodboard、版本與 Drive 連結資料已清除；雲端檔案未刪除。", "success");
@@ -8899,7 +8925,7 @@ function App() {
     } finally {
       setIsClearingLocalData(false);
     }
-  }, [announce, canUseFileSystemPicker, cancelDriveOperations, interfaceLocale, refreshLocalLibrarySummary]);
+  }, [announce, canUseFileSystemPicker, cancelDriveOperations, interfaceLocale, refreshLocalLibrarySummary, setBoardPrimaryStorage]);
 
   const setCanvasBackgroundMode = useCallback((mode) => {
     setCanvasBackground((current) => changeCanvasBackgroundMode(current, mode));
@@ -9278,13 +9304,13 @@ function App() {
           boardRef.current = normalized;
           setBoard(normalized);
           setView(normalized.view || { x: 0, y: 0, zoom: 1 });
-          if (!storageTargetForBoard(initialStoragePreferencesRef.current, normalized.id)) {
+          if (!storageTargetForBoard(initialStoragePreferencesRef.current, normalized.id) && initialStoragePreferencesRef.current.targets[normalized.id] !== "pending") {
             setBoardPrimaryStorage(normalized.id, initialDriveSettingsRef.current.links?.[normalized.id] ? "drive" : "local");
           }
           setSaveState("已從本機恢復");
         } else {
           setSaveState("本機自動儲存");
-          setShowStorageLocation(true);
+          setBoardPrimaryStorage(boardRef.current.id, "pending");
         }
       } catch {
         if (!cancelled) setSaveState("自動儲存不可用");
@@ -9940,8 +9966,7 @@ function App() {
 
   const importBoardFile = useCallback(async (file, handle = null, { shouldCommit = () => true, broadcast = true, onCommit = null } = {}) => {
     try {
-      const parsed = JSON.parse(await file.text());
-      const parsedBoard = ensureBoard(parsed);
+      const parsedBoard = parseBoardFile(await file.text(), file.name || "");
       const imported = !onCommit && loadDriveState(localStorage).links[parsedBoard.id]
         ? createRecoveredMoodboard(parsedBoard, { label: "本機副本" }) : parsedBoard;
       if (!shouldCommit()) return null;
@@ -10085,7 +10110,7 @@ function App() {
     applyAppUpdate({ automatic: true });
   }, [applyAppUpdate, hydrated, updateCheck.manifest?.version, updateCheck.status, updateNoticeDismissed, updatePreference]);
 
-  const activateLocalMoodboard = useCallback(async (nextBoard, message) => {
+  const activateLocalMoodboard = useCallback(async (nextBoard, message, { newBoard = false } = {}) => {
     if (driveSavePromiseRef.current) { announce("正在儲存目前內容；完成後再開啟其他檔案。", "info"); return null; }
     cancelDriveOperations();
     const startingBoard = boardRef.current;
@@ -10109,7 +10134,9 @@ function App() {
         message: "",
         conflict: null,
       }));
-      if (!storageTargetForBoard(storagePreferences, next.id)) {
+      if (newBoard) {
+        setBoardPrimaryStorage(next.id, "pending");
+      } else if (!storageTargetForBoard(storagePreferences, next.id) && storagePreferences.targets[next.id] !== "pending") {
         setBoardPrimaryStorage(next.id, driveSettings.links[next.id] ? "drive" : "local");
       }
       initialBoardRef.current = next;
@@ -10154,7 +10181,7 @@ function App() {
 
   const createLocalMoodboard = useCallback(() => {
     const next = createBoard({ name: localizedDefaultBoardName(interfaceLocale) });
-    activateLocalMoodboard(next, "已建立新的本機 Moodboard；原本的 Moodboard 已安全保留。");
+    activateLocalMoodboard(next, "已建立新的 Moodboard；原本的 Moodboard 已安全保留。", { newBoard: true });
   }, [activateLocalMoodboard, interfaceLocale]);
 
   const currentDriveContentBytes = useMemo(
@@ -10665,7 +10692,8 @@ function App() {
       // Preserve the outgoing document immediately before the replacement.
       recovery = await saveVersion(boardSnapshot(), translateInterfaceText("載入雲端前"), "automatic", { pinned: true });
       assertReadIsCurrent();
-      const recoveryTarget = storageTargetForBoard(loadStoragePreferences(localStorage), recovery.boardId);
+      const recoveryPreferences = loadStoragePreferences(localStorage);
+      const recoveryTarget = recoveryPreferences.targets[recovery.boardId] === "pending" ? "pending" : storageTargetForBoard(recoveryPreferences, recovery.boardId);
       const imported = await importBoardFile(
         new File([content], metadata.name, { type: "application/json" }),
         null,
@@ -11127,6 +11155,7 @@ function App() {
         const nextUrl = new URL(window.location.href);
         nextUrl.searchParams.delete("driveFile");
         nextUrl.searchParams.delete("resourceKey");
+        nextUrl.searchParams.delete("lockedShare");
         window.history.replaceState({}, "", `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
         initialDriveShareRef.current = null;
         setDriveSharing(EMPTY_DRIVE_SHARING);
@@ -14883,7 +14912,7 @@ function App() {
   );
 }
 
-function PublicSharedViewer({ incoming, preview = false }) {
+function PublicSharedViewer({ incoming, preview = false, onProtectedEdit = null }) {
   const { locale } = useInterfaceLocale();
   const viewerRef = useRef(null);
   useLayoutEffect(() => {
@@ -14904,7 +14933,7 @@ function PublicSharedViewer({ incoming, preview = false }) {
         } else {
           const { readPublicSharedBoard } = await import("./drive-public.js");
           const result = await readPublicSharedBoard({ ...incoming, apiKey: import.meta.env.VITE_GOOGLE_DRIVE_PICKER_API_KEY, signal: controller.signal });
-          data = JSON.parse(result.content);
+          data = parseBoardFile(result.content, result.name);
         }
         const board = ensureBoard(data);
         if (!controller.signal.aborted) setState({ status: "ready", html: createPortableHtml(board, { shared: true, locale }), name: board.name });
@@ -14916,6 +14945,7 @@ function PublicSharedViewer({ incoming, preview = false }) {
   }, [incoming?.fileId, incoming?.resourceKey, preview, retryCount, locale]);
   const openEditor = () => {
     if (preview) return;
+    if (onProtectedEdit) { onProtectedEdit(state.status !== "error"); return; }
     const url = new URL(window.location.href);
     url.searchParams.set("sharedEdit", "1");
     if (state.status !== "error") url.searchParams.set("requestEdit", "1");
@@ -14991,6 +15021,40 @@ function DriveSharingPreview({ initialMode }) {
   );
 }
 
+function ProtectedShareGate({ token }) {
+  const { locale } = useInterfaceLocale();
+  const t = (value) => translateInterfaceText(value, locale);
+  const [password, setPassword] = useState("");
+  const [share, setShare] = useState(null);
+  const [editing, setEditing] = useState(() => new URL(window.location.href).searchParams.get("sharedEdit") === "1");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  if (share && editing) return <App initialProtectedShare={share} />;
+  if (share) return <PublicSharedViewer incoming={share} onProtectedEdit={(requestEdit) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("sharedEdit", "1");
+    if (requestEdit) url.searchParams.set("requestEdit", "1");
+    else url.searchParams.delete("requestEdit");
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+    setEditing(true);
+  }} />;
+  return <main className="protected-share-page"><form className="protected-share-form" onSubmit={async (event) => {
+    event.preventDefault();
+    if (busy) return;
+    setBusy(true); setMessage("");
+    try { setShare(await unlockProtectedShare(token, password)); setPassword(""); }
+    catch (error) { setMessage(t(error.message || "分享連結或密碼不正確。")); }
+    finally { setBusy(false); }
+  }}>
+    <Lock size={24} /><h1>{t("輸入分享密碼")}</h1>
+    <p>{t("請向分享者取得密碼。開啟後仍需符合 Google Drive 的存取權限。")}</p>
+    {new URL(window.location.href).searchParams.has("oobCode") ? <p>{t("請先輸入分享密碼，再繼續完成電子郵件登入。")}</p> : null}
+    <label htmlFor="share-password">{t("密碼")}</label><input id="share-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="off" maxLength={128} autoFocus />
+    {message ? <p role="alert">{message}</p> : null}
+    <button className="primary-button" type="submit" disabled={busy || !password}>{t(busy ? "正在開啟…" : "開啟分享連結")}</button>
+  </form></main>;
+}
+
 const rootElement = document.getElementById("root");
 const moodboardRoot = rootElement.__moodboardRoot || createRoot(rootElement);
 rootElement.__moodboardRoot = moodboardRoot;
@@ -14998,4 +15062,5 @@ const sharingPreviewMode = import.meta.env.DEV ? new URLSearchParams(window.loca
 const currentUrl = new URL(window.location.href);
 const publicPreview = import.meta.env.DEV && currentUrl.searchParams.has("publicPreview");
 const incomingPublicShare = parseGoogleDriveMoodboardLink(currentUrl.href);
-moodboardRoot.render(publicPreview ? <PublicSharedViewer preview /> : sharingPreviewMode ? <DriveSharingPreview initialMode={sharingPreviewMode} /> : incomingPublicShare && currentUrl.searchParams.get("sharedEdit") !== "1" ? <PublicSharedViewer incoming={incomingPublicShare} /> : <App />);
+const protectedShareToken = currentUrl.searchParams.get("lockedShare");
+moodboardRoot.render(publicPreview ? <PublicSharedViewer preview /> : sharingPreviewMode ? <DriveSharingPreview initialMode={sharingPreviewMode} /> : protectedShareToken !== null ? <ProtectedShareGate token={protectedShareToken} /> : incomingPublicShare && currentUrl.searchParams.get("sharedEdit") !== "1" ? <PublicSharedViewer incoming={incomingPublicShare} /> : <App />);

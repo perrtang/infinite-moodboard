@@ -11123,3 +11123,15 @@ button.status-label:hover {
     transition-duration: 0.01ms !important;
   }
 }
+
+.protected-link-controls { display: grid; gap: 12px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+.collaboration-share-card .collaboration-invite-field input { min-height: 44px; padding: 10px 12px; color: var(--text); background: var(--control-bg); border: 1px solid var(--border); border-radius: 6px; }
+.protected-link-controls .collaboration-invite-field > span { font-size: 13px; }
+.protected-link-controls p { margin: 0; color: var(--text-muted); font-size: 13px; line-height: 1.55; }
+.protected-link-controls > button { justify-self: start; }
+.protected-share-page { min-height: 100dvh; display: grid; place-items: center; padding: 24px; background: var(--bg); color: var(--text); }
+.protected-share-form { width: min(100%, 440px); display: grid; gap: 16px; padding: 32px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.protected-share-form h1, .protected-share-form p { margin: 0; }
+.protected-share-form p { line-height: 1.55; color: var(--text-muted); }
+.protected-share-form input { width: 100%; min-height: 44px; padding: 10px 12px; color: var(--text); background: var(--surface-strong); border: 1px solid var(--border); border-radius: 6px; }
+.protected-share-form button { min-height: 44px; }

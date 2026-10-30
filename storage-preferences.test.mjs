@@ -38,6 +38,15 @@ test("storage targets are board-specific and ignore unsupported values", () => {
   assert.equal(storageTargetForBoard(preferences, "board-c"), null);
 });
 
+test("unselected storage survives reload until the user chooses a destination", () => {
+  const storage = memoryStorage();
+  saveStoragePreferences(storage, setBoardStorageTarget({}, "new-board", "pending"));
+  const restored = loadStoragePreferences(storage);
+  assert.equal(restored.targets["new-board"], "pending");
+  assert.equal(storageTargetForBoard(restored, "new-board"), null);
+  assert.equal(storageTargetForBoard(setBoardStorageTarget(restored, "new-board", "drive"), "new-board"), "drive");
+});
+
 test("storage preferences persist without changing safe defaults", () => {
   const storage = memoryStorage();
   saveStoragePreferences(storage, {
@@ -54,6 +63,18 @@ test("storage preferences persist without changing safe defaults", () => {
     uploadPaused: {},
     loadRecoveries: {},
   });
+});
+
+test("a recovery preserves an unselected storage destination across reload", () => {
+  const storage = memoryStorage();
+  saveStoragePreferences(storage, {
+    loadRecoveries: { opened: { boardId: "new-board", versionId: "version", target: "pending" } },
+  });
+  const recovery = loadStoragePreferences(storage).loadRecoveries.opened;
+  assert.equal(recovery.target, "pending");
+  const restored = setBoardStorageTarget({}, recovery.boardId, recovery.target);
+  assert.equal(restored.targets["new-board"], "pending");
+  assert.equal(storageTargetForBoard(restored, "new-board"), null);
 });
 
 test("stale storage target operations cannot override the latest board choice", () => {

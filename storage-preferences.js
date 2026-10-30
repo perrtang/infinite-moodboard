@@ -1,6 +1,7 @@
 export const STORAGE_PREFERENCES_STORAGE_KEY = "infinite-moodboard-storage-preferences-v1";
 
 const STORAGE_TARGETS = new Set(["local", "drive"]);
+const PENDING_TARGET = "pending";
 
 function defaultStoragePreferences() {
   return {
@@ -18,7 +19,7 @@ export function normalizeStoragePreferences(value) {
 
   const targets = {};
   for (const [boardId, target] of Object.entries(value.targets || {})) {
-    if (!boardId || !STORAGE_TARGETS.has(target)) continue;
+    if (!boardId || (!STORAGE_TARGETS.has(target) && target !== PENDING_TARGET)) continue;
     targets[String(boardId)] = target;
   }
 
@@ -27,7 +28,7 @@ export function normalizeStoragePreferences(value) {
     showSaveStatus: value.showSaveStatus !== false,
     targets,
     uploadPaused: Object.fromEntries(Object.entries(value.uploadPaused || {}).filter(([id, paused]) => id && paused === true)),
-    loadRecoveries: Object.fromEntries(Object.entries(value.loadRecoveries || {}).filter(([id, record]) => id && record?.boardId && record?.versionId).map(([id, record]) => [id, { boardId: String(record.boardId), versionId: String(record.versionId), target: record.target === "drive" ? "drive" : "local" }])),
+    loadRecoveries: Object.fromEntries(Object.entries(value.loadRecoveries || {}).filter(([id, record]) => id && record?.boardId && record?.versionId).map(([id, record]) => [id, { boardId: String(record.boardId), versionId: String(record.versionId), target: record.target === "drive" || record.target === PENDING_TARGET ? record.target : "local" }])),
   };
 }
 
@@ -62,7 +63,7 @@ export function setBoardStorageTarget(preferences, boardId, target) {
   if (!id) return normalized;
 
   const targets = { ...normalized.targets };
-  if (STORAGE_TARGETS.has(target)) targets[id] = target;
+  if (STORAGE_TARGETS.has(target) || target === PENDING_TARGET) targets[id] = target;
   else delete targets[id];
 
   return normalizeStoragePreferences({ ...normalized, targets });

@@ -15,6 +15,7 @@ import {
   createViewCapture,
   distributeObjectsByGap,
   ensureBoard,
+  parseBoardFile,
   findCompositionsAffectedByObjectDeletion,
   initialMediaDimensions,
   matchesFilters,
@@ -1800,4 +1801,14 @@ test("portable browser views use the selected interface locale without translati
   assert.match(simplified, /<html lang="zh-Hans">/);
   assert.match(simplified, /单文件离线浏览版/);
   assert.match(simplified, /不可翻譯的文字/);
+});
+
+test("studio identification accepts existing unmarked files and rejects foreign formats", () => {
+  const old = { id: "board-old", schemaVersion: 1, name: "old", objects: [] };
+  const current = { ...old, format: "infinite-moodboard" };
+  assert.equal(parseBoardFile(JSON.stringify(old), "old.moodboard").id, old.id);
+  assert.equal(parseBoardFile(JSON.stringify(old), "existing.studio").id, old.id);
+  assert.equal(parseBoardFile(JSON.stringify(current), "current.studio").format, "infinite-moodboard");
+  assert.throws(() => parseBoardFile(JSON.stringify({ format: "silhouette", objects: [] }), "foreign.studio"), /不相容/);
+  assert.throws(() => parseBoardFile("invalid", "foreign.studio"), /不是有效/);
 });

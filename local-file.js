@@ -28,13 +28,13 @@ export async function localFileWritePermission(handle, { request = false } = {})
 
 export async function writeMoodboardToLocalFile(handle, board, { requestPermission = false } = {}) {
   if (!handle || typeof handle.createWritable !== "function") {
-    const error = new Error("找不到可寫入的本機 .moodboard 檔案。");
+    const error = new Error("找不到可寫入的本機工作檔。");
     error.code = "local-file/missing";
     throw error;
   }
   const permission = await localFileWritePermission(handle, { request: requestPermission });
   if (permission !== "granted") {
-    const error = new Error("需要重新授權本機 .moodboard 檔案。");
+    const error = new Error("需要重新授權本機工作檔。");
     error.code = "local-file/permission-required";
     throw error;
   }
@@ -43,7 +43,7 @@ export async function writeMoodboardToLocalFile(handle, board, { requestPermissi
     const content = serializeLocalMoodboard(board);
     await writable.write(content);
     await writable.close();
-    return { handle, filename: String(handle.name || "Moodboard.moodboard"), bytes: new TextEncoder().encode(content).byteLength };
+    return { handle, filename: String(handle.name || "Studio.studio"), bytes: new TextEncoder().encode(content).byteLength };
   } catch (error) {
     await writable.abort?.().catch(() => undefined);
     throw error;

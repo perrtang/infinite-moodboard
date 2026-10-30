@@ -1,9 +1,9 @@
 {
   "product": "Infinite Studio",
   "channel": "stable",
-  "version": "0.55.1",
+  "version": "0.56.0",
   "releasedAt": "2026-10-30",
-  "summary": "側欄可從邊緣收合、展開及調整寬度。",
-  "notesUrl": "release-notes/v0.55.1.html",
+  "summary": "新增可選密碼分享連結，空白作品在首次儲存時選擇位置，並改善 .studio 檔案辨識。",
+  "notesUrl": "release-notes/v0.56.0.html",
   "url": "https://moodboard.petfashion.tw/"
 }

@@ -65,6 +65,7 @@ export function createId(prefix = "id") {
 export function createBoard(overrides = {}) {
   const now = new Date().toISOString();
   return {
+    format: "infinite-moodboard",
     schemaVersion: BOARD_SCHEMA_VERSION,
     id: createId("board"),
     name: "未命名 Infinite Studio",
@@ -629,6 +630,19 @@ function normalizeCapture(capture, index) {
   };
 }
 
+export function parseBoardFile(text, filename = "") {
+  let parsed;
+  try { parsed = JSON.parse(text); } catch { throw new Error("這不是有效的 Infinite Studio 工作檔。"); }
+  if (/\.studio$/i.test(filename)) {
+    const legacyStudio = parsed?.format == null && Number.isInteger(parsed?.schemaVersion) && parsed.schemaVersion > 0
+      && typeof parsed.id === "string" && parsed.id.length > 0 && Array.isArray(parsed.objects);
+    if (parsed?.format !== "infinite-moodboard" && !legacyStudio) {
+      throw new Error("這不是 Infinite Studio 工作檔；其他軟體的 .studio 格式不相容。");
+    }
+  }
+  return ensureBoard(parsed);
+}
+
 export function ensureBoard(value) {
   if (!value || typeof value !== "object" || !Array.isArray(value.objects)) {
     throw new Error("這不是有效的 Infinite Moodboard 檔案。");
@@ -651,6 +665,7 @@ export function ensureBoard(value) {
   return {
     ...base,
     ...value,
+    format: "infinite-moodboard",
     schemaVersion: BOARD_SCHEMA_VERSION,
     id: typeof value.id === "string" && value.id ? value.id : base.id,
     name: typeof value.name === "string" && value.name.trim() ? value.name.trim() : base.name,
