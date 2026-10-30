@@ -5211,10 +5211,10 @@ function SourceInspector({ source, visibleInstanceCount = 0, readOnly = false, b
   );
 }
 
-function Modal({ title, description, onClose, children, wide = false, dialogRole = "dialog", busy = false }) {
+function Modal({ title, description, onClose, children, wide = false, dialogRole = "dialog", busy = false, className = "" }) {
   return (
     <div className="modal-backdrop" role="presentation" onPointerDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section className={`modal ${wide ? "is-wide" : ""}`} role={dialogRole} aria-modal="true" aria-label={title}>
+      <section className={`modal ${wide ? "is-wide" : ""} ${className}`} role={dialogRole} aria-modal="true" aria-label={title}>
         <header>
           <div><h2>{title}</h2>{description ? <p>{description}</p> : null}</div>
           <IconButton label="關閉" onClick={onClose} disabled={busy}><X size={19} /></IconButton>
@@ -6593,7 +6593,7 @@ function SettingsModal({
   })();
 
   return (
-    <Modal title="帳號與設定" description="管理帳號、儲存與介面偏好。" onClose={onClose} wide>
+    <Modal title="帳號與設定" description="管理帳號、儲存與介面偏好。" onClose={onClose} className="settings-dialog" wide>
       <div className="settings-layout">
         <nav className="settings-nav" aria-label="設定分類">
           <button className={section === "account" ? "is-active" : ""} type="button" onClick={() => setSection("account")}>

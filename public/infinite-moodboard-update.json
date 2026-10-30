@@ -1,9 +1,9 @@
 {
   "product": "Infinite Studio",
   "channel": "stable",
-  "version": "0.56.1",
+  "version": "0.56.2",
   "releasedAt": "2026-10-30",
-  "summary": "整合主選單與帳號設定，並改善側欄把手和寬度重設。",
-  "notesUrl": "release-notes/v0.56.1.html",
+  "summary": "改善帳號與設定對話框的字級層次與可讀性。",
+  "notesUrl": "release-notes/v0.56.2.html",
   "url": "https://moodboard.petfashion.tw/"
 }

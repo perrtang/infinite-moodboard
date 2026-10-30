@@ -11130,3 +11130,25 @@ button.status-label:hover {
 .protected-share-form p { line-height: 1.55; color: var(--text-muted); }
 .protected-share-form input { width: 100%; min-height: 44px; padding: 10px 12px; color: var(--text); background: var(--surface-strong); border: 1px solid var(--border); border-radius: 6px; }
 .protected-share-form button { min-height: 44px; }
+
+/* Settings typography: readable helper text and a consistent control hierarchy. */
+.settings-dialog.is-wide { max-width: 780px; }
+.settings-dialog > header p { font-size: calc(12px + var(--ui-font-offset, 0px)); }
+.settings-layout { font-size: calc(13px + var(--ui-font-offset, 0px)); line-height: 1.5; }
+.settings-layout .settings-nav button,
+.settings-layout .settings-content button,
+.settings-layout .settings-content input:not([type="range"]):not([type="color"]) {
+  font-size: calc(13px + var(--ui-font-offset, 0px));
+}
+.settings-layout .settings-section-heading h3 { font-size: calc(16px + var(--ui-font-offset, 0px)); }
+.settings-layout .settings-content strong,
+.settings-layout .settings-custom-font label > span { font-size: calc(13px + var(--ui-font-offset, 0px)); }
+.settings-layout .settings-content small,
+.settings-layout .settings-section-heading p,
+.settings-layout .settings-account-boundary p,
+.settings-layout .settings-account-profile > div span,
+.settings-layout .settings-login-method-status,
+.settings-layout .settings-login-method-message,
+.settings-layout .settings-development-note,
+.settings-layout .settings-update-note { font-size: calc(12px + var(--ui-font-offset, 0px)); line-height: 1.5; }
+.settings-layout .settings-content button { line-height: 1.35; }
