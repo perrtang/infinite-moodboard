@@ -1,9 +1,9 @@
 {
   "product": "Infinite Studio",
   "channel": "stable",
-  "version": "0.55.0",
+  "version": "0.55.1",
   "releasedAt": "2026-10-30",
-  "summary": "更名為 Infinite Studio；支援 .studio 工作檔、文件文字匯入與登入恢復改善。",
-  "notesUrl": "release-notes/v0.55.0.html",
+  "summary": "側欄可從邊緣收合、展開及調整寬度。",
+  "notesUrl": "release-notes/v0.55.1.html",
   "url": "https://moodboard.petfashion.tw/"
 }

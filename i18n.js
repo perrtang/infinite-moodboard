@@ -65,6 +65,12 @@ export function interfaceLocaleToIntl(locale = activeInterfaceLocale) {
 }
 
 const EN_EXACT = Object.freeze({
+  "收合左側欄": "Collapse left panel",
+  "展開左側欄": "Expand left panel",
+  "收合右側欄": "Collapse right panel",
+  "展開右側欄": "Expand right panel",
+  "調整右側欄寬度": "Resize right panel",
+  "拖曳調整右側欄寬度；方向鍵可微調": "Drag to resize the right panel; use arrow keys for fine adjustments",
   "匯入文字文件": "Import text document",
   "匯入文字文件（TXT、Markdown、CSV、DOCX）": "Import a text document (TXT, Markdown, CSV, DOCX)",
   "開啟工作檔…": "Open project…",

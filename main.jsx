@@ -545,6 +545,8 @@ const ANNOTATION_POSITION_LABELS = {
 
 const LEFT_PANEL_MIN_WIDTH = 300;
 const LEFT_PANEL_MAX_WIDTH = 560;
+const RIGHT_PANEL_MIN_WIDTH = 260;
+const RIGHT_PANEL_MAX_WIDTH = 560;
 const THEME_COLOR_FIELDS = [
   ["background", "整體背景"],
   ["panel", "面板"],
@@ -629,14 +631,24 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
-function getLeftPanelMaxWidth() {
+function getLeftPanelMaxWidth(rightWidth = 304) {
   const viewportWidth = typeof window === "undefined" ? 1440 : window.innerWidth;
   if (viewportWidth <= 900) return LEFT_PANEL_MAX_WIDTH;
-  return Math.max(LEFT_PANEL_MIN_WIDTH, Math.min(LEFT_PANEL_MAX_WIDTH, viewportWidth - 664));
+  return Math.max(LEFT_PANEL_MIN_WIDTH, Math.min(LEFT_PANEL_MAX_WIDTH, viewportWidth - rightWidth - 300));
 }
 
-function normalizeLeftPanelWidth(value) {
-  return Math.round(clamp(Number(value) || LEFT_PANEL_MIN_WIDTH, LEFT_PANEL_MIN_WIDTH, getLeftPanelMaxWidth()));
+function normalizeLeftPanelWidth(value, rightWidth = 304) {
+  return Math.round(clamp(Number(value) || LEFT_PANEL_MIN_WIDTH, LEFT_PANEL_MIN_WIDTH, getLeftPanelMaxWidth(rightWidth)));
+}
+
+function getRightPanelMaxWidth(leftWidth = LEFT_PANEL_MIN_WIDTH) {
+  const viewportWidth = typeof window === "undefined" ? 1440 : window.innerWidth;
+  if (viewportWidth <= 900) return RIGHT_PANEL_MAX_WIDTH;
+  return Math.max(RIGHT_PANEL_MIN_WIDTH, Math.min(RIGHT_PANEL_MAX_WIDTH, viewportWidth - leftWidth - 300));
+}
+
+function normalizeRightPanelWidth(value, leftWidth = LEFT_PANEL_MIN_WIDTH) {
+  return Math.round(clamp(Number(value) || 304, RIGHT_PANEL_MIN_WIDTH, getRightPanelMaxWidth(leftWidth)));
 }
 
 function loadStoredInterfaceThemes() {
@@ -3521,16 +3533,23 @@ function SourcesPanel({ sourceAssets, board }) {
   );
 }
 
+function PanelEdge({ side, visible, mobile = false, onToggle, width, min, max, onResizeStart, onResizeKeyDown }) {
+  const isLeft = side === "left";
+  const label = isLeft ? "左側欄" : "右側欄";
+  return <div className={`panel-edge is-${side} ${visible ? "is-open" : "is-closed"} ${mobile ? "is-mobile" : "is-desktop"}`}>
+    {visible && !mobile ? <div className="panel-edge-resizer" role="separator" tabIndex={0} aria-label={`調整${label}寬度`} aria-orientation="vertical" aria-valuemin={min} aria-valuemax={max} aria-valuenow={width} title={`拖曳調整${label}寬度；方向鍵可微調`} onPointerDown={onResizeStart} onKeyDown={onResizeKeyDown} /> : null}
+    <button className="panel-edge-toggle" type="button" onClick={onToggle} aria-label={`${visible ? "收合" : "展開"}${label}`} aria-expanded={visible} title={`${visible ? "收合" : "展開"}${label}`}>
+      {isLeft ? (visible ? <ChevronLeft size={14} /> : <ChevronRight size={14} />) : (visible ? <ChevronRight size={14} /> : <ChevronLeft size={14} />)}
+    </button>
+  </div>;
+}
+
 function LeftSidebar(props) {
   const {
     leftTab,
     setLeftTab,
     mobilePanel,
     setMobilePanel,
-    panelWidth,
-    panelMaxWidth,
-    onPanelResizeStart,
-    onPanelResizeKeyDown,
   } = props;
   return (
     <aside className={`left-sidebar ${mobilePanel === "left" ? "is-mobile-open" : ""}`} aria-label="圖層、分群、素材與構圖">
@@ -3555,19 +3574,6 @@ function LeftSidebar(props) {
       {leftTab === "filters" ? <FiltersPanel {...props} /> : null}
       {leftTab === "sources" ? <SourcesPanel {...props} /> : null}
       {leftTab === "captures" ? <CapturesPanel {...props} /> : null}
-      <button
-        className="left-sidebar-resizer"
-        type="button"
-        role="separator"
-        aria-label="調整左側欄寬度"
-        aria-orientation="vertical"
-        aria-valuemin={LEFT_PANEL_MIN_WIDTH}
-        aria-valuemax={panelMaxWidth}
-        aria-valuenow={panelWidth}
-        title="拖曳調整左側欄寬度；方向鍵可微調"
-        onPointerDown={onPanelResizeStart}
-        onKeyDown={onPanelResizeKeyDown}
-      />
     </aside>
   );
 }
@@ -7400,6 +7406,7 @@ function App() {
   const [mobilePanel, setMobilePanel] = useState(null);
   const [mobileTopbarMenuOpen, setMobileTopbarMenuOpen] = useState(false);
   const [leftPanelWidth, setLeftPanelWidth] = useState(() => normalizeLeftPanelWidth(localStorage.getItem("moodboard-left-panel-width")));
+  const [rightPanelWidth, setRightPanelWidth] = useState(() => normalizeRightPanelWidth(localStorage.getItem("studio-right-panel-width"), normalizeLeftPanelWidth(localStorage.getItem("moodboard-left-panel-width"))));
   const [leftPanelVisible, setLeftPanelVisible] = useState(() => localStorage.getItem("moodboard-left-panel-visible") !== "false");
   const [rightPanelVisible, setRightPanelVisible] = useState(() => localStorage.getItem("moodboard-right-panel-visible") !== "false");
   const [focusMode, setFocusMode] = useState(false);
@@ -7425,6 +7432,7 @@ function App() {
   };
   const [guideDrag, setGuideDrag] = useState(null);
   const [leftPanelResizing, setLeftPanelResizing] = useState(false);
+  const [rightPanelResizing, setRightPanelResizing] = useState(false);
   const [canvasViewportSize, setCanvasViewportSize] = useState({ width: 0, height: 0 });
   const [canvasToolbarPosition, setCanvasToolbarPosition] = useState(loadStoredCanvasToolbarPosition);
   const [canvasToolbarDragging, setCanvasToolbarDragging] = useState(false);
@@ -7611,11 +7619,18 @@ function App() {
   }, []);
 
   const updateLeftPanelWidth = useCallback((value) => {
-    const nextWidth = normalizeLeftPanelWidth(value);
+    const nextWidth = normalizeLeftPanelWidth(value, rightPanelWidth);
     setLeftPanelWidth(nextWidth);
     localStorage.setItem("moodboard-left-panel-width", String(nextWidth));
     return nextWidth;
-  }, []);
+  }, [rightPanelWidth]);
+
+  const updateRightPanelWidth = useCallback((value) => {
+    const nextWidth = normalizeRightPanelWidth(value, leftPanelWidth);
+    setRightPanelWidth(nextWidth);
+    localStorage.setItem("studio-right-panel-width", String(nextWidth));
+    return nextWidth;
+  }, [leftPanelWidth]);
 
   const toggleLeftPanel = useCallback(() => {
     setFocusMode(false);
@@ -7717,11 +7732,42 @@ function App() {
     if (event.key === "ArrowLeft") nextWidth = leftPanelWidth - step;
     if (event.key === "ArrowRight") nextWidth = leftPanelWidth + step;
     if (event.key === "Home") nextWidth = LEFT_PANEL_MIN_WIDTH;
-    if (event.key === "End") nextWidth = getLeftPanelMaxWidth();
+    if (event.key === "End") nextWidth = getLeftPanelMaxWidth(rightPanelWidth);
     if (nextWidth === null) return;
     event.preventDefault();
     updateLeftPanelWidth(nextWidth);
-  }, [leftPanelWidth, updateLeftPanelWidth]);
+  }, [leftPanelWidth, rightPanelWidth, updateLeftPanelWidth]);
+
+  const onRightPanelResizeStart = useCallback((event) => {
+    if (window.matchMedia("(max-width: 900px)").matches) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const startX = event.clientX;
+    const startWidth = rightPanelWidth;
+    let latestWidth = startWidth;
+    let releaseGesture = () => {};
+    setRightPanelResizing(true);
+    const move = (moveEvent) => { latestWidth = updateRightPanelWidth(startWidth + startX - moveEvent.clientX); };
+    const cleanup = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); window.removeEventListener("pointercancel", cancel); releaseGesture(); };
+    const up = () => { cleanup(); setRightPanelResizing(false); };
+    const cancel = () => { cleanup(); if (latestWidth !== startWidth) updateRightPanelWidth(startWidth); setRightPanelResizing(false); };
+    releaseGesture = registerPointerGesture({ label: "調整側欄寬度", affectsDocument: false, hasChanges: () => latestWidth !== startWidth, pause: cleanup, cancel, keep: up });
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up, { once: true });
+    window.addEventListener("pointercancel", cancel, { once: true });
+  }, [registerPointerGesture, rightPanelWidth, updateRightPanelWidth]);
+
+  const onRightPanelResizeKeyDown = useCallback((event) => {
+    const step = event.shiftKey ? 32 : 8;
+    let nextWidth = null;
+    if (event.key === "ArrowLeft") nextWidth = rightPanelWidth + step;
+    if (event.key === "ArrowRight") nextWidth = rightPanelWidth - step;
+    if (event.key === "Home") nextWidth = RIGHT_PANEL_MIN_WIDTH;
+    if (event.key === "End") nextWidth = getRightPanelMaxWidth(leftPanelWidth);
+    if (nextWidth === null) return;
+    event.preventDefault();
+    updateRightPanelWidth(nextWidth);
+  }, [leftPanelWidth, rightPanelWidth, updateRightPanelWidth]);
 
   useEffect(() => {
     if (!isBooting) return undefined;
@@ -7740,14 +7786,19 @@ function App() {
     const keepPanelInsideViewport = () => {
       if (window.innerWidth <= 900) return;
       setLeftPanelWidth((current) => {
-        const next = normalizeLeftPanelWidth(current);
+        const next = normalizeLeftPanelWidth(current, rightPanelWidth);
         if (next !== current) localStorage.setItem("moodboard-left-panel-width", String(next));
+        return next;
+      });
+      setRightPanelWidth((current) => {
+        const next = normalizeRightPanelWidth(current, leftPanelWidth);
+        if (next !== current) localStorage.setItem("studio-right-panel-width", String(next));
         return next;
       });
     };
     window.addEventListener("resize", keepPanelInsideViewport);
     return () => window.removeEventListener("resize", keepPanelInsideViewport);
-  }, []);
+  }, [leftPanelWidth, rightPanelWidth]);
 
   useLayoutEffect(() => {
     const canvas = canvasRef.current;
@@ -14048,42 +14099,6 @@ function App() {
           >
             <SettingsIcon size={18} />
           </IconButton>
-          <IconButton
-            className="desktop-panel-button"
-            label={leftPanelVisible ? "隱藏圖層、分群、素材與構圖側欄" : "顯示圖層、分群、素材與構圖側欄"}
-            active={leftPanelVisible}
-            aria-pressed={leftPanelVisible}
-            onClick={toggleLeftPanel}
-          >
-            <PanelLeft size={18} />
-          </IconButton>
-          <IconButton
-            className="mobile-panel-button"
-            label="開啟圖層、分群、素材與構圖側欄"
-            active={mobilePanel === "left"}
-            aria-pressed={mobilePanel === "left"}
-            onClick={() => setMobilePanel((current) => current === "left" ? null : "left")}
-          >
-            <PanelLeft size={18} />
-          </IconButton>
-          <IconButton
-            className="desktop-panel-button"
-            label={rightPanelVisible ? "隱藏物件屬性側欄" : "顯示物件屬性側欄"}
-            active={rightPanelVisible}
-            aria-pressed={rightPanelVisible}
-            onClick={toggleRightPanel}
-          >
-            <PanelRight size={18} />
-          </IconButton>
-          <IconButton
-            className="mobile-panel-button"
-            label="開啟物件屬性側欄"
-            active={mobilePanel === "right"}
-            aria-pressed={mobilePanel === "right"}
-            onClick={() => setMobilePanel((current) => current === "right" ? null : "right")}
-          >
-            <PanelRight size={18} />
-          </IconButton>
           <MobileTopbarMoreMenu
             open={mobileTopbarMenuOpen}
             onOpenChange={setMobileTopbarMenuOpen}
@@ -14097,7 +14112,7 @@ function App() {
         </div>
       </header>
 
-      {focusMode || (!leftPanelVisible && !rightPanelVisible) ? (
+      {focusMode ? (
         <button
           className={`workspace-chrome-restore ${focusMode ? "" : "is-panels-only"}`}
           type="button"
@@ -14109,11 +14124,17 @@ function App() {
       ) : null}
 
       <div
-        className={`app-body ${effectiveLeftPanelVisible ? "" : "is-left-hidden"} ${effectiveRightPanelVisible ? "" : "is-right-hidden"} ${leftPanelResizing ? "is-resizing-left" : ""}`}
-        style={{ "--panel-width": `${leftPanelWidth}px` }}
+        className={`app-body ${effectiveLeftPanelVisible ? "" : "is-left-hidden"} ${effectiveRightPanelVisible ? "" : "is-right-hidden"} ${leftPanelResizing ? "is-resizing-left" : ""} ${rightPanelResizing ? "is-resizing-right" : ""} ${mobilePanel ? `is-mobile-${mobilePanel}-open` : ""}`}
+        style={{ "--panel-width": `${leftPanelWidth}px`, "--inspector-width": `${rightPanelWidth}px` }}
         aria-hidden={isBooting || undefined}
         inert={isBooting ? true : undefined}
       >
+        {!focusMode ? <>
+          <PanelEdge side="left" visible={effectiveLeftPanelVisible} onToggle={toggleLeftPanel} width={leftPanelWidth} min={LEFT_PANEL_MIN_WIDTH} max={getLeftPanelMaxWidth(rightPanelWidth)} onResizeStart={onLeftPanelResizeStart} onResizeKeyDown={onLeftPanelResizeKeyDown} />
+          <PanelEdge side="right" visible={effectiveRightPanelVisible} onToggle={toggleRightPanel} width={rightPanelWidth} min={RIGHT_PANEL_MIN_WIDTH} max={getRightPanelMaxWidth(leftPanelWidth)} onResizeStart={onRightPanelResizeStart} onResizeKeyDown={onRightPanelResizeKeyDown} />
+          <PanelEdge mobile side="left" visible={mobilePanel === "left"} onToggle={() => setMobilePanel((current) => current === "left" ? null : "left")} />
+          <PanelEdge mobile side="right" visible={mobilePanel === "right"} onToggle={() => setMobilePanel((current) => current === "right" ? null : "right")} />
+        </> : null}
         <LeftSidebar
           board={board}
           selectedIds={selectedIds}
@@ -14162,10 +14183,6 @@ function App() {
           onDeleteCapture={deleteCapture}
           mobilePanel={mobilePanel}
           setMobilePanel={setMobilePanel}
-          panelWidth={leftPanelWidth}
-          panelMaxWidth={getLeftPanelMaxWidth()}
-          onPanelResizeStart={onLeftPanelResizeStart}
-          onPanelResizeKeyDown={onLeftPanelResizeKeyDown}
         />
 
         <section className="canvas-column">
