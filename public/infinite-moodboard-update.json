@@ -1,9 +1,9 @@
 {
   "product": "Infinite Studio",
   "channel": "stable",
-  "version": "0.56.2",
+  "version": "0.56.3",
   "releasedAt": "2026-10-30",
-  "summary": "改善帳號與設定對話框的字級層次與可讀性。",
-  "notesUrl": "release-notes/v0.56.2.html",
+  "summary": "將雲端儲存狀態整合到更新至雲端按鈕。",
+  "notesUrl": "release-notes/v0.56.3.html",
   "url": "https://moodboard.petfashion.tw/"
 }

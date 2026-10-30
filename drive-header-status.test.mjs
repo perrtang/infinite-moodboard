@@ -1,3 +1,4 @@
+import { driveHeaderIndicator } from "./drive-header-indicator.js";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -5,20 +6,14 @@ import test from "node:test";
 const main = await readFile(new URL("./main.jsx", import.meta.url), "utf8");
 const styles = await readFile(new URL("./styles.css", import.meta.url), "utf8");
 
-test("Drive status is hidden while the cloud button shows its busy animation", () => {
-  assert.match(main, /const showTopbarDriveStatus = currentPrimaryStorageTarget === "drive";/);
-  assert.match(main, /<div className="topbar-secondary">\s*\{showTopbarDriveStatus && !driveSession\.busy \? \(/);
-  assert.match(main, /driveSession\.busy && currentPrimaryStorageTarget === "drive" \? <RefreshCw size=\{16\} className="is-spinning"/);
-  assert.match(main, /className=\{`topbar-cloud-status is-\$\{drivePresentation\.tone\}`\}/);
-  assert.match(main, /aria-label=\{`\$\{drivePresentation\.label\}；開啟 Google Drive 檔案與同步狀態`\}/);
-  assert.match(main, /onClick=\{openGoogleDriveLibrary\}/);
-});
-
-test("Drive status remains a compact accessible action on narrow screens", () => {
-  assert.match(styles, /\.topbar-cloud-status \{[\s\S]*max-width: 36px;[\s\S]*min-height: 36px;[\s\S]*min-width: 36px;/);
-  assert.match(main, /<span className="sr-only">\{drivePresentation\.label\}<\/span>/);
-  assert.match(styles, /\.topbar-cloud-status:focus-visible \{[\s\S]*outline: 2px solid var\(--accent-strong\);/);
-  assert.match(styles, /\.mobile-topbar-more-button,[\s\S]*\.topbar-cloud-status \{[\s\S]*min-height: 44px;[\s\S]*min-width: 44px;/);
+test("cloud status remains inside the existing save button", () => {
+  const header = main.slice(main.indexOf('<div className="topbar-secondary">'), main.indexOf('label={sourceModeActive ? "回到 Moodboard 後復原'));
+  assert.doesNotMatch(header, /topbar-cloud-status/);
+  assert.match(header, /topbar-save-status/);
+  assert.match(header, /DriveStatusIcon/);
+  assert.match(header, /is-spinning/);
+  assert.match(header, /savePreferredBoard/);
+  assert.match(header, /aria-live="polite"/);
 });
 
 test("a confirmed upload stops the spinner before optional Drive metadata refresh", () => {
@@ -75,4 +70,17 @@ test("sync-queue bookkeeping failures never masquerade as local recovery-copy fa
   assert.doesNotMatch(main.slice(queueReadStart, driveAboutStart), /noteLocalRecoveryFailure\(error\)/);
   assert.match(main.slice(queueRemovalStart, syncedStateStart), /noteQueueStateFailure\(error\)[\s\S]*setSyncJobs[\s\S]*setTimeout[\s\S]*removeSyncJob/);
   assert.match(main.slice(syncedStateStart, main.indexOf("return true;", syncedStateStart)), /queueStateWarning[\s\S]*已儲存至 Google Drive；本機同步佇列待整理/);
+});
+
+test("cloud save indicator distinguishes saved, pending, working and recoverable failures", () => {
+  assert.equal(driveHeaderIndicator({ status: "synced" }), "已儲存");
+  assert.equal(driveHeaderIndicator({ status: "synced", dirty: true }), "尚未儲存");
+  assert.equal(driveHeaderIndicator({ status: "syncing", busy: true }), "上傳中");
+  assert.equal(driveHeaderIndicator({ status: "authorization-required" }), "需要重新連結");
+  assert.equal(driveHeaderIndicator({ status: "offline" }), "目前離線");
+  assert.equal(driveHeaderIndicator({ status: "quota" }), "空間不足");
+  assert.equal(driveHeaderIndicator({ status: "conflict" }), "需處理衝突");
+  assert.equal(driveHeaderIndicator({ status: "error", dirty: true }), "更新失敗");
+  assert.equal(driveHeaderIndicator({ status: "synced-local-warning" }), "本機備份未更新");
+  assert.equal(driveHeaderIndicator({ status: "ready", paused: true }), "待更新");
 });

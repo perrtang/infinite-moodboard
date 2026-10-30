@@ -1,3 +1,4 @@
+import { driveHeaderIndicator } from "./drive-header-indicator.js";
 import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { workspaceReadIsCurrent, remoteContentChanged } from "./workspace-read-guard.js";
@@ -14000,7 +14001,7 @@ function App({ initialProtectedShare = null }) {
       : driveStatusPresentation(driveSession);
   const DriveStatusIcon = drivePresentation.icon;
   const driveNeedsAttention = ["offline", "quota", "conflict", "authorization-required", "error", "synced-local-warning"].includes(driveSession.status);
-  const showTopbarDriveStatus = currentPrimaryStorageTarget === "drive";
+  const cloudHeaderStatus = driveHeaderIndicator({ status: driveSession.status, busy: driveSession.busy, dirty, paused: driveUploadPaused });
   const localSaveNeedsAttention = ["本機復原副本寫入失敗", "儲存失敗；變更仍留在目前分頁", "自動儲存不可用"].includes(saveState);
   const preferLocalSaveState = localSaveNeedsAttention || (!storagePreferences.autoSave && dirty);
   const topbarSaveState = currentPrimaryStorageTarget === "drive"
@@ -14073,25 +14074,14 @@ function App({ initialProtectedShare = null }) {
         </label>
 
         <div className="topbar-secondary">
-          {showTopbarDriveStatus && !driveSession.busy ? (
-            <button
-              className={`topbar-cloud-status is-${drivePresentation.tone}`}
-              type="button"
-              aria-label={`${drivePresentation.label}；開啟 Google Drive 檔案與同步狀態`}
-              aria-live="polite"
-              title={`${drivePresentation.label}；點一下查看 Google Drive`}
-              onClick={openGoogleDriveLibrary}
-            >
-              <DriveStatusIcon className={drivePresentation.tone === "working" ? "is-spinning" : ""} size={17} aria-hidden="true" />
-              <span className="sr-only">{drivePresentation.label}</span>
-            </button>
-          ) : null}
-          <button className="topbar-save-button" type="button" onClick={cloudReadOnly ? () => setShowEditPermissionRequest(true) : savePreferredBoard}
+          <button className={`topbar-save-button ${currentPrimaryStorageTarget === "drive" ? `is-${drivePresentation.tone}` : ""}`} type="button" onClick={cloudReadOnly ? () => setShowEditPermissionRequest(true) : savePreferredBoard}
             disabled={sourceModeActive || driveSession.busy}
             title={cloudReadOnly ? "申請編輯權限" : currentPrimaryStorageTarget === "drive" ? `上傳目前畫布至 Google Drive；不會載入雲端內容。 ${drivePresentation.label}` : topbarSaveState}>
-            {driveSession.busy && currentPrimaryStorageTarget === "drive" ? <RefreshCw size={16} className="is-spinning" /> : currentPrimaryStorageTarget === "drive" ? <CloudUpload size={16} /> : <Save size={16} />}
+            {currentPrimaryStorageTarget === "drive" ? (driveSession.busy ? <RefreshCw size={16} className="is-spinning" aria-hidden="true" /> : <DriveStatusIcon size={16} aria-hidden="true" />) : <Save size={16} aria-hidden="true" />}
             <span>{cloudReadOnly ? "申請編輯權" : currentPrimaryStorageTarget === "drive" ? "更新至雲端" : "儲存"}</span>
+            {currentPrimaryStorageTarget === "drive" && cloudHeaderStatus ? <span className="topbar-save-status">{cloudHeaderStatus}</span> : null}
           </button>
+          {currentPrimaryStorageTarget === "drive" ? <span className="sr-only" role="status" aria-live="polite">{drivePresentation.label}</span> : null}
           <IconButton
             label={sourceModeActive ? "回到 Moodboard 後復原 ⌘Z" : "復原 ⌘Z"}
             onClick={undo}
