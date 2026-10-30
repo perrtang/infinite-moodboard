@@ -15,7 +15,7 @@ test("file menu consolidates file, output, and management actions", () => {
   assert.match(main, /鎖定所有輔助導引線/);
   assert.match(main, /解除鎖定所有輔助導引線/);
   assert.match(main, /版本紀錄/);
-  assert.match(main, /關於 Infinite Moodboard/);
+  assert.match(main, /關於 Infinite Studio/);
   assert.match(main, /const \{ createPortableHtml \} = await loadPortableRuntime\(\)/);
 });
 

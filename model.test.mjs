@@ -295,7 +295,7 @@ test("interface locale detection and language packs cover Traditional Chinese, S
   assert.equal(translateInterfaceText("登入後使用協作與同步", "en"), "Sign in for collaboration and sync");
   assert.equal(translateInterfaceText("訪客模式", "en"), "Guest mode");
   assert.equal(translateInterfaceText("登入後使用進階 3D", "zh-Hans"), "登录后使用进阶 3D");
-  assert.equal(localizedDefaultBoardName("en"), "Untitled Infinite Moodboard");
+  assert.equal(localizedDefaultBoardName("en"), "Untitled Infinite Studio");
 });
 
 test("interface typography presets and custom values stay safe and bounded", () => {

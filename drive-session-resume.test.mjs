@@ -15,7 +15,9 @@ test("refresh restores an enabled Drive connection silently for the same signed-
   assert.match(main, /if \(!online\) \{[\s\S]*status: "offline",[\s\S]*busy: false/);
   assert.match(main, /if \(!authReady\) \{[\s\S]*status: "authorization-required",[\s\S]*busy: false/);
   assert.match(main, /if \(driveRestoreAttemptRef\.current === attemptKey\) driveRestoreAttemptRef\.current = "";/);
-  assert.match(main, /if \(\["checking", "connecting"\]\.includes\(driveSession\.status\)\) return undefined/);
+  assert.match(main, /if \(driveSession\.busy \|\| \["checking", "connecting", "syncing", "quota"\]/);
+  assert.match(main, /driveRenewPromiseRef/);
+  assert.match(main, /initialEpoch !== driveOperationEpochRef\.current \|\| boardRef\.current\.id !== initialBoardId/);
   assert.match(main, /無法在背景恢復 Google Drive；點一下重新連結，本機變更仍安全保留/);
 });
 

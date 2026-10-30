@@ -4,6 +4,8 @@ Every stable release from v0.51.0 onward must include a version-matched public r
 
 ## Releases
 
+- [v0.55.0](./public/release-notes/v0.55.0.html) — Infinite Studio branding, .studio projects, text document import, and session recovery.
+
 - [v0.54.14](./public/release-notes/v0.54.14.html) — rename Moodboards from the library.
 
 - [v0.54.13](./public/release-notes/v0.54.13.html) — correct the shared-view logo size.

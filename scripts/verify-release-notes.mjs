@@ -27,7 +27,7 @@ if (!/^\d{4}-\d{2}-\d{2}$/.test(String(manifest.releasedAt || ""))) throw new Er
 if (manifest.notesUrl !== expectedNotesUrl) throw new Error(`Update manifest notesUrl must be ${expectedNotesUrl}.`);
 
 const notes = await read(path.join("public", expectedNotesUrl));
-if (!notes.includes(`<title>Infinite Moodboard v${version}`)) throw new Error("Release notes title does not match the version.");
+if (!notes.includes(`<title>Infinite Studio v${version}`) && !notes.includes(`<title>Infinite Moodboard v${version}`)) throw new Error("Release notes title does not match the version.");
 if (!notes.includes(`發布日期：${manifest.releasedAt}`)) throw new Error("Release notes date does not match the update manifest.");
 if (!notes.includes("更新內容") || !notes.includes("修正") || !notes.includes("注意事項") || !notes.includes("回復與備份")) {
   throw new Error("Release notes must include changes, fixes, attention items, and recovery information.");

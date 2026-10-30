@@ -10,9 +10,9 @@ import {
 } from "./local-file.js";
 
 test("local Moodboard filenames are safe and retain the expected extension", () => {
-  assert.equal(localMoodboardFilename("Campaign / Spring:01"), "Campaign - Spring-01.moodboard");
-  assert.equal(localMoodboardFilename("   "), "moodboard.moodboard");
-  assert.equal(localMoodboardFilename("Board... "), "Board.moodboard");
+  assert.equal(localMoodboardFilename("Campaign / Spring:01"), "Campaign - Spring-01.studio");
+  assert.equal(localMoodboardFilename("   "), "studio.studio");
+  assert.equal(localMoodboardFilename("Board... "), "Board.studio");
 });
 
 test("local Moodboard serialization is stable and ends with a newline", () => {
@@ -81,7 +81,7 @@ test("the save picker receives a safe filename and writes the selected file", as
     return handle;
   });
   assert.equal(selected, handle);
-  assert.equal(pickerOptions.suggestedName, "Campaign - 01.moodboard");
+  assert.equal(pickerOptions.suggestedName, "Campaign - 01.studio");
   assert.equal(JSON.parse(written).id, "board-1");
 });
 

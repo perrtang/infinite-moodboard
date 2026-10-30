@@ -640,7 +640,7 @@ export async function listGoogleDriveMoodboards(accessToken, folderId) {
     });
     if (pageToken) params.set("pageToken", pageToken);
     const result = await driveRequest(accessToken, `${DRIVE_API_ROOT}/files?${params}`);
-    files.push(...(result?.files || []).filter((file) => file.name?.toLowerCase().endsWith(".moodboard")).map(normalizeDriveFile));
+    files.push(...(result?.files || []).filter((file) => /\.(studio|moodboard)$/i.test(file.name || "")).map(normalizeDriveFile));
     pageToken = result?.nextPageToken || "";
   } while (pageToken);
   return files;

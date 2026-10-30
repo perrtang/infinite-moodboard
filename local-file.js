@@ -13,7 +13,7 @@ export function localMoodboardFilename(name) {
     .replace(/[. ]+$/g, "")
     .replace(/-{2,}/g, "-")
     .slice(0, 120);
-  return `${safeName || "moodboard"}.moodboard`;
+  return `${safeName || "studio"}.studio`;
 }
 
 export async function localFileWritePermission(handle, { request = false } = {}) {
@@ -59,7 +59,7 @@ export async function pickMoodboardLocalFile(board, picker = globalThis.showSave
   const filename = localMoodboardFilename(board?.name);
   const handle = await picker({
     suggestedName: filename,
-    types: [{ description: "Infinite Moodboard 檔案", accept: { "application/json": [".moodboard"] } }],
+    types: [{ description: "Infinite Studio 檔案", accept: { "application/json": [".studio", ".moodboard"] } }],
   });
   await writeMoodboardToLocalFile(handle, board, { requestPermission: true });
   return handle;

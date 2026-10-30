@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { workspaceReadIsCurrent, remoteContentChanged } from "./workspace-read-guard.js";
+import { isCloudBoardReadOnly } from "./drive-access.js";
 import {
   AlignCenter,
   AlignCenterHorizontal,
@@ -2032,13 +2033,13 @@ function FileMenu({
               <FolderOpen size={17} /><span><strong>我的 Moodboards…</strong><small>本機與 Google Drive 檔案</small></span>
             </button>
             <button type="button" role="menuitem" onClick={() => activate(onOpenFile)}>
-              <FileUp size={17} /><span><strong>開啟 .moodboard…</strong><small>從這台裝置開啟可編輯檔案</small></span><kbd>{platformShortcutLabel("mod+o")}</kbd>
+              <FileUp size={17} /><span><strong>開啟工作檔…</strong><small>支援 .studio 與舊版 .moodboard</small></span><kbd>{platformShortcutLabel("mod+o")}</kbd>
             </button>
             <button type="button" role="menuitem" title={saveTitle} onClick={() => activate(onSave)}>
               <Save size={17} /><span><strong>{saveLabel}</strong><small>{saveTitle}</small></span><kbd>{platformShortcutLabel("mod+s")}</kbd>
             </button>
             <button type="button" role="menuitem" onClick={() => activate(onSaveAs)}>
-              <FileArchive size={17} /><span><strong>下載本機副本…</strong><small>下載 .moodboard；不改變主要儲存位置</small></span>
+              <FileArchive size={17} /><span><strong>下載本機副本…</strong><small>下載 .studio；不改變主要儲存位置</small></span>
             </button>
           </div>
           <div className="file-menu-section" aria-label="輸出操作">
@@ -2075,7 +2076,7 @@ function FileMenu({
               <History size={17} /><span><strong>版本紀錄</strong><small>查看與復原內容版本</small></span>
             </button>
             <button type="button" role="menuitem" onClick={() => activate(onOpenAbout)}>
-              <Info size={17} /><span><strong>關於 Infinite Moodboard</strong><small>版本與更新資訊</small></span>
+              <Info size={17} /><span><strong>關於 Infinite Studio</strong><small>版本與更新資訊</small></span>
             </button>
           </div>
         </div>
@@ -2528,7 +2529,7 @@ function CanvasVideoPlayer({ object, onControlsVisibilityChange }) {
   );
 }
 
-function InsertToolbar({ open, disabled = false, onToggle, onAddText, onAddShape, onChooseImage, onChooseVideo, onChooseSvg }) {
+function InsertToolbar({ open, disabled = false, onToggle, onAddText, onImportText, onAddShape, onChooseImage, onChooseVideo, onChooseSvg }) {
   const shapeActions = [
     ["square", "正方形", Square],
     ["rectangle", "矩形", RectangleHorizontal],
@@ -2541,6 +2542,7 @@ function InsertToolbar({ open, disabled = false, onToggle, onAddText, onAddShape
       <button className="toolbar-action insert-tool" type="button" aria-label="加入文字" title="加入文字" onClick={onAddText} disabled={disabled}>
         <Type size={17} />
       </button>
+      <button className="toolbar-action insert-tool" type="button" aria-label="匯入文字文件" title="匯入文字文件（TXT、Markdown、CSV、DOCX）" onClick={onImportText} disabled={disabled}><FileUp size={17} /></button>
       <button className="toolbar-action insert-tool" type="button" aria-label="加入圖片" title="從本機加入圖片" onClick={onChooseImage} disabled={disabled}>
         <ImagePlus size={17} />
       </button>
@@ -5349,7 +5351,7 @@ function AuthGate({
   const isDriveOnboarding = feature === "drive-onboarding";
   const [accepted, setAccepted] = useState(isDriveOnboarding);
   const [marketingOptIn, setMarketingOptIn] = useState(false);
-  const [rememberSession, setRememberSession] = useState(false);
+  const [rememberSession, setRememberSession] = useState(true);
   const [email, setEmail] = useState("");
   const [emailNotice, setEmailNotice] = useState("");
   const signedInAccount = session.status === "signed-in" && session.user;
@@ -5437,7 +5439,7 @@ function AuthGate({
             </button>
           ))}
         </div>
-        <div className="auth-gate-brand" aria-hidden="true"><span>∞</span><strong>Infinite Moodboard</strong></div>
+        <div className="auth-gate-brand" aria-hidden="true"><span>∞</span><strong>Infinite Studio</strong></div>
         <div className="auth-gate-heading">
           <span className="auth-gate-kicker">PETFASHION FREE CREATIVE TOOL</span>
           <h1 id="auth-gate-title">{featureCopy.title}</h1>
@@ -5542,7 +5544,7 @@ function AuthGate({
             <ul>
               <li>PETFASHION 只使用名稱、頭像與 Email 登入及辨識帳號。</li>
               {isDriveOnboarding ? <li>Google Drive 只授予 drive.file 權限；連結不等於上傳，第一次儲存前不會建立雲端工作檔。</li> : null}
-              <li>會員由 PETFASHION 統一管理，並記錄 Infinite Moodboard 啟用來源。</li>
+              <li>會員由 PETFASHION 統一管理，並記錄 Infinite Studio 啟用來源。</li>
               <li>作品、素材與版本預設保存在這台裝置，不會自動上傳。</li>
             </ul>
             <p><Info size={14} />共用電腦用畢請登出，並在設定清除本機 Moodboard。</p>
@@ -5646,7 +5648,7 @@ function DeleteLocalDataModal({ onCancel, onConfirm, isBusy }) {
           <span className="delete-impact-icon" aria-hidden="true"><AlertTriangle size={22} /></span>
           <div>
             <strong>將刪除目前自動儲存與所有本機版本</strong>
-            <p>你主動下載的 `.moodboard`、HTML 與輸出圖片不受影響；登入帳號也不會被刪除。</p>
+            <p>你主動下載的 `.studio`、HTML 與輸出圖片不受影響；登入帳號也不會被刪除。</p>
           </div>
         </div>
         <label className="delete-local-confirmation">
@@ -5825,7 +5827,7 @@ function StorageLocationModal({ currentTarget, onChoose, onClose }) {
           onClick={() => setDraftTarget("local")}
         >
           <span className="storage-location-option-icon"><HardDrive size={22} /></span>
-          <span><strong>這台裝置</strong><small>選擇一份 .moodboard 檔案供自動儲存；瀏覽器另保留復原副本。</small></span>
+          <span><strong>這台裝置</strong><small>選擇一份 .studio 檔案供自動儲存；瀏覽器另保留復原副本。</small></span>
           {draftTarget === "local" ? <Check size={17} /> : <ChevronRight size={17} />}
         </button>
         <button
@@ -5849,7 +5851,7 @@ function StorageLocationModal({ currentTarget, onChoose, onClose }) {
           />
           <span>
             <strong>我同意登入並自動連結 Google Drive <em>必填</em></strong>
-            <small>繼續後會登入 PETFASHION，並由 Google 授予 drive.file 權限；只存取 Infinite Moodboard 建立或你指定的檔案。連結完成不會立即上傳，第一次儲存才會建立 Drive 工作檔，本機安全副本仍會保留。</small>
+            <small>繼續後會登入 PETFASHION，並由 Google 授予 drive.file 權限；只存取 Infinite Studio 建立或你指定的檔案。連結完成不會立即上傳，第一次儲存才會建立 Drive 工作檔，本機安全副本仍會保留。</small>
           </span>
         </label>
       ) : null}
@@ -5877,15 +5879,15 @@ function LocalFileAutosaveModal({ binding, supported, onChoose, onDownload, onCl
     <Modal
       title={supported ? "選擇本機自動儲存檔案" : "這個瀏覽器無法持續寫入檔案"}
       description={supported
-        ? "基於瀏覽器安全限制，必須由你點一下按鈕，才會開啟 Finder／檔案視窗。選定後，後續變更會自動寫入該 .moodboard 檔案。"
-        : "目前仍會自動保存在這個瀏覽器，並可下載 .moodboard 備份；瀏覽器不會假裝已寫入 Finder／檔案。"}
+        ? "基於瀏覽器安全限制，必須由你點一下按鈕，才會開啟 Finder／檔案視窗。選定後，後續變更會自動寫入該 .studio 檔案。"
+        : "目前仍會自動保存在這個瀏覽器，並可下載 .studio 備份；瀏覽器不會假裝已寫入 Finder／檔案。"}
       onClose={onClose}
     >
       <div className={`local-file-location-summary ${hasError ? "is-error" : ""}`}>
         <HardDrive size={20} />
         <span>
-          <strong>{needsPermission && binding.name ? `重新授權「${binding.name}」` : supported ? "指定可編輯的 .moodboard 檔案" : "瀏覽器本機復原副本"}</strong>
-          <small>無論選擇哪一種方式，Infinite Moodboard 都會先保留瀏覽器內的復原副本。</small>
+          <strong>{needsPermission && binding.name ? `重新授權「${binding.name}」` : supported ? "指定可編輯的 .studio 檔案" : "瀏覽器本機復原副本"}</strong>
+          <small>無論選擇哪一種方式，Infinite Studio 都會先保留瀏覽器內的復原副本。</small>
         </span>
       </div>
       <div className="feature-dialog-actions">
@@ -5896,7 +5898,7 @@ function LocalFileAutosaveModal({ binding, supported, onChoose, onDownload, onCl
           </button>
         ) : (
           <button className="primary-button" type="button" onClick={onDownload}>
-            <Download size={16} /> 下載 .moodboard 備份
+            <Download size={16} /> 下載 .studio 備份
           </button>
         )}
       </div>
@@ -5996,13 +5998,13 @@ function DriveLibraryModal({
       : "連結後會在儲存前檢查可用空間。";
 
   return (
-    <Modal title="我的 Moodboards" description="在同一個檔案庫開啟這台裝置與 Infinite Moodboard 可存取的 Drive 檔案。" onClose={onClose} wide>
+    <Modal title="我的 Moodboards" description="在同一個檔案庫開啟這台裝置與 Infinite Studio 可存取的 Drive 檔案。" onClose={onClose} wide>
       <div className="drive-library">
         <section className="library-primary-location" aria-label="目前主要儲存位置">
           {primaryStorageTarget === "drive" ? <Cloud size={19} /> : primaryStorageTarget === "local" ? <HardDrive size={19} /> : <Info size={19} />}
           <div>
             <strong>{primaryStorageTarget === "drive" ? "主要儲存位置：Google Drive" : primaryStorageTarget === "local" ? "主要儲存位置：這台裝置" : "尚未選擇主要儲存位置"}</strong>
-            <small>{primaryStorageTarget === "drive" ? "更新至雲端只會上傳目前畫布；下載本機副本不會切換主要位置。" : "儲存會更新選定的 .moodboard 檔案；瀏覽器暫存只用於復原。"}</small>
+            <small>{primaryStorageTarget === "drive" ? "更新至雲端只會上傳目前畫布；下載本機副本不會切換主要位置。" : "儲存會更新選定的 .studio 檔案；瀏覽器暫存只用於復原。"}</small>
           </div>
         </section>
         {!driveSession.conflict ? (
@@ -6020,8 +6022,8 @@ function DriveLibraryModal({
 
         {!driveSession.connected ? (
           <section className="drive-permission-intro">
-            <div><ShieldCheck size={23} aria-hidden="true" /><span><strong>只存取你在 Infinite Moodboard 建立的檔案</strong><small>Drive 授權和 PETFASHION 登入分開；不會讀取整個雲端硬碟，也不會因登入而自動上傳。</small></span></div>
-            <div><HardDrive size={23} aria-hidden="true" /><span><strong>優先更新本機安全副本</strong><small>若瀏覽器空間不足，Drive 仍會繼續同步並明確提示；也可隨時下載 `.moodboard` 備份。</small></span></div>
+            <div><ShieldCheck size={23} aria-hidden="true" /><span><strong>只存取你在 Infinite Studio 建立的檔案</strong><small>Drive 授權和 PETFASHION 登入分開；不會讀取整個雲端硬碟，也不會因登入而自動上傳。</small></span></div>
+            <div><HardDrive size={23} aria-hidden="true" /><span><strong>優先更新本機安全副本</strong><small>若瀏覽器空間不足，Drive 仍會繼續同步並明確提示；也可隨時下載 `.studio` 備份。</small></span></div>
             <button className="primary-button" type="button" onClick={onConnect} disabled={!configured || busy}>
               {busy ? <RefreshCw size={17} className="is-spinning" /> : <Cloud size={17} />}
               {configured ? (driveSettings.enabled ? "重新授權 Google Drive" : "連結 Google Drive") : "Google Drive 尚未設定"}
@@ -6088,7 +6090,7 @@ function DriveLibraryModal({
           <div className="drive-library-list-actions">
             <ListSearchToggle search={search} resultCount={listedItems.length} totalCount={libraryItems.length} label="搜尋我的 Moodboards" />
             <button className="quiet-button" type="button" onClick={onOpenDeviceFile}><FileUp size={15} />從檔案開啟</button>
-            <button className="quiet-button" type="button" onClick={onDownloadBackup}><Download size={15} />下載 `.moodboard` 備份</button>
+            <button className="quiet-button" type="button" onClick={onDownloadBackup}><Download size={15} />下載 `.studio` 備份</button>
             <button className="quiet-button" type="button" onClick={onCreateLocal}><Plus size={15} />新增 Moodboard</button>
           </div>
         </div>
@@ -6190,8 +6192,8 @@ function DriveSharingModal({
           <>
             <div className="cloud-collaboration-heading">
               <div>
-                <strong data-l10n-ignore>{sharing.fileName || boardName || "未命名 Infinite Moodboard"}</strong>
-                <small>同一份 `.moodboard` 檔案 · Google Drive</small>
+                <strong data-l10n-ignore>{sharing.fileName || boardName || "未命名 Infinite Studio"}</strong>
+                <small>同一份工作檔 · Google Drive</small>
               </div>
               <span className="cloud-role-badge">{drivePermissionRoleLabel(sharing.role)}</span>
             </div>
@@ -6409,7 +6411,7 @@ function AppUpdateNotice({
       <div className="app-update-notice-heading">
         <span className="app-update-notice-icon" aria-hidden="true"><Download size={19} /></span>
         <div>
-          <strong id="app-update-notice-title">{`Infinite Moodboard v${version} 可以更新`}</strong>
+          <strong id="app-update-notice-title">{`Infinite Studio v${version} 可以更新`}</strong>
           <small>{updateCheck.manifest.summary || "新的穩定版本已可使用。"}</small>
         </div>
       </div>
@@ -6613,10 +6615,10 @@ function SettingsModal({
                   <div className="settings-membership-summary">
                     <ShieldCheck size={18} />
                     <div>
-                      <strong>Infinite Moodboard 已啟用</strong>
+                      <strong>Infinite Studio 已啟用</strong>
                       <small>{accountReceipt.productActivation?.accountRelationship === "created-through-product"
-                        ? "加入來源：Infinite Moodboard"
-                        : "保留原始加入來源，另記 Infinite Moodboard 啟用"}</small>
+                        ? "加入來源：Infinite Studio"
+                        : "保留原始加入來源，另記 Infinite Studio 啟用"}</small>
                       <small>{accountReceipt.authPersistence === "local" ? "此裝置會保持登入" : "關閉瀏覽工作階段後會登出"}</small>
                     </div>
                   </div>
@@ -6659,7 +6661,7 @@ function SettingsModal({
                 </button>
               </div>
               <button className="settings-toggle-row" type="button" aria-pressed={storagePreferences.autoSave} onClick={() => onSetAutoSave(!storagePreferences.autoSave)}>
-                <span><Save size={18} /><span><strong>自動儲存</strong><small>本機模式會先請你選擇 .moodboard 檔案；瀏覽器復原副本始終保留。</small></span></span>
+                <span><Save size={18} /><span><strong>自動儲存</strong><small>本機模式會先請你選擇 .studio 檔案；瀏覽器復原副本始終保留。</small></span></span>
                 <b>{storagePreferences.autoSave ? "啟用" : "停用"}</b>
               </button>
               <button className="settings-toggle-row" type="button" aria-pressed={storagePreferences.showSaveStatus} onClick={() => onSetShowSaveStatus(!storagePreferences.showSaveStatus)}>
@@ -6688,7 +6690,7 @@ function SettingsModal({
               })()}
               <div className="settings-account-boundary settings-drive-boundary">
                 <ShieldCheck size={20} />
-                <div><strong>只要求 drive.file 最小權限</strong><p>Infinite Moodboard 只能存取本服務建立的檔案；不會掃描整個 Google Drive，也不會保存 Google 存取權杖。</p></div>
+                <div><strong>只要求 drive.file 最小權限</strong><p>Infinite Studio 只能存取本服務建立的檔案；不會掃描整個 Google Drive，也不會保存 Google 存取權杖。</p></div>
               </div>
               {driveSession.connected ? (
                 <>
@@ -6714,9 +6716,9 @@ function SettingsModal({
               )}
               <div className="settings-account-links settings-storage-file-actions">
                 <button className="secondary-button" type="button" onClick={onOpenDriveLibrary}><FolderOpen size={15} />我的 Moodboards</button>
-                <button className="quiet-button" type="button" onClick={onDownloadBackup}><Download size={15} />下載 `.moodboard` 備份</button>
+                <button className="quiet-button" type="button" onClick={onDownloadBackup}><Download size={15} />下載 `.studio` 備份</button>
               </div>
-              <p className="settings-update-note">若離線、容量不足或授權失效，編輯不會中斷；畫布會標示等待同步，並可隨時下載 `.moodboard` 備份。</p>
+              <p className="settings-update-note">若離線、容量不足或授權失效，編輯不會中斷；畫布會標示等待同步，並可隨時下載 `.studio` 備份。</p>
             </section>
           ) : section === "general" ? (
             <section className="settings-section" aria-labelledby="settings-general-title">
@@ -6841,7 +6843,7 @@ function SettingsModal({
                 <button className="secondary-button" type="button" disabled={!customFontDraft.trim()} onClick={applyCustomFont}>套用自訂字體</button>
               </div>
               <div className="settings-type-preview" style={{ fontFamily: resolvedTypography.family }}>
-                <span>Aa</span><strong>Infinite Moodboard 無限靈感 123</strong>
+                <span>Aa</span><strong>Infinite Studio 無限靈感 123</strong>
                 <button className="quiet-button" type="button" onClick={onResetTypography}><RotateCcw size={15} />恢復預設</button>
               </div>
             </section>
@@ -6927,7 +6929,7 @@ function SettingsModal({
               <p className="settings-shortcut-note">Shift + ' ：隱藏或顯示，重新顯示會回到上次的格點或格線。</p>
               <div className="settings-subsection-heading">
                 <Ruler size={17} />
-                <div><strong>尺規與輔助導引線</strong><small>尺規是本機偏好；導引線位置會寫入 .moodboard，但不會輸出到成品。</small></div>
+                <div><strong>尺規與輔助導引線</strong><small>尺規是本機偏好；導引線位置會寫入 .studio，但不會輸出到成品。</small></div>
               </div>
               <div className="settings-ruler-controls">
                 <button className="settings-toggle-row" type="button" aria-pressed={rulersVisible} onClick={onToggleRulers}>
@@ -6963,7 +6965,7 @@ function SettingsModal({
           ) : (
             <section className="settings-section" aria-labelledby="settings-about-title">
               <div className="settings-section-heading">
-                <div><h3 id="settings-about-title">關於 Infinite Moodboard</h3><p>查看目前安裝版本，並向穩定版資訊來源檢查更新。</p></div>
+                <div><h3 id="settings-about-title">關於 Infinite Studio</h3><p>查看目前安裝版本，並向穩定版資訊來源檢查更新。</p></div>
               </div>
               <div className="settings-version-row">
                 <div className="settings-version-identity">
@@ -7226,7 +7228,7 @@ function StartupSequence({ onComplete }) {
       <div className="startup-core">
         <span className="startup-eyebrow">PETFASHION CREATIVE SYSTEM</span>
         <span className="startup-emblem" aria-hidden="true">∞</span>
-        <h1 id="startup-title"><span>Infinite</span><span>Moodboard</span></h1>
+        <h1 id="startup-title"><span>Infinite</span><span>Studio</span></h1>
         <div className="startup-progress" aria-hidden="true">
           {Array.from({ length: 8 }, (_, index) => <i key={index} />)}
         </div>
@@ -7429,7 +7431,10 @@ function App() {
   const [sessionName, setSessionNameState] = useState(() => localStorage.getItem("moodboard-session-name") || createSessionName());
   const [peers, setPeers] = useState([]);
   const [driveSharing, setDriveSharing] = useState(EMPTY_DRIVE_SHARING);
-  const cloudReadOnly = Boolean(driveSharing.fileId && driveSettings.links[board.id]?.fileId === driveSharing.fileId && !driveSharing.canEdit);
+  const boardDriveLink = driveSettings.links[board.id];
+  const cloudReadOnly = isCloudBoardReadOnly(driveSharing, boardDriveLink);
+  const cloudReadOnlyRef = useRef(cloudReadOnly);
+  cloudReadOnlyRef.current = cloudReadOnly;
 
   useEffect(() => {
     if (!cloudReadOnly) return;
@@ -7452,6 +7457,7 @@ function App() {
   const canvasRef = useRef(null);
   const canvasToolbarRef = useRef(null);
   const imageInputRef = useRef(null);
+  const textDocumentInputRef = useRef(null);
   const videoInputRef = useRef(null);
   const svgInputRef = useRef(null);
   const boardInputRef = useRef(null);
@@ -7459,6 +7465,7 @@ function App() {
   const objectColorSetsInputRef = useRef(null);
   const fileHandleRef = useRef(null);
   const driveTokenRef = useRef(null);
+  const driveRenewPromiseRef = useRef(null);
   const driveRestoreAttemptRef = useRef("");
   const driveOperationEpochRef = useRef(0);
   const driveReadEpochRef = useRef(0);
@@ -8837,7 +8844,7 @@ function App() {
       setShowDeleteLocalData(false);
       announce("這台裝置上的 Moodboard、版本與 Drive 連結資料已清除；雲端檔案未刪除。", "success");
     } catch {
-      announce("本機資料無法清除，請關閉其他 Infinite Moodboard 分頁後再試。", "error");
+      announce("本機資料無法清除，請關閉其他 Infinite Studio 分頁後再試。", "error");
     } finally {
       setIsClearingLocalData(false);
     }
@@ -9284,10 +9291,10 @@ function App() {
             ? `本機復原副本已更新 · ${savedAt}；主要位置等待手動儲存`
             : primaryTarget === "local"
               ? localFileSaved
-                ? `已自動儲存至 ${fileHandleRef.current?.name || ".moodboard 檔案"} · ${savedAt}`
+                ? `已自動儲存至 ${fileHandleRef.current?.name || ".studio 檔案"} · ${savedAt}`
                 : localFileBinding.status === "browser-only" || localFileBinding.status === "unsupported"
                   ? `已自動儲存在這個瀏覽器 · ${savedAt}`
-                  : `本機復原副本已更新 · ${savedAt}；等待選擇 .moodboard 檔案`
+                  : `本機復原副本已更新 · ${savedAt}；等待選擇 .studio 檔案`
               : primaryTarget === "drive"
                 ? `本機安全副本已更新 · ${savedAt}`
                 : `安全暫存已更新 · ${savedAt}`);
@@ -9849,6 +9856,20 @@ function App() {
     setEditingText({ id: object.id, selectAll: true });
   }, [addGeneratedObject, canvasCenterWorld]);
 
+  const importTextDocument = useCallback(async (file, point) => {
+    if (cloudReadOnly) { announce("目前為僅檢視；請先申請編輯權限。", "warning"); return; }
+    const targetBoardId = boardRef.current.id;
+    try {
+      const { readTextDocument } = await import("./text-document.js");
+      const text = await readTextDocument(file);
+      if (boardRef.current.id !== targetBoardId) throw new Error("已切換檔案；請重新匯入文字文件。" );
+      if (cloudReadOnlyRef.current) throw new Error("目前為僅檢視；請先申請編輯權限。" );
+      const name = file.name.replace(/\.[^.]+$/, "") || "文字文件";
+      const object = { ...createTextObject(point), name, layerName: name, originalFilename: file.name, text, fontSize: 18, originalFontSize: 18, width: 560, height: 400, originalWidth: 560, originalHeight: 400 };
+      addGeneratedObject(object, `已匯入「${file.name}」；內容可編輯。`);
+    } catch (error) { announce(error?.message || "無法匯入文字文件。", "error"); }
+  }, [addGeneratedObject, announce, cloudReadOnly]);
+
   const addShapeObject = useCallback((kind) => {
     const object = createShapeObject(kind, canvasCenterWorld());
     addGeneratedObject(object, `已加入${object.name}`);
@@ -9902,7 +9923,7 @@ function App() {
       if (!onCommit && boardRef.current === imported) announce(`已開啟「${imported.name}」`, "success");
       return imported;
     } catch (error) {
-      announce(error.message || "Infinite Moodboard 檔案無法開啟。", "error");
+      announce(error.message || "Infinite Studio 檔案無法開啟。", "error");
       return null;
     }
   }, [announce, canUseFileSystemPicker, persistBoardLocally, publishBoard, pushUndo, setBoardPrimaryStorage]);
@@ -9931,7 +9952,7 @@ function App() {
     if (window.showOpenFilePicker) {
       try {
         const [handle] = await window.showOpenFilePicker({
-          types: [{ description: "Infinite Moodboard 檔案", accept: { "application/json": [".moodboard", ".json"] } }],
+          types: [{ description: "Infinite Studio 檔案", accept: { "application/json": [".studio", ".moodboard", ".json"] } }],
           multiple: false,
         });
         await importLocalBoardFile(await handle.getFile(), handle);
@@ -10172,8 +10193,8 @@ function App() {
         && boardRef.current.revision === snapshot.revision
         && boardRef.current.updatedAt === snapshot.updatedAt) setDirty(false);
       const savedAt = new Date().toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" });
-      setSaveState(`已儲存至 ${handle.name || ".moodboard 檔案"} · ${savedAt}`);
-      announce(`已設定「${handle.name || ".moodboard 檔案"}」為本機自動儲存位置。`, "success");
+      setSaveState(`已儲存至 ${handle.name || ".studio 檔案"} · ${savedAt}`);
+      announce(`已設定「${handle.name || ".studio 檔案"}」為本機自動儲存位置。`, "success");
       return true;
     } catch (error) {
       if (error?.name === "AbortError") return false;
@@ -10184,7 +10205,7 @@ function App() {
           ? "unsupported"
           : "error";
       setLocalFileBinding({ status, name: String(handle?.name || "") });
-      announce(error?.message || "無法寫入本機 .moodboard 檔案；瀏覽器復原副本仍保留。", "error");
+      announce(error?.message || "無法寫入本機 .studio 檔案；瀏覽器復原副本仍保留。", "error");
       return false;
     }
   }, [announce, boardSnapshot, persistBoardLocally, setBoardPrimaryStorage]);
@@ -10195,7 +10216,7 @@ function App() {
     setLocalFileBinding((current) => current.status === "unsupported"
       ? current
       : { status: "browser-only", name: current.name });
-    setSaveState("自動儲存在這個瀏覽器；尚未指定 .moodboard 檔案");
+    setSaveState("自動儲存在這個瀏覽器；尚未指定 .studio 檔案");
   }, [board.id]);
 
   const saveBoardToGoogleDrive = useCallback(({ asCopy = false, silent = false, forceOverwrite = false, overwriteTarget = null } = {}) => {
@@ -10219,6 +10240,29 @@ function App() {
     }
     const accessToken = currentDriveAccessToken();
     if (!accessToken) {
+      if (driveSettings.enabled && !forceOverwrite && (!driveSettings.connectionOwnerUid || driveSettings.connectionOwnerUid === authSession.user?.uid)) {
+        if (driveRenewPromiseRef.current) return driveRenewPromiseRef.current;
+        const initialBoardId = boardRef.current.id;
+        const initialEpoch = driveOperationEpochRef.current;
+        const renewal = (async () => {
+          try {
+            const { requestGoogleDriveToken } = await loadDriveRuntime();
+            const token = await requestGoogleDriveToken({ loginHint: authSession.user?.email || driveSettings.connectionEmail || "", prompt: "none", timeoutMs: 8_000 });
+            if (initialEpoch !== driveOperationEpochRef.current || boardRef.current.id !== initialBoardId) return false;
+            driveTokenRef.current = token;
+            if (!currentDriveAccessToken()) throw new Error("Google Drive 授權已過期。" );
+            return await saveBoardToGoogleDrive({ asCopy, silent, forceOverwrite, overwriteTarget });
+          } catch {
+            if (initialEpoch === driveOperationEpochRef.current) {
+              setDriveSession((current) => ({ ...current, status: "authorization-required", connected: false, busy: false, message: "無法自動恢復 Google Drive；請重新連結，本機內容仍保留。" }));
+              if (!silent) setShowDriveLibrary(true);
+            }
+            return false;
+          } finally { if (driveRenewPromiseRef.current === renewal) driveRenewPromiseRef.current = null; }
+        })();
+        driveRenewPromiseRef.current = renewal;
+        return renewal;
+      }
       setDriveSession((current) => ({ ...current, status: "authorization-required", connected: false, busy: false, message: "請重新連結 Google Drive；本機變更仍安全保留。" }));
       if (forceOverwrite) showConfirmationFailure(new DriveApiError("需要重新授權。", { code: "drive/authorization" }));
       else if (!silent) setShowDriveLibrary(true);
@@ -10255,9 +10299,10 @@ function App() {
       .format(new Date())
       .replaceAll(":", "-")
       .replace(" ", "-");
+    const fileExtension = !asCopy && linkedFile && (!linkedFile.name || /\.moodboard$/i.test(linkedFile.name)) ? "moodboard" : "studio";
     const filename = asCopy
-      ? `${safeFilename(snapshot.name, "moodboard")}-${translateInterfaceText("複本")}-${timestamp}.moodboard`
-      : `${safeFilename(snapshot.name, "moodboard")}.moodboard`;
+      ? `${safeFilename(snapshot.name, "moodboard")}-${translateInterfaceText("複本")}-${timestamp}.studio`
+      : `${safeFilename(snapshot.name, "moodboard")}.${fileExtension}`;
     const operationEpoch = driveOperationEpochRef.current;
     const controller = new AbortController();
     driveSaveControllerRef.current = controller;
@@ -10343,8 +10388,8 @@ function App() {
           quota: about.quota,
           user: about.user,
           message: localRecoveryWarning
-            ? `${localRecoveryWarning} 正在上傳最新的 \`.moodboard\` 工作檔…`
-            : "正在上傳最新的 `.moodboard` 工作檔…",
+            ? `${localRecoveryWarning} 正在上傳最新的 \`.studio\` 工作檔…`
+            : "正在上傳最新的 `.studio` 工作檔…",
         }));
         const savedFile = await uploadGoogleDriveMoodboard(accessToken, {
           board: uploadSnapshot,
@@ -10391,7 +10436,7 @@ function App() {
           message: asCopy
             ? `已儲存新的 Drive 檔案；目前編輯內容與原 Drive 檔案仍分開保留。${postSyncWarning ? ` ${postSyncWarning}` : ""}`
             : localRecoveryWarning
-              ? `已儲存至 Google Drive；${localRecoveryWarning} 請下載 .moodboard 備份；需要釋放空間時，可至「設定」的「儲存與同步」檢視本機版本。${queueStateWarning ? ` ${queueStateWarning}` : ""}`
+              ? `已儲存至 Google Drive；${localRecoveryWarning} 請下載 .studio 備份；需要釋放空間時，可至「設定」的「儲存與同步」檢視本機版本。${queueStateWarning ? ` ${queueStateWarning}` : ""}`
               : queueStateWarning
                 ? `已儲存至 Google Drive；${queueStateWarning}`
                 : `已儲存至 Google Drive · ${formatTime(savedFile.modifiedTime || new Date().toISOString())}`,
@@ -10444,7 +10489,7 @@ function App() {
         const failureFeedback = driveSaveFailureFeedback(error, { localRecoveryWarning });
         const driveFailureMessage = forceOverwrite || localRecoveryWarning ? failureFeedback.message : driveErrorMessage(error);
         const errorMessage = localRecoveryWarning
-          ? `${driveFailureMessage} ${localRecoveryWarning} 請先下載 .moodboard 備份。`
+          ? `${driveFailureMessage} ${localRecoveryWarning} 請先下載 .studio 備份。`
           : driveFailureMessage;
         const status = isConflict
           ? "conflict"
@@ -10494,7 +10539,7 @@ function App() {
             })(), DRIVE_QUEUE_TIMEOUT_MS, () => new Error("Unable to finish local sync bookkeeping."));
           } catch {
             if (operationEpoch === driveOperationEpochRef.current) setSaveState(localRecoveryWarning
-              ? "本機復原副本與雲端同步都未完成；請下載 .moodboard 備份"
+              ? "本機復原副本與雲端同步都未完成；請下載 .studio 備份"
               : "雲端同步失敗；本機內容仍已保留");
           } finally {
             queueRecoveryActive = false;
@@ -10535,7 +10580,7 @@ function App() {
     })();
     driveSavePromiseRef.current = operation;
     return operation;
-  }, [announce, authReady, boardSnapshot, cancelDriveRead, cloudReadOnly, currentDriveAccessToken, driveSession.conflict, driveSettings.autoSync, driveSettings.folderId, driveSettings.links, persistBoardLocally, refreshLocalLibrarySummary, requestAdvancedFeature, setBoardPrimaryStorage, updateDriveSettings, updateStoragePreferences]);
+  }, [announce, authReady, authSession.user?.email, authSession.user?.uid, boardSnapshot, cancelDriveRead, cloudReadOnly, currentDriveAccessToken, driveSession.conflict, driveSettings.autoSync, driveSettings.connectionEmail, driveSettings.connectionOwnerUid, driveSettings.enabled, driveSettings.folderId, driveSettings.links, persistBoardLocally, refreshLocalLibrarySummary, requestAdvancedFeature, setBoardPrimaryStorage, updateDriveSettings, updateStoragePreferences]);
 
   const openGoogleDriveFile = useCallback(async (file, { sharedLink = false } = {}) => {
     if (driveSavePromiseRef.current) {
@@ -10690,7 +10735,7 @@ function App() {
       setDriveSharing({
         ...EMPTY_DRIVE_SHARING,
         status: "needs-drive",
-        message: "先把目前 Moodboard 儲存成你 Google Drive 裡的 `.moodboard` 檔案，才能建立同一份檔案的分享連結。",
+        message: "先把目前 Moodboard 儲存成你 Google Drive 裡的 `.studio` 檔案，才能建立同一份檔案的分享連結。",
       });
       return false;
     }
@@ -10820,7 +10865,7 @@ function App() {
       status: "picker-authorizing",
       fileId: incoming.fileId,
       resourceKey: incoming.resourceKey,
-      message: "請在 Google 視窗中選取此連結指定的同一份 `.moodboard` 檔案。",
+      message: "請在 Google 視窗中選取此連結指定的同一份 `.studio` 檔案。",
     }));
     try {
       const { openGoogleDriveMoodboardPicker } = await loadDrivePickerRuntime();
@@ -11011,7 +11056,7 @@ function App() {
     setDriveSharing({
       ...EMPTY_DRIVE_SHARING,
       status: "legacy",
-      message: "這個 `?collab=` 連結屬於舊版 Firestore 分享空間，已不再使用。請聯絡檔案擁有者，以 Google Drive 重新分享同一份 `.moodboard` 檔案。",
+      message: "這個 `?collab=` 連結屬於舊版 Firestore 分享空間，已不再使用。請聯絡檔案擁有者，以 Google Drive 重新分享同一份 `.studio` 檔案。",
     });
   }, [hydrated]);
 
@@ -11131,7 +11176,7 @@ function App() {
 
   const saveBoardFile = useCallback(async (forceDownload = false) => {
     const snapshot = boardSnapshot();
-    const filename = `${safeFilename(snapshot.name, "moodboard")}.moodboard`;
+    const filename = `${safeFilename(snapshot.name, "studio")}.studio`;
     const content = `${JSON.stringify(snapshot, null, 2)}\n`;
     try {
       if (!forceDownload && window.showSaveFilePicker) {
@@ -11139,7 +11184,7 @@ function App() {
         if (!handle) {
           handle = await window.showSaveFilePicker({
             suggestedName: filename,
-            types: [{ description: "Infinite Moodboard 檔案", accept: { "application/json": [".moodboard"] } }],
+            types: [{ description: "Infinite Studio 檔案", accept: { "application/json": [".studio", ".moodboard"] } }],
           });
           fileHandleRef.current = handle;
         }
@@ -11150,7 +11195,7 @@ function App() {
         downloadBlob(new Blob([content], { type: "application/json" }), filename);
       }
       if (!forceDownload) setDirty(false);
-      announce(forceDownload ? "離線備份已下載" : "Infinite Moodboard 檔案已儲存", "success");
+      announce(forceDownload ? "離線備份已下載" : "Infinite Studio 檔案已儲存", "success");
     } catch (error) {
       if (error.name !== "AbortError") announce("儲存失敗，畫布仍保留在本機自動儲存。", "error");
     }
@@ -11175,9 +11220,9 @@ function App() {
       await refreshLocalLibrarySummary();
       if (!operationIsCurrent()) return false;
       if (!fileSaved) {
-        setSaveState("本機復原副本已更新；等待選擇 .moodboard 檔案");
+        setSaveState("本機復原副本已更新；等待選擇 .studio 檔案");
         if (!localFilePromptDismissedRef.current.has(snapshot.id)) setShowLocalFileLocation(true);
-        if (!silent) announce("請選擇 .moodboard 檔案位置，之後才能自動寫入 Finder／檔案。", "warning");
+        if (!silent) announce("請選擇 .studio 檔案位置，之後才能自動寫入 Finder／檔案。", "warning");
         return false;
       }
       if (
@@ -11185,8 +11230,8 @@ function App() {
         && boardRef.current.updatedAt === snapshot.updatedAt
       ) setDirty(false);
       const savedAt = new Date().toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" });
-      setSaveState(`已儲存至 ${fileHandleRef.current?.name || ".moodboard 檔案"} · ${savedAt}`);
-      if (!silent) announce(`已儲存至「${fileHandleRef.current?.name || ".moodboard 檔案"}」。`, "success");
+      setSaveState(`已儲存至 ${fileHandleRef.current?.name || ".studio 檔案"} · ${savedAt}`);
+      if (!silent) announce(`已儲存至「${fileHandleRef.current?.name || ".studio 檔案"}」。`, "success");
       return true;
     } catch (error) {
       if (error?.name !== "AbortError") {
@@ -11214,7 +11259,7 @@ function App() {
       requestAdvancedFeature("drive");
       return;
     }
-    if (!currentDriveAccessToken()) {
+    if (!currentDriveAccessToken() && !driveSettings.enabled) {
       setShowDriveLibrary(true);
       setDriveSession((current) => ({ ...current, status: driveSettings.enabled ? "authorization-required" : "disconnected", connected: false, busy: false, message: driveSettings.enabled ? "請重新連結後繼續同步。" : "連結 Drive 後即可把目前 Moodboard 保存到雲端。" }));
       return;
@@ -11327,11 +11372,7 @@ function App() {
       return () => window.clearTimeout(driveSyncTimerRef.current);
     }
     if (driveSession.busy || ["checking", "connecting", "syncing", "quota"].includes(driveSession.status)) return undefined;
-    if (!currentDriveAccessToken()) {
-      if (["checking", "connecting"].includes(driveSession.status)) return undefined;
-      setDriveSession((current) => ({ ...current, status: "authorization-required", connected: false, busy: false, message: "重新連結 Drive 後會繼續同步；本機變更不會遺失。" }));
-      return undefined;
-    }
+    if (!currentDriveAccessToken() && driveSession.status === "authorization-required") return undefined;
     setDriveSession((current) => ({ ...current, status: "pending", connected: true, busy: false, message: "停止操作後會同步最新版本。" }));
     driveSyncTimerRef.current = window.setTimeout(() => {
       saveBoardToGoogleDrive({ silent: true });
@@ -11349,7 +11390,7 @@ function App() {
       downloadBlob(new Blob([content], { type: "text/html;charset=utf-8" }), filename);
       announce("瀏覽器版 HTML 已下載；可離線開啟，但不會改動原始工作檔。", "success");
     } catch {
-      announce("瀏覽器版匯出失敗；原始 Infinite Moodboard 仍保留。", "error");
+      announce("瀏覽器版匯出失敗；原始 Infinite Studio 仍保留。", "error");
     }
   }, [announce, boardSnapshot, interfaceLocale]);
 
@@ -13651,10 +13692,11 @@ function App() {
       return;
     }
     const files = [...event.dataTransfer.files];
-    const boardFile = files.find((file) => /\.(moodboard|json)$/i.test(file.name));
+    const boardFile = files.find((file) => /\.(studio|moodboard|json)$/i.test(file.name));
     if (boardFile && files.length === 1) importLocalBoardFile(boardFile);
+    else if (files.length === 1 && /\.(txt|md|markdown|csv|docx|doc)$/i.test(files[0].name)) void importTextDocument(files[0], screenToWorld(event.clientX, event.clientY));
     else addMediaFiles(files, screenToWorld(event.clientX, event.clientY));
-  }, [addMediaFiles, announce, cloudReadOnly, importLocalBoardFile, screenToWorld]);
+  }, [addMediaFiles, announce, cloudReadOnly, importLocalBoardFile, importTextDocument, screenToWorld]);
 
   const onSourceModeDrop = useCallback((event) => {
     event.preventDefault();
@@ -13834,7 +13876,7 @@ function App() {
     const original = item.local?.board || ensureBoard(JSON.parse(content));
     const renamed = stampBoard({ ...original, name }, sessionIdRef.current);
     const saved = await uploadGoogleDriveMoodboard(accessToken, {
-      board: renamed, content: serializeMoodboardSnapshot(renamed), filename: `${safeFilename(name, "moodboard")}.moodboard`,
+      board: renamed, content: serializeMoodboardSnapshot(renamed), filename: `${safeFilename(name, "studio")}.${/\.moodboard$/i.test(metadata.name || "") ? "moodboard" : "studio"}`,
       existingFile: { id: fileId, resourceKey }, expectedVersion: item.link?.version || metadata.version,
       expectedHeadRevisionId: item.link?.headRevisionId || "",
       latestWins: true,
@@ -13871,10 +13913,10 @@ function App() {
       ? (storagePreferences.showSaveStatus || dirty
         ? saveState
         : localFileBinding.status === "linked"
-          ? `主要位置：${localFileBinding.name || ".moodboard 檔案"}`
+          ? `主要位置：${localFileBinding.name || ".studio 檔案"}`
           : localFileBinding.status === "browser-only" || localFileBinding.status === "unsupported"
             ? "主要位置：這個瀏覽器"
-            : "尚未指定 .moodboard 檔案")
+            : "尚未指定 .studio 檔案")
       : "尚未選擇主要儲存位置";
   const hasBlockingDialog = Boolean(
     isBooting
@@ -13911,7 +13953,7 @@ function App() {
       {isBooting ? <StartupSequence onComplete={finishStartup} /> : null}
       <header className="app-topbar" aria-hidden={isBooting || focusMode || undefined} inert={isBooting || focusMode ? true : undefined}>
         <div className="topbar-primary">
-          <div className="brand-block" role="img" aria-label="Infinite Moodboard" title="Infinite Moodboard｜PETFASHION 創意工具">
+          <div className="brand-block" role="img" aria-label="Infinite Studio" title="Infinite Studio｜PETFASHION 創意工具">
             <span className="brand-mark" aria-hidden="true">∞</span>
           </div>
 
@@ -13937,8 +13979,8 @@ function App() {
                 ? "儲存到 Google Drive"
                 : currentPrimaryStorageTarget === "local"
                   ? localFileBinding.status === "linked"
-                    ? `儲存到 ${localFileBinding.name || ".moodboard 檔案"}`
-                    : "選擇 .moodboard 儲存位置"
+                    ? `儲存到 ${localFileBinding.name || ".studio 檔案"}`
+                    : "選擇 .studio 儲存位置"
                   : "選擇主要儲存位置"}
               collaborationCount={authReady && driveSharing.fileId
                 ? Math.max(1, driveSharing.members.length)
@@ -13948,7 +13990,7 @@ function App() {
         </div>
 
         <label className="board-title-field">
-          <span className="sr-only">{sourceModeActive ? "回到 Moodboard 後修改名稱" : "Infinite Moodboard 名稱"}</span>
+          <span className="sr-only">{sourceModeActive ? "回到 Moodboard 後修改名稱" : "Infinite Studio 名稱"}</span>
           <input
             value={board.name}
             onChange={(event) => applyBoard((current) => ({ ...current, name: event.target.value }))}
@@ -14219,6 +14261,7 @@ function App() {
                   disabled={cloudReadOnly}
                   onToggle={() => setShapeMenuOpen((current) => !current)}
                   onAddText={addTextObject}
+                  onImportText={() => textDocumentInputRef.current?.click()}
                   onAddShape={addShapeObject}
                   onChooseImage={() => { setShapeMenuOpen(false); imageInputRef.current?.click(); }}
                   onChooseVideo={() => { setShapeMenuOpen(false); videoInputRef.current?.click(); }}
@@ -14406,7 +14449,7 @@ function App() {
                 {sourceModeActive && activeSourceAsset ? <span className="canvas-status-source" data-l10n-ignore>{activeSourceAsset.representative.originalFilename || activeSourceAsset.representative.name}</span> : null}
                 <span className="canvas-status-revision" title="目前 Moodboard 內容版本">內容 r{board.revision}</span>
                 <span className="canvas-status-save">{saveState}</span>
-                <span className="app-version" aria-label={`Infinite Moodboard 應用程式版本 ${APP_VERSION}`} title={`Infinite Moodboard ${APP_VERSION_LABEL}`}>{APP_VERSION_LABEL}</span>
+                <span className="app-version" aria-label={`Infinite Studio 應用程式版本 ${APP_VERSION}`} title={`Infinite Studio ${APP_VERSION_LABEL}`}>{APP_VERSION_LABEL}</span>
               </div>
 
               {!sourceModeActive ? <div className="export-dock" role="toolbar" aria-label="匯出與合成輸出">
@@ -14813,9 +14856,10 @@ function App() {
       ) : null}
 
       <input ref={imageInputRef} className="sr-only" type="file" accept="image/*" multiple onChange={onMediaInput} />
+      <input ref={textDocumentInputRef} className="sr-only" type="file" accept=".txt,.md,.markdown,.csv,.docx,.doc,text/plain,text/markdown,text/csv,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importTextDocument(file, canvasCenterWorld()); event.target.value = ""; }} />
       <input ref={videoInputRef} className="sr-only" type="file" accept="video/*" multiple onChange={onMediaInput} />
       <input ref={svgInputRef} className="sr-only" type="file" accept=".svg,image/svg+xml" multiple onChange={onSvgInput} />
-      <input ref={boardInputRef} className="sr-only" type="file" accept=".moodboard,.json,application/json" onChange={(event) => { const [file] = event.target.files || []; if (file) importLocalBoardFile(file); event.target.value = ""; }} />
+      <input ref={boardInputRef} className="sr-only" type="file" accept=".studio,.moodboard,.json,application/json" onChange={(event) => { const [file] = event.target.files || []; if (file) importLocalBoardFile(file); event.target.value = ""; }} />
       <input ref={themeInputRef} className="sr-only" type="file" accept=".moodtheme,.json,application/json" onChange={(event) => { const [file] = event.target.files || []; if (file) importInterfaceThemeFile(file); event.target.value = ""; }} />
       <input ref={objectColorSetsInputRef} className="sr-only" type="file" accept=".moodcolors,.json,application/json" onChange={(event) => { const [file] = event.target.files || []; if (file) importObjectColorSetsFile(file); event.target.value = ""; }} />
     </main>
@@ -14862,7 +14906,7 @@ function PublicSharedViewer({ incoming, preview = false }) {
   };
   return <main ref={viewerRef} className="public-share-viewer">
     <header>
-      <div className="public-share-brand" aria-label="Infinite Moodboard"><span className="brand-mark" aria-hidden="true">∞</span></div>
+      <div className="public-share-brand" aria-label="Infinite Studio"><span className="brand-mark" aria-hidden="true">∞</span></div>
       <strong className="public-share-title" title={state.name || "分享的 Moodboard"} data-l10n-ignore={state.name ? true : undefined}>{state.name || "分享的 Moodboard"}</strong>
       <div className="public-share-actions"><span><span>僅檢視</span>{preview ? <span> · 模擬資料</span> : null}</span><button className="primary-button" type="button" onClick={openEditor}>{state.status === "error" ? "登入以開啟" : "登入後編輯"}</button></div>
     </header>

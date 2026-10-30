@@ -94,8 +94,8 @@ export function createPortableHtml(board, options = {}) {
     shapeObject: translate("形狀物件"),
     moodboardObject: translate("Mood board 物件"),
     objectSuffix: locale === "en" ? " objects" : locale === "zh-Hans" ? " 个对象" : " 個物件",
-    emptyTitle: translate("這份 Infinite Moodboard 目前沒有可見物件"),
-    emptyBody: translate("這是唯讀瀏覽檔；請回到 Infinite Moodboard 編輯原始 .moodboard 檔。"),
+    emptyTitle: translate("這份 Infinite Studio 目前沒有可見物件"),
+    emptyBody: translate("這是唯讀瀏覽檔；請回到 Infinite Studio 編輯原始 .studio 檔。"),
   };
   const serializedCopy = serializeForHtml(viewerCopy);
 
@@ -105,7 +105,7 @@ export function createPortableHtml(board, options = {}) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; media-src data: blob:; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
-  <title>${title} — Infinite Moodboard ${escapeHtml(shared ? "分享檢視" : translate("離線瀏覽版"))}</title>
+  <title>${title} — Infinite Studio ${escapeHtml(shared ? "分享檢視" : translate("離線瀏覽版"))}</title>
   <style>
     :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
     * { box-sizing: border-box; }
@@ -152,7 +152,7 @@ export function createPortableHtml(board, options = {}) {
 <body>
   <div class="app">
     <header>
-      ${shared ? "" : `<div class="identity"><strong>${title}</strong><small>Infinite Moodboard · ${escapeHtml(translate("單檔離線瀏覽版（唯讀）"))}</small></div>`}
+      ${shared ? "" : `<div class="identity"><strong>${title}</strong><small>Infinite Studio · ${escapeHtml(translate("單檔離線瀏覽版（唯讀）"))}</small></div>`}
       <div class="controls" aria-label="${escapeHtml(translate("畫面控制"))}">
         <button class="wide" id="saved-view" type="button">${escapeHtml(translate("儲存視角"))}</button>
         <button class="wide" id="fit" type="button">${escapeHtml(translate("全部顯示"))}</button>
@@ -161,7 +161,7 @@ export function createPortableHtml(board, options = {}) {
         <button class="zoom-button" id="zoom-in" type="button" aria-label="${escapeHtml(translate("放大"))}">＋</button>
       </div>
     </header>
-    <main class="viewport" id="viewport" aria-label="${escapeHtml(translate("Infinite Moodboard 唯讀畫布"))}">
+    <main class="viewport" id="viewport" aria-label="${escapeHtml(translate("Infinite Studio 唯讀畫布"))}">
       <div class="world" id="world"></div>
       <div class="status"><b id="count">0${escapeHtml(viewerCopy.objectSuffix)}</b><span>${escapeHtml(translate("拖曳平移 · Ctrl／⌘＋滾輪縮放"))}</span></div>
     </main>

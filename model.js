@@ -67,7 +67,7 @@ export function createBoard(overrides = {}) {
   return {
     schemaVersion: BOARD_SCHEMA_VERSION,
     id: createId("board"),
-    name: "未命名 Infinite Moodboard",
+    name: "未命名 Infinite Studio",
     createdAt: now,
     updatedAt: now,
     revision: 0,

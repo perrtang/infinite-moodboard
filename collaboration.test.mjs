@@ -136,7 +136,7 @@ test("shared links compare their Drive file id before replacing the active Moodb
 test("every opened Drive file applies its edit capability before canvas interaction", () => {
   assert.match(appSource, /const role = driveFileRole\(metadata\);[\s\S]*status: "linked"/);
   assert.match(appSource, /canEdit: role !== "viewer"/);
-  assert.match(appSource, /const cloudReadOnly = Boolean\(driveSharing\.fileId && driveSettings\.links\[board\.id\]\?\.fileId === driveSharing\.fileId && !driveSharing\.canEdit\)/);
+  assert.match(appSource, /const cloudReadOnly = isCloudBoardReadOnly\(driveSharing, boardDriveLink\)/);
 });
 
 test("sharing refresh ignores stale file responses and keeps viewer ACL details private", () => {

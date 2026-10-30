@@ -12,6 +12,7 @@ import {
   getGoogleDriveAbout,
   linkDriveFile,
   listGoogleDriveRevisions,
+  listGoogleDriveMoodboards,
   loadDriveState,
   isGoogleDriveAuthorizationError,
   isGoogleDriveRetryableError,
@@ -26,6 +27,15 @@ import {
   unlinkDriveFile,
   uploadGoogleDriveMoodboard,
 } from "./drive-storage.js";
+
+test("Drive library includes new studio and legacy moodboard project files", async () => {
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ files: [
+    { id: "new", name: "New.studio" }, { id: "old", name: "Old.moodboard" }, { id: "other", name: "Other.txt" },
+  ] }));
+  try { assert.deepEqual((await listGoogleDriveMoodboards("token", "folder")).map((file) => file.id), ["new", "old"]); }
+  finally { globalThis.fetch = previousFetch; }
+});
 
 function memoryStorage() {
   const values = new Map();

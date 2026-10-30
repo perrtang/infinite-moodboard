@@ -1,19 +1,19 @@
-# Infinite Moodboard
+# Infinite Studio
 
 > A free, local-first infinite canvas for visual research, references, layouts, and moodboards — built by PETFASHION.
 
-[![Open the app](https://img.shields.io/badge/Open-Infinite_Moodboard-111111?style=for-the-badge)](https://moodboard.petfashion.tw/)
+[![Open the app](https://img.shields.io/badge/Open-Infinite_Studio-111111?style=for-the-badge)](https://moodboard.petfashion.tw/)
 [![Latest release](https://img.shields.io/github/v/release/perrtang/infinite-moodboard?display_name=tag&style=for-the-badge)](https://github.com/perrtang/infinite-moodboard/releases/latest)
 [![Test and deploy](https://github.com/perrtang/infinite-moodboard/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/perrtang/infinite-moodboard/actions/workflows/deploy-pages.yml)
 
 **English** · [繁體中文](#繁體中文) · [简体中文](#简体中文)
 
-Infinite Moodboard runs the canvas, imported media, transforms, exports, and version history in your browser. No account is required for local editing, saving, opening, or exporting. Sign-in is requested only when you choose Google Drive storage, Drive-native sharing, or other connected features.
+Infinite Studio runs the canvas, imported media, transforms, exports, and version history in your browser. No account is required for local editing, saving, opening, or exporting. Sign-in is requested only when you choose Google Drive storage, Drive-native sharing, or other connected features.
 
 ## Start here
 
 - **Recommended:** [open the web app](https://moodboard.petfashion.tw/). On first use, choose this device or Google Drive as that Moodboard's one primary storage location; a local recovery copy remains available in either mode.
-- **Editable files:** download a `.moodboard` file from the app and reopen it in the online app at any time.
+- **Editable files:** download a `.studio` file from the app and reopen it at any time. Existing `.moodboard` files remain supported.
 - **Self-hosting:** download the latest `self-hosted.zip` from [GitHub Releases](https://github.com/perrtang/infinite-moodboard/releases/latest). It is a static web build, not a native desktop installer; follow the included `SELF_HOSTING.md` instead of double-clicking `index.html`.
 
 ## Highlights
@@ -21,7 +21,7 @@ Infinite Moodboard runs the canvas, imported media, transforms, exports, and ver
 - Infinite canvas with drag-and-drop or paste for images, video, and SVG.
 - Text, common shapes, custom SVG, groups, grids, papers, rulers, guides, and print/social presets.
 - Multi-selection, nine-point transform pivots, proportional group scaling, alignment, distribution, layers, markers, and filtering.
-- Composition snapshots, local version history, `.moodboard` working files, and PNG, WebP, AVIF, PDF, asset, and read-only HTML output.
+- Composition snapshots, local version history, `.studio` working files and legacy `.moodboard` support, and PNG, WebP, AVIF, PDF, asset, and read-only HTML output.
 - Traditional Chinese, Simplified Chinese, and English interfaces.
 - Optional Google Drive file storage and Drive-native sharing with viewer/editor permissions on the same file.
 - 3D, Drive sharing, and export runtimes are loaded only when used, keeping the opening bundle smaller.
@@ -340,12 +340,12 @@ No open-source license has been selected. Public source visibility does not gran
 
 ## 繁體中文
 
-Infinite Moodboard 是 PETFASHION 的免費、本機優先無限畫布。圖片、影片、文字、SVG、版本與輸出主要在瀏覽器內處理；不登入也能編輯、儲存、開啟與輸出。建議直接使用[線上版](https://moodboard.petfashion.tw/)，並定期下載可再次編輯的 `.moodboard` 工作檔。只有主動使用 Google Drive 儲存或分享等連線功能時才需要登入與另外授權；雲端內容與權限都留在使用者自己的 Google Drive 檔案。
+Infinite Studio 是 PETFASHION 的免費、本機優先無限畫布。圖片、影片、文字、SVG、版本與輸出主要在瀏覽器內處理；不登入也能編輯、儲存、開啟與輸出。建議直接使用[線上版](https://moodboard.petfashion.tw/)，並定期下載可再次編輯的 `.moodboard` 工作檔。只有主動使用 Google Drive 儲存或分享等連線功能時才需要登入與另外授權；雲端內容與權限都留在使用者自己的 Google Drive 檔案。
 
 下載的 `self-hosted.zip` 是供自行架站的靜態網頁版本，不是桌面安裝程式。資料與權限界線請讀 [PRIVACY.md](PRIVACY.md)。
 
 ## 简体中文
 
-Infinite Moodboard 是 PETFASHION 的免费、本地优先无限画布。图片、视频、文字、SVG、版本与输出主要在浏览器内处理；无需登录也能编辑、保存、打开与导出。建议直接使用[在线版](https://moodboard.petfashion.tw/)，并定期下载可再次编辑的 `.moodboard` 工作文件。只有主动使用 Google Drive 存储或分享等联网功能时才需要登录与另外授权；云端内容与权限都保留在用户自己的 Google Drive 文件。
+Infinite Studio 是 PETFASHION 的免费、本地优先无限画布。图片、视频、文字、SVG、版本与输出主要在浏览器内处理；无需登录也能编辑、保存、打开与导出。建议直接使用[在线版](https://moodboard.petfashion.tw/)，并定期下载可再次编辑的 `.moodboard` 工作文件。只有主动使用 Google Drive 存储或分享等联网功能时才需要登录与另外授权；云端内容与权限都保留在用户自己的 Google Drive 文件。
 
 下载的 `self-hosted.zip` 是供自行部署的静态网页版本，不是桌面安装程序。数据与权限边界请阅读 [PRIVACY.md](PRIVACY.md)。

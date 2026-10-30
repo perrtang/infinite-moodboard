@@ -58,7 +58,7 @@ export function mergeMoodboardLibrary({ localBoards = [], remoteFiles = [], sync
     items.set(boardId, {
       key: `board:${boardId}`,
       boardId,
-      name: String(local.name || local.board?.name || "未命名 Infinite Moodboard"),
+      name: String(local.name || local.board?.name || "未命名 Infinite Studio"),
       local,
       remote: null,
       syncJob: jobsByBoard.get(boardId) || null,
@@ -72,7 +72,7 @@ export function mergeMoodboardLibrary({ localBoards = [], remoteFiles = [], sync
     const boardId = String(remote?.boardId || linkedBoardIdForFile(remote?.id, links));
     const key = boardId || `remote:${remote.id}`;
     const existing = items.get(key);
-    const name = String(existing?.name || remote.name || "未命名 Infinite Moodboard").replace(/\.moodboard$/i, "");
+    const name = String(existing?.name || remote.name || "未命名 Infinite Studio").replace(/\.(?:studio|moodboard)$/i, "");
     items.set(key, {
       key: boardId ? `board:${boardId}` : `remote:${remote.id}`,
       boardId,
@@ -92,7 +92,7 @@ export function mergeMoodboardLibrary({ localBoards = [], remoteFiles = [], sync
     items.set(boardId, {
       key: `board:${boardId}`,
       boardId,
-      name: String(job.name || job.board?.name || "未命名 Infinite Moodboard"),
+      name: String(job.name || job.board?.name || "未命名 Infinite Studio"),
       local: null,
       remote: null,
       syncJob: job,

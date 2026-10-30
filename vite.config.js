@@ -9,6 +9,7 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (!id.includes("node_modules")) return undefined;
+          if (id.includes("mammoth")) return "word-import";
           if (id.includes("lucide-react")) return "icons";
           if (id.includes("@firebase/firestore")) return "firebase-firestore";
           if (id.includes("@firebase/auth")) return "firebase-auth";

@@ -245,7 +245,7 @@ export async function openGoogleDriveMoodboardPicker({
         view.setMode(pickerNamespace.DocsViewMode.LIST);
       }
       if (typeof view.setFileIds === "function") view.setFileIds(expected);
-      else if (typeof view.setQuery === "function") view.setQuery(".moodboard");
+      // Without file-ID filtering, show supported files and validate the exact ID after selection.
 
       picker = new pickerNamespace.PickerBuilder()
         .addView(view)

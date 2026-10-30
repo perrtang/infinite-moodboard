@@ -21,7 +21,7 @@ test("the local file picker is presented through an explicit user action", () =>
 test("local mode distinguishes a linked file from explicit browser-only recovery", () => {
   assert.match(source, /localFileBinding\.status === "linked"/);
   assert.match(source, /localFileBinding\.status === "browser-only" \|\| localFileBinding\.status === "unsupported"/);
-  assert.match(source, /等待選擇 \.moodboard 檔案/);
+  assert.match(source, /等待選擇 \.studio 檔案/);
 });
 
 test("local autosave ignores stale picker results and persists imports immediately", () => {
